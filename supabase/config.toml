@@ -1,0 +1,49 @@
+project_id = "lghzmijzfpvrcvogxpew"
+
+[functions.repository-download]
+verify_jwt = false
+
+[functions.jira-integration]
+verify_jwt = false
+
+[functions.azure-ad-auth]
+verify_jwt = false
+
+[functions.ai-jmeter-generator]
+verify_jwt = false
+
+[functions.azure-devops-integration]
+verify_jwt = false
+
+[functions.azure-devops-defects]
+verify_jwt = false
+
+[functions.automation-generator]
+verify_jwt = false
+
+[functions.generate-java-automation-files]
+verify_jwt = false
+
+[functions.extract-page-elements]
+verify_jwt = false
+
+[functions.generate-integration-test-cases]
+verify_jwt = false
+
+[functions.fix-test-error]
+verify_jwt = false
+
+[functions.convert-test-steps-to-automation]
+verify_jwt = false
+
+[functions.execute-nocode-test]
+verify_jwt = false
+
+[functions.api-proxy]
+verify_jwt = true
+
+[functions.nocode-auto-heal]
+verify_jwt = false
+
+[functions.secure-credentials]
+verify_jwt = true
