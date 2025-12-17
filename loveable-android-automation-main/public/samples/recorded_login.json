@@ -1,0 +1,54 @@
+{
+  "metadata": {
+    "name": "Login Flow Test",
+    "recorded": "2024-01-15T10:30:00Z",
+    "device": "emulator-5554",
+    "app": "com.example.app"
+  },
+  "actions": [
+    {
+      "id": "1",
+      "type": "tap",
+      "locator": "//android.widget.EditText[@resource-id='com.example.app:id/email']",
+      "comment": "Tap email input field"
+    },
+    {
+      "id": "2",
+      "type": "input",
+      "locator": "//android.widget.EditText[@resource-id='com.example.app:id/email']",
+      "value": "test@example.com",
+      "comment": "Enter email address"
+    },
+    {
+      "id": "3",
+      "type": "tap",
+      "locator": "//android.widget.EditText[@resource-id='com.example.app:id/password']",
+      "comment": "Tap password input field"
+    },
+    {
+      "id": "4",
+      "type": "input",
+      "locator": "//android.widget.EditText[@resource-id='com.example.app:id/password']",
+      "value": "password123",
+      "comment": "Enter password"
+    },
+    {
+      "id": "5",
+      "type": "tap",
+      "locator": "//android.widget.Button[@text='Login']",
+      "comment": "Tap login button"
+    },
+    {
+      "id": "6",
+      "type": "wait",
+      "duration": 2000,
+      "comment": "Wait for authentication"
+    },
+    {
+      "id": "7",
+      "type": "assert",
+      "locator": "//android.widget.TextView[@text='Welcome']",
+      "comment": "Verify successful login"
+    }
+  ]
+}

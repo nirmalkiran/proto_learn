@@ -15,7 +15,7 @@ import NotFound from "./pages/NotFound";
 
 import { MenuConfigPanel } from "./components/MenuConfigPanel";
 
-// 🔹 Automation / Lovable pages
+//Automation / Lovable pages
 import Dashboard from "./pages/Dashboard";
 import TerminalPanel from "./pages/TerminalPanel";
 import Recorder from "./pages/Recorder";
