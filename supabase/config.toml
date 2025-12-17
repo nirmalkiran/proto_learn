@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 project_id = "lwlqfrsqwyvwqveqksuz"
 
 [functions.repository-download]
@@ -48,6 +47,3 @@ verify_jwt = false
 
 [functions.secure-credentials]
 verify_jwt = true
-=======
-project_id = "vpxggjmtwvkxdrokclen"
->>>>>>> 3ca0e760b0db5e3e128f61513ef614c75f96a6e4
