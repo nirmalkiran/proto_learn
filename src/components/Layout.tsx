@@ -154,6 +154,7 @@ const AppSidebar = ({
         { id: "repository", label: "Repository" },
         { id: "api", label: "API Testing" },
         { id: "nocode-automation", label: "No-Code Automation" },
+        { id: "mobile-automation", label: "Mobile No-Code Automation" },
         { id: "defects", label: "Defects", count: defectsCount || undefined },
         { id: "test-report", label: "Test Report" },
         { id: "integrations", label: "Integrations" },

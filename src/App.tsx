@@ -23,6 +23,9 @@ import Inspector from "./pages/Inspector";
 import TestGenerator from "./pages/TestGenerator";
 import Config from "./pages/Config";
 
+// Mobile Automation Module
+import MobileAutomationPage from "./pages/MobileAutomation";
+
 // --------------------------------------------------
 // Wrapper to inject projectId into ProtectedRoute
 // --------------------------------------------------
@@ -132,6 +135,16 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <MenuConfigPanel />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* -------------------- MOBILE AUTOMATION -------------------- */}
+            <Route
+              path="/mobile-automation"
+              element={
+                <ProtectedRoute>
+                  <MobileAutomationPage />
                 </ProtectedRoute>
               }
             />
