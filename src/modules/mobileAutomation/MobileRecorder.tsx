@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Circle, Square, Play, Download, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,6 +34,7 @@ export default function MobileRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
   const [newAction, setNewAction] = useState<Partial<RecordedAction>>({ type: "tap" });
+  const [scriptLang, setScriptLang] = useState<"javascript" | "python">("javascript");
 
   const addAction = () => {
     if (!newAction.type) return;
@@ -59,7 +61,7 @@ export default function MobileRecorder() {
   };
 
   const generateAppiumScript = () => {
-    const script = `// Generated Appium Test Script
+    const script = `// Generated Appium Test Script (JavaScript)
 const { remote } = require('webdriverio');
 
 async function runTest() {
@@ -101,15 +103,66 @@ runTest();`;
     return script;
   };
 
+  const generatePythonScript = () => {
+    const script = `# Generated Appium Test Script (Python/Pytest)
+import pytest
+from appium import webdriver
+from appium.options.android import UiAutomator2Options
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+
+class TestMobileApp:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        options = UiAutomator2Options()
+        options.platform_name = "Android"
+        options.device_name = "emulator-5554"
+        options.app = "/path/to/app.apk"
+        
+        self.driver = webdriver.Remote(
+            "http://localhost:4723",
+            options=options
+        )
+        self.wait = WebDriverWait(self.driver, 10)
+        yield
+        self.driver.quit()
+
+    def test_recorded_flow(self):
+        """Auto-generated test from recorded actions"""
+${actions.map((a) => {
+  switch (a.type) {
+    case "tap":
+      return `        self.wait.until(EC.element_to_be_clickable((AppiumBy.XPATH, "${a.locator}"))).click()`;
+    case "input":
+      return `        self.wait.until(EC.presence_of_element_located((AppiumBy.XPATH, "${a.locator}"))).send_keys("${a.value}")`;
+    case "swipe":
+      return `        # Swipe ${a.direction}`;
+    case "wait":
+      return `        time.sleep(${(a.duration || 1000) / 1000})`;
+    case "assert":
+      return `        assert self.wait.until(EC.visibility_of_element_located((AppiumBy.XPATH, "${a.locator}")))`;
+    default:
+      return "";
+  }
+}).join("\n")}
+
+# Run with: pytest ${actions.length > 0 ? "test_recorded.py" : "<filename>.py"} -v
+`;
+    return script;
+  };
+
   const downloadScript = () => {
-    const script = generateAppiumScript();
-    const blob = new Blob([script], { type: "text/javascript" });
+    const script = scriptLang === "python" ? generatePythonScript() : generateAppiumScript();
+    const ext = scriptLang === "python" ? "py" : "js";
+    const blob = new Blob([script], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "recorded_test.js";
+    a.download = `recorded_test.${ext}`;
     a.click();
-    toast.success("Script downloaded");
+    toast.success(`${scriptLang === "python" ? "Python" : "JavaScript"} script downloaded`);
   };
 
   const downloadJSON = () => {
@@ -252,12 +305,21 @@ runTest();`;
                 <CardTitle>Recorded Actions</CardTitle>
                 <CardDescription>{actions.length} actions recorded</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                <Select value={scriptLang} onValueChange={(v) => setScriptLang(v as "javascript" | "python")}>
+                  <SelectTrigger className="w-[100px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="javascript">JS</SelectItem>
+                    <SelectItem value="python">Python</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button variant="outline" size="sm" onClick={downloadJSON}>
                   <Download className="mr-1 h-3 w-3" /> JSON
                 </Button>
                 <Button variant="outline" size="sm" onClick={downloadScript}>
-                  <Download className="mr-1 h-3 w-3" /> Script
+                  <Download className="mr-1 h-3 w-3" /> {scriptLang === "python" ? "Python" : "JS"}
                 </Button>
               </div>
             </div>
@@ -310,11 +372,19 @@ runTest();`;
       {actions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Generated Appium Script</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Generated Script</CardTitle>
+              <Tabs value={scriptLang} onValueChange={(v) => setScriptLang(v as "javascript" | "python")}>
+                <TabsList className="h-8">
+                  <TabsTrigger value="javascript" className="text-xs">JavaScript</TabsTrigger>
+                  <TabsTrigger value="python" className="text-xs">Python</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </CardHeader>
           <CardContent>
-            <pre className="bg-zinc-950 text-zinc-100 p-4 rounded-lg overflow-x-auto text-sm">
-              {generateAppiumScript()}
+            <pre className="bg-zinc-950 text-zinc-100 p-4 rounded-lg overflow-x-auto text-sm max-h-[400px]">
+              {scriptLang === "python" ? generatePythonScript() : generateAppiumScript()}
             </pre>
           </CardContent>
         </Card>
