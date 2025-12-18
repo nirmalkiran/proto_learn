@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Smartphone, Circle, Search, Terminal, Wand2, AlertCircle } from "lucide-react";
+import { Smartphone, Circle, Search, Terminal, Wand2, AlertCircle, Settings } from "lucide-react";
 import MobileRecorder from "./MobileRecorder";
 import MobileInspector from "./MobileInspector";
 import MobileTerminal from "./MobileTerminal";
 import MobileTestGenerator from "./MobileTestGenerator";
+import MobileSetupWizard from "./MobileSetupWizard";
 
 export default function MobileAutomation() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -23,8 +24,12 @@ export default function MobileAutomation() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="setup">
+            <Settings className="mr-2 h-4 w-4" />
+            Setup
+          </TabsTrigger>
           <TabsTrigger value="recorder">
             <Circle className="mr-2 h-4 w-4" />
             Recorder
@@ -139,6 +144,10 @@ export default function MobileAutomation() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="setup">
+          <MobileSetupWizard />
         </TabsContent>
 
         <TabsContent value="recorder">
