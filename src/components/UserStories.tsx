@@ -235,7 +235,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
 
         try {
           console.log("Fetching Jira boards...");
-          const response = await fetch(`https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/jira-integration`, {
+          const response = await fetch(`https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/jira-integration`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -277,7 +277,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
         try {
           console.log("Fetching Azure DevOps boards...");
           const response = await fetch(
-            `https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/azure-devops-integration`,
+            `https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/azure-devops-integration`,
             {
               method: "POST",
               headers: {
@@ -431,7 +431,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
       if (selectedBoardInfo.source === "jira" && savedConfigs.jira?.enabled) {
         const { url, email, apiToken, projectKey } = savedConfigs.jira;
         
-        const response = await fetch(`https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/jira-integration`, {
+        const response = await fetch(`https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/jira-integration`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -453,7 +453,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
       } else if (selectedBoardInfo.source === "azure" && savedConfigs["azure-devops"]?.enabled) {
         const { organizationUrl, projectName, personalAccessToken } = savedConfigs["azure-devops"];
         
-        const response = await fetch(`https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/azure-devops-integration`, {
+        const response = await fetch(`https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/azure-devops-integration`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -545,7 +545,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
               requestBody.sprintId = sprintId;
             }
 
-            const response = await fetch(`https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/jira-integration`, {
+            const response = await fetch(`https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/jira-integration`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -660,7 +660,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
             }
 
             const response = await fetch(
-              `https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/azure-devops-integration`,
+              `https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/azure-devops-integration`,
               {
                 method: "POST",
                 headers: {
@@ -946,7 +946,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
         requestBody.imageData = imageDataArray;
       }
 
-      const response = await fetch(`https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/generate-test-cases`, {
+      const response = await fetch(`https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/generate-test-cases`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1111,7 +1111,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
           if (source === "jira" && savedConfigs.jira?.enabled) {
             const { url, email, apiToken, projectKey } = savedConfigs.jira;
             
-            const response = await fetch(`https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/jira-integration`, {
+            const response = await fetch(`https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/jira-integration`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -1149,7 +1149,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
             const { organizationUrl, projectName, personalAccessToken } = savedConfigs["azure-devops"];
             
             const response = await fetch(
-              `https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/azure-devops-integration`,
+              `https://lghzmijzfpvrcvogxpew.supabase.co/functions/v1/azure-devops-integration`,
               {
                 method: "POST",
                 headers: {

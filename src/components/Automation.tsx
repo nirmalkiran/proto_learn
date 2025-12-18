@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Upload, FileCode, Download, Github, RefreshCw, Folder, File as FileIcon } from 'lucide-react';
+import { Upload, FileCode, Download, Github, RefreshCw, Folder, File } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -43,8 +43,6 @@ export const Automation = ({ projectId }: AutomationProps) => {
   const [frameworkCode, setFrameworkCode] = useState('');
   const [screenshots, setScreenshots] = useState<File[]>([]);
   const { toast } = useToast();
-  // Change made here
-  const [automationType, setAutomationType] = useState<'web' | 'mobile'>('web');
 
   useEffect(() => {
     fetchUserStories();
@@ -238,25 +236,8 @@ export const Automation = ({ projectId }: AutomationProps) => {
         <p className="text-muted-foreground text-lg">
           Generate test automation code directly inside your hybrid framework skeleton
         </p>
-        
- <div className="flex justify-center gap-4">
-          <Button
-            variant={automationType === 'web' ? 'default' : 'outline'}
-            onClick={() => setAutomationType('web')}
-          >
-            No Code
-          </Button>
-
-          <Button
-            variant={automationType === 'mobile' ? 'default' : 'outline'}
-            onClick={() => setAutomationType('mobile')}
-          >
-            No-Code Mobile Automation
-          </Button>
-        </div>
       </div>
 
-      {automationType === 'web' && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Panel - Input Section */}
         <div className="space-y-4">
@@ -471,7 +452,6 @@ export const Automation = ({ projectId }: AutomationProps) => {
                   </div>
                 )}
               </div>
-              
 
               {/* Folder/File Tree View */}
               {generatedCode && (
@@ -486,8 +466,7 @@ export const Automation = ({ projectId }: AutomationProps) => {
                       src/test/java
                     </div>
                     <div className="flex items-center gap-2 text-sm ml-4">
-                    <FileIcon className="h-3 w-3" />
-
+                      <File className="h-3 w-3" />
                       {selectedUserStory ? userStories.find(us => us.id === selectedUserStory)?.title.replace(/\s+/g, '') + 'Test.java' : 'AutomationTest.java'}
                     </div>
                   </div>
@@ -537,25 +516,6 @@ export const Automation = ({ projectId }: AutomationProps) => {
           </Card>
         </div>
       </div>
-      )}
-      {automationType === 'mobile' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>📱 No-Code Mobile Automation</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <iframe
-              src="http://localhost:8081/recorder/index.html"
-              title="No-Code Mobile Automation"
-              style={{
-                width: '100%',
-                height: '80vh',
-                border: 'none'
-              }}
-            />
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
