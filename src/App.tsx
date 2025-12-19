@@ -12,6 +12,8 @@ import Project from "./pages/Project";
 import NotFound from "./pages/NotFound";
 import { MenuConfigPanel } from "./components/MenuConfigPanel";
 
+import MobileAutomation from "@/modules/mobileAutomation";
+
 // Wrapper component to pass projectId to ProtectedRoute
 const ProjectRoute = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -50,6 +52,12 @@ const App = () => (
                 <MenuConfigPanel />
               </ProtectedRoute>
             } />
+            {/* Mobile Automation */}
+            <Route path="/mobile-automation" element={
+              <ProtectedRoute>
+                <MobileAutomation />
+              </ProtectedRoute>
+            }/>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

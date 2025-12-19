@@ -30,7 +30,7 @@ export default function MobileSetupWizard() {
         signal: AbortSignal.timeout(5000) 
       });
       if (res.ok) {
-        updateCheck("backend", { status: "success", message: "Backend running on port 3001" });
+        updateCheck("backend", { status: "success", message: "Backend running on port 5050" });
         return true;
       } else {
         throw new Error("Unhealthy");

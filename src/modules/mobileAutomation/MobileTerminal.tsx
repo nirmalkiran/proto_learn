@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Send, Trash2 } from "lucide-react";
+import { CloudMoon, Send, Trash2 } from "lucide-react";
+
 
 interface TerminalLine {
   id: number;
@@ -13,7 +14,9 @@ interface TerminalLine {
   timestamp: Date;
 }
 
+const HELPER_BASE_URL = "http://localhost:5050";
 const SAMPLE_COMMANDS = [
+  { cmd: "connect", desc: "Test backend connection" },
   { cmd: "adb devices", desc: "List connected devices" },
   { cmd: "adb shell pm list packages", desc: "List installed packages" },
   { cmd: "adb shell dumpsys window | grep mCurrentFocus", desc: "Get current activity" },
@@ -23,7 +26,7 @@ const SAMPLE_COMMANDS = [
 export default function MobileTerminal() {
   const [lines, setLines] = useState<TerminalLine[]>([
     { id: 0, type: "output", content: "Mobile Automation Terminal v1.0", timestamp: new Date() },
-    { id: 1, type: "output", content: "Type 'help' for available commands. Connect backend at localhost:3001", timestamp: new Date() },
+    { id: 1, type: "output", content: "Type 'help' for available commands. Type Below Enter the command 'Connect'", timestamp: new Date() },
   ]);
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
@@ -39,10 +42,10 @@ export default function MobileTerminal() {
   };
 
   const executeCommand = async (cmd: string) => {
-    addLine("input", `$ ${cmd}`);
+    addLine("input", `> ${cmd}`);
 
     if (cmd === "help") {
-      addLine("output", "Available commands:\n  help - Show this help\n  clear - Clear terminal\n  adb <cmd> - Execute ADB command\n  appium:<action> - Appium commands (status, session, source)\n  connect - Test backend connection");
+      addLine("output", "Available commands:\n  help - Show this help\n  clear - Clear terminal\n  adb devices - Execute ADB command\n  appium:<action> - Appium commands (status, session, source)\n  connect - Test backend connection");
       return;
     }
 
@@ -53,7 +56,7 @@ export default function MobileTerminal() {
 
     if (cmd === "connect") {
       try {
-        const res = await fetch("http://localhost:3001/api/health");
+        const res = await fetch(`${HELPER_BASE_URL}/health`);
         if (res.ok) {
           setIsConnected(true);
           addLine("output", "✓ Connected to backend server");
@@ -65,7 +68,7 @@ export default function MobileTerminal() {
     }
 
     try {
-      const res = await fetch("http://localhost:3001/api/terminal", {
+      const res = await fetch(`${HELPER_BASE_URL}/terminal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: cmd }),
@@ -144,7 +147,7 @@ export default function MobileTerminal() {
           </ScrollArea>
 
           <form onSubmit={handleSubmit} className="flex border-t border-zinc-800">
-            <span className="px-4 py-3 text-green-400 font-mono">$</span>
+            <span className="px-4 py-3 text-green-400 font-mono">^-^</span>
             <Input
               ref={inputRef}
               value={input}

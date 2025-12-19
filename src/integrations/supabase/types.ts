@@ -14,17 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-<<<<<<< HEAD
-      automation_results: {
-        Row: {
-          created_at: string
-          duration_ms: number | null
-          id: string
-          logs: string | null
-          result: Json | null
-          status: string
-          test_case_id: string | null
-=======
       ai_usage_logs: {
         Row: {
           created_at: string
@@ -38,19 +27,10 @@ export type Database = {
           project_id: string | null
           success: boolean | null
           tokens_used: number | null
->>>>>>> e725ea0 (18-12-2025-1627)
           user_id: string
         }
         Insert: {
           created_at?: string
-<<<<<<< HEAD
-          duration_ms?: number | null
-          id?: string
-          logs?: string | null
-          result?: Json | null
-          status: string
-          test_case_id?: string | null
-=======
           execution_time_ms?: number | null
           feature_type: string
           id?: string
@@ -61,19 +41,10 @@ export type Database = {
           project_id?: string | null
           success?: boolean | null
           tokens_used?: number | null
->>>>>>> e725ea0 (18-12-2025-1627)
           user_id: string
         }
         Update: {
           created_at?: string
-<<<<<<< HEAD
-          duration_ms?: number | null
-          id?: string
-          logs?: string | null
-          result?: Json | null
-          status?: string
-          test_case_id?: string | null
-=======
           execution_time_ms?: number | null
           feature_type?: string
           id?: string
@@ -84,58 +55,18 @@ export type Database = {
           project_id?: string | null
           success?: boolean | null
           tokens_used?: number | null
->>>>>>> e725ea0 (18-12-2025-1627)
           user_id?: string
         }
         Relationships: [
           {
-<<<<<<< HEAD
-            foreignKeyName: "automation_results_test_case_id_fkey"
-            columns: ["test_case_id"]
-            isOneToOne: false
-            referencedRelation: "test_cases"
-=======
             foreignKeyName: "ai_usage_logs_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
->>>>>>> e725ea0 (18-12-2025-1627)
             referencedColumns: ["id"]
           },
         ]
       }
-<<<<<<< HEAD
-      git_commits: {
-        Row: {
-          author: string | null
-          commit_hash: string
-          committed_at: string
-          created_at: string
-          id: string
-          message: string | null
-          project_id: string
-          user_id: string
-        }
-        Insert: {
-          author?: string | null
-          commit_hash: string
-          committed_at?: string
-          created_at?: string
-          id?: string
-          message?: string | null
-          project_id: string
-          user_id: string
-        }
-        Update: {
-          author?: string | null
-          commit_hash?: string
-          committed_at?: string
-          created_at?: string
-          id?: string
-          message?: string | null
-          project_id?: string
-          user_id?: string
-=======
       automation_results: {
         Row: {
           created_at: string
@@ -196,7 +127,6 @@ export type Database = {
           created_at?: string
           id?: string
           project_id?: string
->>>>>>> e725ea0 (18-12-2025-1627)
         }
         Relationships: [
           {
@@ -212,13 +142,6 @@ export type Database = {
         Row: {
           created_at: string
           file_content: string | null
-<<<<<<< HEAD
-          file_path: string
-          id: string
-          last_modified: string
-          project_id: string
-          user_id: string
-=======
           file_hash: string | null
           file_path: string
           file_type: string | null
@@ -226,18 +149,10 @@ export type Database = {
           last_modified: string | null
           project_id: string
           updated_at: string
->>>>>>> e725ea0 (18-12-2025-1627)
         }
         Insert: {
           created_at?: string
           file_content?: string | null
-<<<<<<< HEAD
-          file_path: string
-          id?: string
-          last_modified?: string
-          project_id: string
-          user_id: string
-=======
           file_hash?: string | null
           file_path: string
           file_type?: string | null
@@ -245,18 +160,10 @@ export type Database = {
           last_modified?: string | null
           project_id: string
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
         }
         Update: {
           created_at?: string
           file_content?: string | null
-<<<<<<< HEAD
-          file_path?: string
-          id?: string
-          last_modified?: string
-          project_id?: string
-          user_id?: string
-=======
           file_hash?: string | null
           file_path?: string
           file_type?: string | null
@@ -264,7 +171,6 @@ export type Database = {
           last_modified?: string | null
           project_id?: string
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
         }
         Relationships: [
           {
@@ -278,36 +184,6 @@ export type Database = {
       }
       integration_configs: {
         Row: {
-<<<<<<< HEAD
-          config: Json | null
-          created_at: string
-          enabled: boolean | null
-          id: string
-          integration_type: string
-          project_id: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          config?: Json | null
-          created_at?: string
-          enabled?: boolean | null
-          id?: string
-          integration_type: string
-          project_id?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          config?: Json | null
-          created_at?: string
-          enabled?: boolean | null
-          id?: string
-          integration_type?: string
-          project_id?: string | null
-          updated_at?: string
-          user_id?: string
-=======
           config: Json
           created_at: string
           enabled: boolean
@@ -336,7 +212,6 @@ export type Database = {
           last_sync?: string | null
           project_id?: string
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
         }
         Relationships: [
           {
@@ -348,11 +223,6 @@ export type Database = {
           },
         ]
       }
-<<<<<<< HEAD
-      profiles: {
-        Row: {
-          avatar_url: string | null
-=======
       menu_config: {
         Row: {
           created_at: string
@@ -764,60 +634,34 @@ export type Database = {
       }
       profiles: {
         Row: {
->>>>>>> e725ea0 (18-12-2025-1627)
           created_at: string
           display_name: string | null
           email: string | null
           id: string
-<<<<<<< HEAD
-=======
           role: string | null
->>>>>>> e725ea0 (18-12-2025-1627)
           updated_at: string
           user_id: string
         }
         Insert: {
-<<<<<<< HEAD
-          avatar_url?: string | null
-=======
->>>>>>> e725ea0 (18-12-2025-1627)
           created_at?: string
           display_name?: string | null
           email?: string | null
           id?: string
-<<<<<<< HEAD
-=======
           role?: string | null
->>>>>>> e725ea0 (18-12-2025-1627)
           updated_at?: string
           user_id: string
         }
         Update: {
-<<<<<<< HEAD
-          avatar_url?: string | null
-=======
->>>>>>> e725ea0 (18-12-2025-1627)
           created_at?: string
           display_name?: string | null
           email?: string | null
           id?: string
-<<<<<<< HEAD
-=======
           role?: string | null
->>>>>>> e725ea0 (18-12-2025-1627)
           updated_at?: string
           user_id?: string
         }
         Relationships: []
       }
-<<<<<<< HEAD
-      projects: {
-        Row: {
-          created_at: string
-          description: string | null
-          id: string
-          name: string
-=======
       project_members: {
         Row: {
           created_at: string
@@ -916,17 +760,10 @@ export type Database = {
           project_id: string
           swagger_content: string | null
           test_cases: Json
->>>>>>> e725ea0 (18-12-2025-1627)
           updated_at: string
           user_id: string
         }
         Insert: {
-<<<<<<< HEAD
-          created_at?: string
-          description?: string | null
-          id?: string
-          name: string
-=======
           additional_prompt?: string | null
           auth_token?: string | null
           base_url?: string | null
@@ -937,17 +774,10 @@ export type Database = {
           project_id: string
           swagger_content?: string | null
           test_cases?: Json
->>>>>>> e725ea0 (18-12-2025-1627)
           updated_at?: string
           user_id: string
         }
         Update: {
-<<<<<<< HEAD
-          created_at?: string
-          description?: string | null
-          id?: string
-          name?: string
-=======
           additional_prompt?: string | null
           auth_token?: string | null
           base_url?: string | null
@@ -1055,27 +885,11 @@ export type Database = {
           report_name?: string
           report_type?: string
           statistics?: Json | null
->>>>>>> e725ea0 (18-12-2025-1627)
           updated_at?: string
           user_id?: string
         }
         Relationships: []
       }
-<<<<<<< HEAD
-      test_cases: {
-        Row: {
-          created_at: string
-          description: string | null
-          expected_result: string | null
-          id: string
-          priority: string | null
-          project_id: string | null
-          status: string | null
-          steps: Json | null
-          title: string
-          updated_at: string
-          user_id: string
-=======
       test_case_folders: {
         Row: {
           created_at: string
@@ -1085,59 +899,30 @@ export type Database = {
           name: string
           project_id: string
           updated_at: string
->>>>>>> e725ea0 (18-12-2025-1627)
           user_story_id: string | null
         }
         Insert: {
           created_at?: string
-<<<<<<< HEAD
-          description?: string | null
-          expected_result?: string | null
-          id?: string
-          priority?: string | null
-          project_id?: string | null
-          status?: string | null
-          steps?: Json | null
-          title: string
-          updated_at?: string
-          user_id: string
-=======
           created_by: string
           id?: string
           is_custom?: boolean
           name: string
           project_id: string
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
           user_story_id?: string | null
         }
         Update: {
           created_at?: string
-<<<<<<< HEAD
-          description?: string | null
-          expected_result?: string | null
-          id?: string
-          priority?: string | null
-          project_id?: string | null
-          status?: string | null
-          steps?: Json | null
-          title?: string
-          updated_at?: string
-          user_id?: string
-=======
           created_by?: string
           id?: string
           is_custom?: boolean
           name?: string
           project_id?: string
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
           user_story_id?: string | null
         }
         Relationships: [
           {
-<<<<<<< HEAD
-=======
             foreignKeyName: "test_case_folders_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -1217,7 +1002,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
->>>>>>> e725ea0 (18-12-2025-1627)
             foreignKeyName: "test_cases_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -1238,56 +1022,35 @@ export type Database = {
           created_at: string
           id: string
           role: Database["public"]["Enums"]["app_role"]
-<<<<<<< HEAD
-=======
           updated_at: string
->>>>>>> e725ea0 (18-12-2025-1627)
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-<<<<<<< HEAD
-          role?: Database["public"]["Enums"]["app_role"]
-=======
           role: Database["public"]["Enums"]["app_role"]
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
-<<<<<<< HEAD
-=======
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
           user_id?: string
         }
         Relationships: []
       }
       user_stories: {
         Row: {
-<<<<<<< HEAD
-=======
           acceptance_criteria: string | null
           board_id: string | null
           board_name: string | null
->>>>>>> e725ea0 (18-12-2025-1627)
           created_at: string
           description: string | null
           id: string
           priority: string | null
           project_id: string
-<<<<<<< HEAD
-          status: string | null
-          title: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-=======
           readable_id: string | null
           sprint_id: string | null
           sprint_name: string | null
@@ -1299,20 +1062,11 @@ export type Database = {
           acceptance_criteria?: string | null
           board_id?: string | null
           board_name?: string | null
->>>>>>> e725ea0 (18-12-2025-1627)
           created_at?: string
           description?: string | null
           id?: string
           priority?: string | null
           project_id: string
-<<<<<<< HEAD
-          status?: string | null
-          title: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-=======
           readable_id?: string | null
           sprint_id?: string | null
           sprint_name?: string | null
@@ -1324,25 +1078,17 @@ export type Database = {
           acceptance_criteria?: string | null
           board_id?: string | null
           board_name?: string | null
->>>>>>> e725ea0 (18-12-2025-1627)
           created_at?: string
           description?: string | null
           id?: string
           priority?: string | null
           project_id?: string
-<<<<<<< HEAD
-          status?: string | null
-          title?: string
-          updated_at?: string
-          user_id?: string
-=======
           readable_id?: string | null
           sprint_id?: string | null
           sprint_name?: string | null
           status?: string | null
           title?: string
           updated_at?: string
->>>>>>> e725ea0 (18-12-2025-1627)
         }
         Relationships: [
           {
@@ -1375,8 +1121,6 @@ export type Database = {
       }
     }
     Functions: {
-<<<<<<< HEAD
-=======
       cleanup_expired_pkce: { Args: never; Returns: undefined }
       generate_unique_test_case_id: {
         Args: { p_project_id: string }
@@ -1386,7 +1130,6 @@ export type Database = {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
       }
->>>>>>> e725ea0 (18-12-2025-1627)
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1394,11 +1137,6 @@ export type Database = {
         }
         Returns: boolean
       }
-<<<<<<< HEAD
-    }
-    Enums: {
-      app_role: "admin" | "moderator" | "user"
-=======
       is_admin: { Args: { user_id?: string }; Returns: boolean }
       is_project_member: {
         Args: { project_id: string; user_id?: string }
@@ -1408,7 +1146,6 @@ export type Database = {
     Enums: {
       app_role: "admin" | "tester"
       project_status: "Active" | "Closed" | "On Hold"
->>>>>>> e725ea0 (18-12-2025-1627)
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1536,12 +1273,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-<<<<<<< HEAD
-      app_role: ["admin", "moderator", "user"],
-=======
       app_role: ["admin", "tester"],
       project_status: ["Active", "Closed", "On Hold"],
->>>>>>> e725ea0 (18-12-2025-1627)
     },
   },
 } as const

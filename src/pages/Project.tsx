@@ -20,6 +20,7 @@ import { NoCodeAutomation } from "@/components/NoCodeAutomation";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import MobileAutomation from "@/modules/mobileAutomation";
 
 const Project = () => {
   const { projectId, view } = useParams<{ projectId: string; view?: string }>();
@@ -117,6 +118,8 @@ const Project = () => {
         return <EnhancedPerformanceTestGenerator />;
       case 'nocode-automation':
         return <NoCodeAutomation projectId={selectedProject.id} />;
+      case "mobile-no-code-automation":
+         return <MobileAutomation />;
       default:
         return <Dashboard onViewChange={setCurrentView} projectId={selectedProject.id} />;
     }
