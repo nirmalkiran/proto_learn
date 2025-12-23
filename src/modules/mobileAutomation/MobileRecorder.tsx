@@ -18,40 +18,38 @@ export default function MobileRecorder({ projectId }: { projectId: string }) {
   const [isRunning, setIsRunning] = useState(false);
 
   const runOnBrowserStack = async () => {
-    if (actions.length === 0) {
+    if (!actions.length) {
       toast.error("No actions recorded");
       return;
     }
 
     setIsRunning(true);
-    toast.info("Running test on BrowserStack...");
+    toast.info("Starting BrowserStack execution…");
 
     try {
       const res = await fetch(
-        "https://<PROJECT_ID>.supabase.co/functions/v1/mobile-execution",
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mobile-execution`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
             projectId,
+            appUrl: "bs://<YOUR_BROWSERSTACK_APP_ID>",
             actions,
-            appUrl: "bs://<BROWSERSTACK_APP_ID>",
           }),
         }
       );
 
       const data = await res.json();
 
-      if (data.success) {
-        toast.success("Execution started successfully");
-      } else {
-        toast.error(data.error || "Execution failed");
-      }
-    } catch {
-      toast.error("Failed to start execution");
+      if (!data.success) throw new Error(data.error);
+
+      toast.success("Execution started on BrowserStack");
+    } catch (e: any) {
+      toast.error(e.message || "Execution failed");
     } finally {
       setIsRunning(false);
     }
@@ -60,7 +58,7 @@ export default function MobileRecorder({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <h2 className="text-xl font-bold">Mobile No-Code Automation</h2>
+        <h2 className="text-xl font-bold">Mobile Recorder</h2>
         <Badge variant={isRunning ? "destructive" : "secondary"}>
           {isRunning ? "Running" : "Idle"}
         </Badge>
@@ -72,12 +70,12 @@ export default function MobileRecorder({ projectId }: { projectId: string }) {
         </CardHeader>
         <CardContent>
           {actions.length === 0 ? (
-            <p className="text-muted-foreground">No actions recorded yet</p>
+            <p className="text-muted-foreground">No actions yet</p>
           ) : (
             actions.map((a, i) => (
               <div
                 key={a.id}
-                className="flex justify-between items-center p-2 border rounded mb-2"
+                className="flex justify-between items-center border rounded p-2 mb-2"
               >
                 <span>
                   {i + 1}. {a.type} — {a.locator || a.value}

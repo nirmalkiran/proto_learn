@@ -1,209 +1,138 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Send, Trash2 } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { RefreshCw, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 
-interface TerminalLine {
-  id: number;
-  type: "input" | "output" | "error";
-  content: string;
-  timestamp: Date;
+interface ExecutionLog {
+  id: string;
+  status: "queued" | "running" | "passed" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  sessionUrl?: string;
+  logs?: string[];
 }
 
-const HELPER_BASE_URL = "http://localhost:3001";
+export default function MobileTerminal({ projectId }: { projectId: string }) {
+  const [executions, setExecutions] = useState<ExecutionLog[]>([]);
+  const [loading, setLoading] = useState(false);
 
-const SAMPLE_COMMANDS = [
-  { cmd: "connect", desc: "Test backend connection" },
-  { cmd: "adb devices", desc: "List connected devices" },
-  { cmd: "adb shell pm list packages", desc: "List installed packages" },
-  { cmd: "adb shell dumpsys window | grep mCurrentFocus", desc: "Get current activity" },
-  { cmd: "appium:status", desc: "Check Appium server status" },
-  { cmd: "appium:start", desc: "Start Appium server" },
-];
-
-export default function MobileTerminal() {
-  const [lines, setLines] = useState<TerminalLine[]>([
-    {
-      id: 0,
-      type: "output",
-      content: "Mobile Automation Terminal v1.0",
-      timestamp: new Date(),
-    },
-    {
-      id: 1,
-      type: "output",
-      content: "Type 'connect' to link backend server",
-      timestamp: new Date(),
-    },
-  ]);
-
-  const [input, setInput] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
-
-  const addLine = (type: TerminalLine["type"], content: string) => {
-    setLines((prev) => [
-      ...prev,
-      { id: Date.now(), type, content, timestamp: new Date() },
-    ]);
-  };
-
-  /** ✅ Backend health check */
-  const checkBackendHealth = async (): Promise<boolean> => {
+  const fetchExecutions = async () => {
+    setLoading(true);
     try {
-      const res = await fetch(`${HELPER_BASE_URL}/health`);
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
-  const executeCommand = async (cmd: string) => {
-    addLine("input", `> ${cmd}`);
-
-    /* HELP */
-    if (cmd === "help") {
-      addLine(
-        "output",
-        `Available commands:
-  connect        - Connect backend
-  clear          - Clear terminal
-  adb devices    - List devices
-  appium:status  - Appium status
-  appium:start   - Start Appium`
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mobile-execution-history`,
+        {
+          headers: {
+            Authorization: `Bearer ${
+              import.meta.env.VITE_SUPABASE_ANON_KEY
+            }`,
+          },
+        }
       );
-      return;
-    }
-
-    /* CLEAR */
-    if (cmd === "clear") {
-      setLines([]);
-      return;
-    }
-
-    /* CONNECT */
-    if (cmd === "connect") {
-      const alive = await checkBackendHealth();
-      if (alive) {
-        setIsConnected(true);
-        addLine("output", "Connected to backend server");
-      } else {
-        setIsConnected(false);
-        addLine("error", "Backend not reachable. Start server: node server.js");
-      }
-      return;
-    }
-
-    /* BLOCK execution if not connected */
-    if (!isConnected) {
-      addLine("error", "Backend not connected. Run: connect");
-      return;
-    }
-
-    /* EXECUTE COMMAND */
-    try {
-      const res = await fetch(`${HELPER_BASE_URL}/terminal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: cmd }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Backend error");
-      }
 
       const data = await res.json();
-
-      addLine(
-        data.success ? "output" : "error",
-        data.output || data.error || "Command executed"
-      );
-    } catch (err) {
-      addLine("error", "Failed to execute command via backend");
+      setExecutions(data.executions || []);
+    } catch {
+      toast.error("Failed to load execution history");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    executeCommand(input.trim());
-    setInput("");
-  };
+  useEffect(() => {
+    fetchExecutions();
+  }, []);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <h2 className="text-xl font-bold">Terminal Panel</h2>
-        <Badge variant={isConnected ? "default" : "secondary"}>
-          {isConnected ? "Connected" : "Disconnected"}
-        </Badge>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold">Execution Console</h2>
+        <Button onClick={fetchExecutions} variant="outline" size="sm">
+          <RefreshCw
+            className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+          />
+          Refresh
+        </Button>
       </div>
 
       <Card>
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm">Quick Commands</CardTitle>
+        <CardHeader>
+          <CardTitle>BrowserStack Executions</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {SAMPLE_COMMANDS.map((s) => (
-            <Button
-              key={s.cmd}
-              variant="outline"
-              size="sm"
-              onClick={() => executeCommand(s.cmd)}
-            >
-              {s.cmd}
-            </Button>
-          ))}
+
+        <CardContent>
+          <ScrollArea className="h-[400px]">
+            {executions.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No executions found. Run a test from Recorder.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {executions.map((ex) => (
+                  <div
+                    key={ex.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
+                    <div className="space-y-1">
+                      <p className="font-medium">
+                        Execution #{ex.id.slice(0, 8)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Started: {new Date(ex.startedAt).toLocaleString()}
+                      </p>
+                      {ex.finishedAt && (
+                        <p className="text-xs text-muted-foreground">
+                          Finished:{" "}
+                          {new Date(ex.finishedAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        variant={
+                          ex.status === "passed"
+                            ? "default"
+                            : ex.status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                        }
+                      >
+                        {ex.status.toUpperCase()}
+                      </Badge>
+
+                      {ex.sessionUrl && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() =>
+                            window.open(ex.sessionUrl, "_blank")
+                          }
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
         </CardContent>
       </Card>
 
-      <Card className="bg-zinc-950 border-zinc-800">
-        <CardContent className="p-0">
-          <ScrollArea className="h-[500px] p-4 font-mono text-sm">
-            {lines.map((line) => (
-              <div
-                key={line.id}
-                className={`py-0.5 ${
-                  line.type === "input"
-                    ? "text-green-400"
-                    : line.type === "error"
-                    ? "text-red-400"
-                    : "text-zinc-300"
-                }`}
-              >
-                <pre className="whitespace-pre-wrap">{line.content}</pre>
-              </div>
-            ))}
-            <div ref={scrollRef} />
-          </ScrollArea>
-
-          <form onSubmit={handleSubmit} className="flex border-t border-zinc-800">
-            <span className="px-4 py-3 text-green-400 font-mono">$</span>
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              className="flex-1 border-0 bg-transparent font-mono text-zinc-100 focus-visible:ring-0 rounded-none"
-              placeholder="Enter command..."
-            />
-            <Button type="submit" variant="ghost" size="icon">
-              <Send className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setLines([])}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </form>
+      <Card className="bg-muted/40">
+        <CardContent className="pt-4 text-sm text-muted-foreground">
+          <p className="font-medium mb-1">ℹ How this works</p>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>Tests run on BrowserStack cloud devices</li>
+            <li>No local Appium or ADB required</li>
+            <li>Click 🔗 to open BrowserStack session</li>
+            <li>Video, logs & screenshots available in BrowserStack</li>
+          </ul>
         </CardContent>
       </Card>
     </div>
