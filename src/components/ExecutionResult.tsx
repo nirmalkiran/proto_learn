@@ -46,9 +46,12 @@ interface ExecutionResultProps {
 
 interface AutomationResult {
   id: string;
-  run_id: string;
-  json_result: any;
-  timestamp: string;
+  status: string;
+  logs: string | null;
+  duration_ms: number | null;
+  result: any;
+  user_id: string;
+  test_case_id: string | null;
   created_at: string;
 }
 
@@ -81,8 +84,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
       const { data, error } = await supabase
         .from("automation_results")
         .select("*")
-        .eq("project_id", projectId)
-        .order("timestamp", { ascending: false });
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setResults(data || []);
@@ -301,7 +303,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
             </TableHeader>
             <TableBody>
               {results.map((result) => {
-                const status = getStatusFromResult(result.json_result);
+                const status = getStatusFromResult(result.result);
                 const isExpanded = selectedResult?.id === result.id;
                 return (
                   <React.Fragment key={result.id}>
@@ -309,11 +311,11 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => setSelectedResult(isExpanded ? null : result)}
                     >
-                      <TableCell className="font-mono text-sm">{result.run_id}</TableCell>
+                      <TableCell className="font-mono text-sm">{result.id.slice(0, 8)}</TableCell>
                       <TableCell>{getStatusBadge(status)}</TableCell>
                       <TableCell className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-muted-foreground" />
-                        {format(new Date(result.timestamp), "PPpp")}
+                        {format(new Date(result.created_at), "PPpp")}
                       </TableCell>
                       <TableCell>
                         <button 
@@ -333,7 +335,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                           <div className="p-6 bg-muted/30">
                             <div className="flex items-center gap-2 mb-4">
                               <AlertCircle className="h-5 w-5" />
-                              <h3 className="font-semibold">Execution Details - {result.run_id}</h3>
+                              <h3 className="font-semibold">Execution Details - {result.id.slice(0, 8)}</h3>
                             </div>
                             <Tabs defaultValue="summary" className="w-full">
                               <TabsList className="grid w-full grid-cols-4">
@@ -344,12 +346,12 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                               </TabsList>
                               
                               <TabsContent value="summary" className="mt-4">
-                                {result.json_result?.summary && (
+                                {result.result?.summary && (
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <Card>
                                       <CardContent className="p-4 text-center">
                                         <div className="text-2xl font-bold text-blue-600">
-                                          {result.json_result.summary.totalTests}
+                                          {result.result.summary.totalTests}
                                         </div>
                                         <div className="text-sm text-muted-foreground">Total Tests</div>
                                       </CardContent>
@@ -358,7 +360,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                                       <CardContent className="p-4 text-center">
                                         <div className="text-2xl font-bold text-green-600 flex items-center justify-center gap-1">
                                           <CheckCircle className="h-5 w-5" />
-                                          {result.json_result.summary.passed}
+                                          {result.result.summary.passed}
                                         </div>
                                         <div className="text-sm text-muted-foreground">Passed</div>
                                       </CardContent>
@@ -367,7 +369,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                                       <CardContent className="p-4 text-center">
                                         <div className="text-2xl font-bold text-red-600 flex items-center justify-center gap-1">
                                           <XCircle className="h-5 w-5" />
-                                          {result.json_result.summary.failed}
+                                          {result.result.summary.failed}
                                         </div>
                                         <div className="text-sm text-muted-foreground">Failed</div>
                                       </CardContent>
@@ -375,21 +377,21 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                                     <Card>
                                       <CardContent className="p-4 text-center">
                                         <div className="text-2xl font-bold text-yellow-600">
-                                          {result.json_result.summary.skipped || 0}
+                                          {result.result.summary.skipped || 0}
                                         </div>
                                         <div className="text-sm text-muted-foreground">Skipped</div>
                                       </CardContent>
                                     </Card>
                                   </div>
                                 )}
-                                {result.json_result?.summary?.totalExecutionTimeMs && (
+                                {result.result?.summary?.totalExecutionTimeMs && (
                                   <Card className="mt-4">
                                     <CardContent className="p-4">
                                       <div className="flex items-center gap-2">
                                         <Clock className="h-4 w-4 text-muted-foreground" />
                                         <span className="text-sm text-muted-foreground">Total Execution Time:</span>
                                         <span className="font-semibold">
-                                          {(result.json_result.summary.totalExecutionTimeMs / 1000).toFixed(2)}s
+                                          {(result.result.summary.totalExecutionTimeMs / 1000).toFixed(2)}s
                                         </span>
                                       </div>
                                     </CardContent>
@@ -398,7 +400,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                               </TabsContent>
 
                               <TabsContent value="tests" className="mt-4">
-                                {result.json_result?.tests && (
+                                {result.result?.tests && (
                                   <Card>
                                     <CardContent className="p-0">
                                       <Table>
@@ -412,7 +414,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                          {result.json_result.tests.map((test: any, index: number) => (
+                                          {result.result.tests.map((test: any, index: number) => (
                                             <TableRow key={index}>
                                               <TableCell className="font-mono text-sm">{test.testName}</TableCell>
                                               <TableCell className="max-w-xs truncate" title={test.description}>
@@ -515,40 +517,40 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                                 <Card>
                                   <CardContent className="p-6">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      {result.json_result?.project && (
+                                      {result.result?.project && (
                                         <div className="flex items-center gap-2">
                                           <Info className="h-4 w-4 text-muted-foreground" />
                                           <span className="text-sm text-muted-foreground">Project:</span>
-                                          <span className="font-semibold">{result.json_result.project}</span>
+                                          <span className="font-semibold">{result.result.project}</span>
                                         </div>
                                       )}
-                                      {result.json_result?.environment && (
+                                      {result.result?.environment && (
                                         <div className="flex items-center gap-2">
                                           <Info className="h-4 w-4 text-muted-foreground" />
                                           <span className="text-sm text-muted-foreground">Environment:</span>
-                                          <span className="font-semibold">{result.json_result.environment}</span>
+                                          <span className="font-semibold">{result.result.environment}</span>
                                         </div>
                                       )}
-                                      {result.json_result?.browser && (
+                                      {result.result?.browser && (
                                         <div className="flex items-center gap-2">
                                           <Info className="h-4 w-4 text-muted-foreground" />
                                           <span className="text-sm text-muted-foreground">Browser:</span>
-                                          <span className="font-semibold">{result.json_result.browser}</span>
+                                          <span className="font-semibold">{result.result.browser}</span>
                                         </div>
                                       )}
-                                      {result.json_result?.platform && (
+                                      {result.result?.platform && (
                                         <div className="flex items-center gap-2">
                                           <Info className="h-4 w-4 text-muted-foreground" />
                                           <span className="text-sm text-muted-foreground">Platform:</span>
-                                          <span className="font-semibold">{result.json_result.platform}</span>
+                                          <span className="font-semibold">{result.result.platform}</span>
                                         </div>
                                       )}
-                                      {result.json_result?.executionDate && (
+                                      {result.result?.executionDate && (
                                         <div className="flex items-center gap-2">
                                           <Clock className="h-4 w-4 text-muted-foreground" />
                                           <span className="text-sm text-muted-foreground">Execution Date:</span>
                                           <span className="font-semibold">
-                                            {format(new Date(result.json_result.executionDate), "PPpp")}
+                                            {format(new Date(result.result.executionDate), "PPpp")}
                                           </span>
                                         </div>
                                       )}
@@ -562,7 +564,7 @@ export const ExecutionResult: React.FC<ExecutionResultProps> = ({ projectId }) =
                                   <CardContent className="p-4">
                                     <ScrollArea className="h-[400px] w-full rounded border p-4">
                                       <pre className="text-xs whitespace-pre-wrap break-all max-w-full overflow-hidden">
-                                        {JSON.stringify(result.json_result, null, 2)}
+                                        {JSON.stringify(result.result, null, 2)}
                                       </pre>
                                     </ScrollArea>
                                   </CardContent>

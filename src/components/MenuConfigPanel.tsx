@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRoles } from "@/hooks/useRoles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,37 +15,27 @@ interface MenuConfigItem {
   display_order: number;
 }
 
+const DEFAULT_MENU_ITEMS: MenuConfigItem[] = [
+  { id: "1", menu_id: "dashboard", label: "Dashboard", is_visible: true, display_order: 1 },
+  { id: "2", menu_id: "test-plan", label: "Test Plan", is_visible: true, display_order: 2 },
+  { id: "3", menu_id: "user-stories", label: "User Stories", is_visible: true, display_order: 3 },
+  { id: "4", menu_id: "test-cases", label: "Test Cases", is_visible: true, display_order: 4 },
+  { id: "5", menu_id: "repository", label: "Repository", is_visible: true, display_order: 5 },
+  { id: "6", menu_id: "api", label: "API Testing", is_visible: true, display_order: 6 },
+  { id: "7", menu_id: "nocode-automation", label: "No-Code Automation", is_visible: true, display_order: 7 },
+  { id: "8", menu_id: "mobile-no-code-automation", label: "Mobile Automation", is_visible: true, display_order: 8 },
+  { id: "9", menu_id: "test-report", label: "Test Report", is_visible: true, display_order: 9 },
+  { id: "10", menu_id: "integrations", label: "Integrations", is_visible: true, display_order: 10 },
+];
+
 export const MenuConfigPanel = () => {
   const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useRoles();
-  const [menuItems, setMenuItems] = useState<MenuConfigItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [menuItems, setMenuItems] = useState<MenuConfigItem[]>(() => {
+    const saved = localStorage.getItem('menu_config');
+    return saved ? JSON.parse(saved) : DEFAULT_MENU_ITEMS;
+  });
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetchMenuConfig();
-  }, []);
-
-  const fetchMenuConfig = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('menu_config')
-        .select('*')
-        .order('display_order', { ascending: true });
-
-      if (error) throw error;
-      setMenuItems(data || []);
-    } catch (error: any) {
-      console.error('Error fetching menu config:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load menu configuration",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleToggle = (menuId: string, isVisible: boolean) => {
     setMenuItems(items =>
@@ -59,20 +48,7 @@ export const MenuConfigPanel = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updates = menuItems.map(item => ({
-        id: item.id,
-        is_visible: item.is_visible,
-      }));
-
-      for (const update of updates) {
-        const { error } = await supabase
-          .from('menu_config')
-          .update({ is_visible: update.is_visible })
-          .eq('id', update.id);
-
-        if (error) throw error;
-      }
-
+      localStorage.setItem('menu_config', JSON.stringify(menuItems));
       toast({
         title: "Success",
         description: "Menu configuration saved successfully",
@@ -89,7 +65,7 @@ export const MenuConfigPanel = () => {
     }
   };
 
-  if (roleLoading || loading) {
+  if (roleLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
