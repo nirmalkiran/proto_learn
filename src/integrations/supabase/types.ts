@@ -219,6 +219,145 @@ export type Database = {
           },
         ]
       }
+      nocode_suite_executions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          failed_tests: number
+          id: string
+          passed_tests: number
+          results: Json | null
+          started_at: string
+          status: string
+          suite_id: string
+          total_tests: number
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          failed_tests?: number
+          id?: string
+          passed_tests?: number
+          results?: Json | null
+          started_at?: string
+          status?: string
+          suite_id: string
+          total_tests?: number
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          failed_tests?: number
+          id?: string
+          passed_tests?: number
+          results?: Json | null
+          started_at?: string
+          status?: string
+          suite_id?: string
+          total_tests?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_suite_executions_suite_id_fkey"
+            columns: ["suite_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_test_suites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_suite_tests: {
+        Row: {
+          created_at: string
+          execution_order: number
+          id: string
+          suite_id: string
+          test_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          execution_order?: number
+          id?: string
+          suite_id: string
+          test_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          execution_order?: number
+          id?: string
+          suite_id?: string
+          test_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_suite_tests_suite_id_fkey"
+            columns: ["suite_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_test_suites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nocode_suite_tests_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_test_executions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          results: Json | null
+          started_at: string
+          status: string
+          test_id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          results?: Json | null
+          started_at?: string
+          status?: string
+          test_id: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          results?: Json | null
+          started_at?: string
+          status?: string
+          test_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_test_executions_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       nocode_test_folders: {
         Row: {
           created_at: string
@@ -244,6 +383,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "nocode_test_folders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_test_suites: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_test_suites_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -318,6 +492,44 @@ export type Database = {
           },
         ]
       }
+      nocode_visual_baselines: {
+        Row: {
+          baseline_image: string | null
+          created_at: string
+          id: string
+          step_name: string
+          test_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          baseline_image?: string | null
+          created_at?: string
+          id?: string
+          step_name: string
+          test_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          baseline_image?: string | null
+          created_at?: string
+          id?: string
+          step_name?: string
+          test_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_visual_baselines_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -348,11 +560,57 @@ export type Database = {
         }
         Relationships: []
       }
+      project_members: {
+        Row: {
+          created_at: string
+          id: string
+          invited_email: string | null
+          project_id: string
+          role: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_email?: string | null
+          project_id: string
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_email?: string | null
+          project_id?: string
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
           description: string | null
+          git_branch: string | null
+          git_last_sync: string | null
+          git_repository_url: string | null
+          git_sync_status: string | null
           id: string
+          markdown_settings: Json | null
           name: string
           updated_at: string
           user_id: string
@@ -360,7 +618,12 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          git_branch?: string | null
+          git_last_sync?: string | null
+          git_repository_url?: string | null
+          git_sync_status?: string | null
           id?: string
+          markdown_settings?: Json | null
           name: string
           updated_at?: string
           user_id: string
@@ -368,57 +631,282 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          git_branch?: string | null
+          git_last_sync?: string | null
+          git_repository_url?: string | null
+          git_sync_status?: string | null
           id?: string
+          markdown_settings?: Json | null
           name?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: []
       }
+      saved_api_test_cases: {
+        Row: {
+          additional_prompt: string | null
+          auth_token: string | null
+          base_url: string | null
+          created_at: string
+          id: string
+          name: string
+          postman_collection: Json | null
+          project_id: string | null
+          swagger_content: string | null
+          swagger_url: string | null
+          test_cases: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_prompt?: string | null
+          auth_token?: string | null
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          postman_collection?: Json | null
+          project_id?: string | null
+          swagger_content?: string | null
+          swagger_url?: string | null
+          test_cases?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_prompt?: string | null
+          auth_token?: string | null
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          postman_collection?: Json | null
+          project_id?: string | null
+          swagger_content?: string | null
+          swagger_url?: string | null
+          test_cases?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_api_test_cases_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_test_plans: {
+        Row: {
+          content: Json | null
+          created_at: string
+          id: string
+          name: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: Json | null
+          created_at?: string
+          id?: string
+          name: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: Json | null
+          created_at?: string
+          id?: string
+          name?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_test_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_test_reports: {
+        Row: {
+          azure_devops_data: Json | null
+          content: Json | null
+          created_at: string
+          id: string
+          jira_data: Json | null
+          name: string
+          project_id: string | null
+          project_name: string | null
+          report_content: string | null
+          report_name: string | null
+          report_type: string | null
+          statistics: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          azure_devops_data?: Json | null
+          content?: Json | null
+          created_at?: string
+          id?: string
+          jira_data?: Json | null
+          name: string
+          project_id?: string | null
+          project_name?: string | null
+          report_content?: string | null
+          report_name?: string | null
+          report_type?: string | null
+          statistics?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          azure_devops_data?: Json | null
+          content?: Json | null
+          created_at?: string
+          id?: string
+          jira_data?: Json | null
+          name?: string
+          project_id?: string | null
+          project_name?: string | null
+          report_content?: string | null
+          report_name?: string | null
+          report_type?: string | null
+          statistics?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_test_reports_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_case_folders: {
+        Row: {
+          created_at: string
+          id: string
+          is_custom: boolean
+          name: string
+          project_id: string
+          user_id: string
+          user_story_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_custom?: boolean
+          name: string
+          project_id: string
+          user_id: string
+          user_story_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_custom?: boolean
+          name?: string
+          project_id?: string
+          user_id?: string
+          user_story_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_case_folders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_case_folders_user_story_id_fkey"
+            columns: ["user_story_id"]
+            isOneToOne: false
+            referencedRelation: "user_stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_cases: {
         Row: {
+          automated: boolean | null
           created_at: string
           description: string | null
           expected_result: string | null
+          folder_id: string | null
           id: string
           priority: string | null
           project_id: string | null
+          readable_id: string | null
           status: string | null
           steps: Json | null
+          structured_steps: Json | null
+          test_data: Json | null
           title: string
           updated_at: string
           user_id: string
           user_story_id: string | null
         }
         Insert: {
+          automated?: boolean | null
           created_at?: string
           description?: string | null
           expected_result?: string | null
+          folder_id?: string | null
           id?: string
           priority?: string | null
           project_id?: string | null
+          readable_id?: string | null
           status?: string | null
           steps?: Json | null
+          structured_steps?: Json | null
+          test_data?: Json | null
           title: string
           updated_at?: string
           user_id: string
           user_story_id?: string | null
         }
         Update: {
+          automated?: boolean | null
           created_at?: string
           description?: string | null
           expected_result?: string | null
+          folder_id?: string | null
           id?: string
           priority?: string | null
           project_id?: string | null
+          readable_id?: string | null
           status?: string | null
           steps?: Json | null
+          structured_steps?: Json | null
+          test_data?: Json | null
           title?: string
           updated_at?: string
           user_id?: string
           user_story_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "test_cases_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "test_case_folders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "test_cases_project_id_fkey"
             columns: ["project_id"]
@@ -458,33 +946,51 @@ export type Database = {
       }
       user_stories: {
         Row: {
+          acceptance_criteria: string | null
+          board_id: string | null
+          board_name: string | null
           created_at: string
           description: string | null
           id: string
           priority: string | null
           project_id: string
+          readable_id: string | null
+          sprint_id: string | null
+          sprint_name: string | null
           status: string | null
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          acceptance_criteria?: string | null
+          board_id?: string | null
+          board_name?: string | null
           created_at?: string
           description?: string | null
           id?: string
           priority?: string | null
           project_id: string
+          readable_id?: string | null
+          sprint_id?: string | null
+          sprint_name?: string | null
           status?: string | null
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          acceptance_criteria?: string | null
+          board_id?: string | null
+          board_name?: string | null
           created_at?: string
           description?: string | null
           id?: string
           priority?: string | null
           project_id?: string
+          readable_id?: string | null
+          sprint_id?: string | null
+          sprint_name?: string | null
           status?: string | null
           title?: string
           updated_at?: string

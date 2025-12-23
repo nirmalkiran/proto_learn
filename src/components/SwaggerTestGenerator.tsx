@@ -67,8 +67,8 @@ export const SwaggerTestGenerator = ({ projectId: initialProjectId }: { projectI
               name,
               integration_configs!left(id, enabled)
             `)
-            .eq('created_by', user.id)
-            .eq('integration_configs.integration_id', 'openai');
+            .eq('user_id', user.id)
+            .eq('integration_configs.integration_type', 'openai');
 
           if (userProjects) {
             const projectsWithConfig = userProjects.map(p => ({

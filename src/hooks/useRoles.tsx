@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-export type UserRole = 'admin' | 'tester';
+export type UserRole = 'admin' | 'moderator' | 'user';
 
 interface UserRoleData {
   id: string;
@@ -103,7 +103,7 @@ export const useRoles = () => {
   };
 
   const isAdmin = userRole === 'admin';
-  const isTester = userRole === 'tester';
+  const isModerator = userRole === 'moderator';
   const hasRole = (role: UserRole) => userRole === role;
 
   useEffect(() => {
@@ -114,7 +114,7 @@ export const useRoles = () => {
     userRole,
     loading,
     isAdmin,
-    isTester,
+    isModerator,
     hasRole,
     assignRole,
     removeRole,

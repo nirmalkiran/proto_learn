@@ -135,7 +135,10 @@ export const ProjectSettings = ({ projectId, projectName, isOpen, onClose }: Pro
 
       if (data?.markdown_settings) {
         try {
-          const parsedSettings = JSON.parse(data.markdown_settings);
+          const settingsStr = typeof data.markdown_settings === 'string' 
+            ? data.markdown_settings 
+            : JSON.stringify(data.markdown_settings);
+          const parsedSettings = JSON.parse(settingsStr);
           setSettings({ ...defaultSettings, ...parsedSettings });
         } catch {
           // If parsing fails, use defaults
