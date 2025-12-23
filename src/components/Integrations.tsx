@@ -97,7 +97,16 @@ const loadSavedConfigurations = async (projectId: string) => {
 };
 
 // Save configurations to database (project-specific)
-const saveConfigurations = async (integrationId: string, config: any, projectId: string, enabled: boolean = true, userId: string) => {
+const saveConfigurations = async (integrationId: string, config: any, projectId: string, enabled: boolean = true, userId?: string) => {
+  // If userId not provided, get it from auth
+  let effectiveUserId = userId;
+  if (!effectiveUserId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (!effectiveUserId) {
+    throw new Error('User not authenticated');
+  }
   try {
     const { error } = await supabase
       .from('integration_configs')
@@ -106,7 +115,7 @@ const saveConfigurations = async (integrationId: string, config: any, projectId:
         integration_type: integrationId,
         config: config,
         enabled: enabled,
-        user_id: userId,
+        user_id: effectiveUserId,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'id'
