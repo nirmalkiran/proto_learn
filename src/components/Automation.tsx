@@ -18,11 +18,16 @@ interface UserStory {
 interface TestCase {
   id: string;
   title: string;
-  description: string;
-  steps: string;
-  expected_result: string;
-  priority: string;
-  test_data: string;
+  description: string | null;
+  steps: any;
+  expected_result: string | null;
+  priority: string | null;
+  status: string | null;
+  project_id: string | null;
+  user_story_id: string | null;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AutomationProps {

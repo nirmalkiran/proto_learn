@@ -9,13 +9,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { GitCommit, Calendar, User, MessageSquare, Upload } from "lucide-react";
 
-interface GitCommit {
+interface GitCommitData {
   id: string;
   commit_hash: string;
-  commit_message: string;
-  author_name: string;
-  author_email: string;
+  message: string | null;
+  author: string | null;
   committed_at: string;
+  project_id: string;
+  user_id: string;
+  created_at: string;
 }
 
 interface GitHistoryProps {
@@ -24,7 +26,7 @@ interface GitHistoryProps {
 
 const GitHistory: React.FC<GitHistoryProps> = ({ projectId }) => {
   const { toast } = useToast();
-  const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [commits, setCommits] = useState<GitCommitData[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCommitDialog, setShowCommitDialog] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -163,14 +165,14 @@ const GitHistory: React.FC<GitHistoryProps> = ({ projectId }) => {
               >
                 <div className="flex items-start gap-3">
                   <img
-                    src={getCommitAvatarUrl(commit.author_email)}
-                    alt={commit.author_name}
+                    src={getCommitAvatarUrl(commit.author || 'unknown')}
+                    alt={commit.author || 'Unknown'}
                     className="w-8 h-8 rounded-full"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-medium text-sm truncate">
-                        {commit.commit_message}
+                        {commit.message || 'No message'}
                       </p>
                       <Badge variant="outline" className="text-xs font-mono">
                         {commit.commit_hash.substring(0, 7)}
@@ -179,7 +181,7 @@ const GitHistory: React.FC<GitHistoryProps> = ({ projectId }) => {
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {commit.author_name}
+                        {commit.author || 'Unknown'}
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
