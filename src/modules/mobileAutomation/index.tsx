@@ -141,7 +141,7 @@ export default function MobileAutomation() {
 
         {/* TERMINAL */}
         <TabsContent value="terminal">
-          <MobileTerminal />
+          <MobileTerminal projectId={projectId} />
         </TabsContent>
 
         {/* GENERATOR */}

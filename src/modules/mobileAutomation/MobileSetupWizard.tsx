@@ -23,8 +23,8 @@ interface CheckResult {
   message: string;
 }
 
-const BS_USERNAME = import.meta.env.VITE_BS_USERNAME;
-const BS_ACCESS_KEY = import.meta.env.VITE_BS_ACCESS_KEY;
+const BS_USERNAME = import.meta.env.VITE_BROWSERSTACK_USERNAME;
+const BS_ACCESS_KEY = import.meta.env.VITE_BROWSERSTACK_ACCESS_KEY;
 
 export default function MobileSetupWizard() {
   const [checks, setChecks] = useState<Record<string, CheckResult>>({
