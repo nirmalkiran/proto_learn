@@ -44,7 +44,7 @@ const RoleManager = () => {
   const [projectMemberships, setProjectMemberships] = useState<Record<string, ProjectMembership[]>>({});
   const [loading, setLoading] = useState(true);
   const [newUserEmail, setNewUserEmail] = useState("");
-  const [selectedRole, setSelectedRole] = useState<UserRole>("tester");
+  const [selectedRole, setSelectedRole] = useState<UserRole>("user");
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [membershipToRemove, setMembershipToRemove] = useState<{ membershipId: string; userName: string; projectName: string } | null>(null);
@@ -272,7 +272,7 @@ const RoleManager = () => {
         });
         
         setNewUserEmail("");
-        setSelectedRole("tester");
+        setSelectedRole("user");
       } else {
         throw new Error(data.error || "Failed to send invitation");
       }

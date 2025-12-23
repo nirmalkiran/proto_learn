@@ -24,9 +24,9 @@ interface Project {
   created_at: string;
   updated_at: string;
   deleted_at?: string;
-  markdown_settings?: string;
+  markdown_settings?: any;
   member_count?: number;
-  status: 'Active' | 'Closed' | 'On Hold';
+  status?: 'Active' | 'Closed' | 'On Hold';
   member_names?: string[];
 }
 
@@ -153,7 +153,7 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
         .insert([{
           name: sanitizedName,
           description: sanitizedDescription,
-          created_by: (await supabase.auth.getUser()).data.user?.id
+          user_id: (await supabase.auth.getUser()).data.user?.id
         }])
         .select()
         .single();

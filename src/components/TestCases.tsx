@@ -353,7 +353,7 @@ export const TestCases = ({ projectId }: TestCasesProps) => {
           name: newFolderName.trim(),
           project_id: projectId,
           is_custom: true,
-          created_by: session.user.id
+          user_id: session.user.id
         });
 
       if (error) throw error;
