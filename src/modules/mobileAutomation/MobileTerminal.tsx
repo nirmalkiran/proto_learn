@@ -4,8 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { CloudMoon, Send, Trash2 } from "lucide-react";
-
+import { Send, Trash2 } from "lucide-react";
 
 interface TerminalLine {
   id: number;
@@ -14,80 +13,120 @@ interface TerminalLine {
   timestamp: Date;
 }
 
-const HELPER_BASE_URL = "http://localhost:5050";
+const HELPER_BASE_URL = "http://localhost:3001";
+
 const SAMPLE_COMMANDS = [
   { cmd: "connect", desc: "Test backend connection" },
   { cmd: "adb devices", desc: "List connected devices" },
   { cmd: "adb shell pm list packages", desc: "List installed packages" },
   { cmd: "adb shell dumpsys window | grep mCurrentFocus", desc: "Get current activity" },
   { cmd: "appium:status", desc: "Check Appium server status" },
+  { cmd: "appium:start", desc: "Start Appium server" },
 ];
 
 export default function MobileTerminal() {
   const [lines, setLines] = useState<TerminalLine[]>([
-    { id: 0, type: "output", content: "Mobile Automation Terminal v1.0", timestamp: new Date() },
-    { id: 1, type: "output", content: "Type 'help' for available commands. Type Below Enter the command 'Connect'", timestamp: new Date() },
+    {
+      id: 0,
+      type: "output",
+      content: "Mobile Automation Terminal v1.0",
+      timestamp: new Date(),
+    },
+    {
+      id: 1,
+      type: "output",
+      content: "Type 'connect' to link backend server",
+      timestamp: new Date(),
+    },
   ]);
+
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [lines]);
 
   const addLine = (type: TerminalLine["type"], content: string) => {
-    setLines((prev) => [...prev, { id: Date.now(), type, content, timestamp: new Date() }]);
+    setLines((prev) => [
+      ...prev,
+      { id: Date.now(), type, content, timestamp: new Date() },
+    ]);
+  };
+
+  /** ✅ Backend health check */
+  const checkBackendHealth = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${HELPER_BASE_URL}/health`);
+      return res.ok;
+    } catch {
+      return false;
+    }
   };
 
   const executeCommand = async (cmd: string) => {
     addLine("input", `> ${cmd}`);
 
+    /* HELP */
     if (cmd === "help") {
-      addLine("output", "Available commands:\n  help - Show this help\n  clear - Clear terminal\n  adb devices - Execute ADB command\n  appium:<action> - Appium commands (status, session, source)\n  connect - Test backend connection");
+      addLine(
+        "output",
+        `Available commands:
+  connect        - Connect backend
+  clear          - Clear terminal
+  adb devices    - List devices
+  appium:status  - Appium status
+  appium:start   - Start Appium`
+      );
       return;
     }
 
+    /* CLEAR */
     if (cmd === "clear") {
       setLines([]);
       return;
     }
 
+    /* CONNECT */
     if (cmd === "connect") {
-      try {
-        const res = await fetch(`${HELPER_BASE_URL}/health`);
-        if (res.ok) {
-          setIsConnected(true);
-          addLine("output", "✓ Connected to backend server");
-        }
-      } catch {
-        addLine("error", "✗ Backend not reachable. Start server with: node backend/server.js");
+      const alive = await checkBackendHealth();
+      if (alive) {
+        setIsConnected(true);
+        addLine("output", "Connected to backend server");
+      } else {
+        setIsConnected(false);
+        addLine("error", "Backend not reachable. Start server: node server.js");
       }
       return;
     }
 
+    /* BLOCK execution if not connected */
+    if (!isConnected) {
+      addLine("error", "Backend not connected. Run: connect");
+      return;
+    }
+
+    /* EXECUTE COMMAND */
     try {
       const res = await fetch(`${HELPER_BASE_URL}/terminal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: cmd }),
       });
-      const data = await res.json();
-      addLine(data.success ? "output" : "error", data.output || data.error);
-    } catch {
-      if (cmd.startsWith("adb")) {
-        addLine("error", "[Demo Mode] Backend not connected. Sample output:");
-        if (cmd === "adb devices") {
-          addLine("output", "List of devices attached\nemulator-5554\tdevice");
-        } else {
-          addLine("output", `Would execute: ${cmd}`);
-        }
-      } else if (cmd.startsWith("appium:")) {
-        addLine("error", "[Demo Mode] Connect backend to execute Appium commands");
-      } else {
-        addLine("error", `Unknown command: ${cmd}`);
+
+      if (!res.ok) {
+        throw new Error("Backend error");
       }
+
+      const data = await res.json();
+
+      addLine(
+        data.success ? "output" : "error",
+        data.output || data.error || "Command executed"
+      );
+    } catch (err) {
+      addLine("error", "Failed to execute command via backend");
     }
   };
 
@@ -107,7 +146,7 @@ export default function MobileTerminal() {
         </Badge>
       </div>
 
-      <Card className="mb-4">
+      <Card>
         <CardHeader className="py-3">
           <CardTitle className="text-sm">Quick Commands</CardTitle>
         </CardHeader>
@@ -118,9 +157,8 @@ export default function MobileTerminal() {
               variant="outline"
               size="sm"
               onClick={() => executeCommand(s.cmd)}
-              title={s.desc}
             >
-              {s.cmd.length > 30 ? s.cmd.slice(0, 30) + "..." : s.cmd}
+              {s.cmd}
             </Button>
           ))}
         </CardContent>
@@ -147,23 +185,20 @@ export default function MobileTerminal() {
           </ScrollArea>
 
           <form onSubmit={handleSubmit} className="flex border-t border-zinc-800">
-            <span className="px-4 py-3 text-green-400 font-mono">^-^</span>
+            <span className="px-4 py-3 text-green-400 font-mono">$</span>
             <Input
-              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               className="flex-1 border-0 bg-transparent font-mono text-zinc-100 focus-visible:ring-0 rounded-none"
               placeholder="Enter command..."
-              autoFocus
             />
-            <Button type="submit" variant="ghost" size="icon" className="text-zinc-400">
+            <Button type="submit" variant="ghost" size="icon">
               <Send className="h-4 w-4" />
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="text-zinc-400"
               onClick={() => setLines([])}
             >
               <Trash2 className="h-4 w-4" />

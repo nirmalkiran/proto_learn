@@ -9,5 +9,8 @@
     "noImplicitOverride": false,
     "useUnknownInCatchVariables": false,
     "allowUnreachableCode": true
+  },
+  "imports": {
+    "std/": "https://deno.land/std@0.224.0/"
   }
 }

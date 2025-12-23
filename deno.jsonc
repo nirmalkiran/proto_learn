@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/deno.jsonc",
+  "compilerOptions": {
+    "lib": ["deno.ns", "deno.unstable", "esnext"]
+  },
+  "fmt": {
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80
+    }
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "importMap": "import_map.json"
+}
