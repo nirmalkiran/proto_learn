@@ -175,6 +175,149 @@ export type Database = {
           },
         ]
       }
+      menu_config: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_visible: boolean
+          label: string
+          menu_id: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_visible?: boolean
+          label: string
+          menu_id: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_visible?: boolean
+          label?: string
+          menu_id?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_test_folders: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_test_folders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_tests: {
+        Row: {
+          base_url: string
+          created_at: string
+          description: string | null
+          folder_id: string | null
+          id: string
+          name: string
+          project_id: string
+          status: string
+          steps: Json | null
+          test_case_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          base_url?: string
+          created_at?: string
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          name: string
+          project_id: string
+          status?: string
+          steps?: Json | null
+          test_case_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          base_url?: string
+          created_at?: string
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          status?: string
+          steps?: Json | null
+          test_case_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_tests_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_test_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nocode_tests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nocode_tests_test_case_id_fkey"
+            columns: ["test_case_id"]
+            isOneToOne: false
+            referencedRelation: "test_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
