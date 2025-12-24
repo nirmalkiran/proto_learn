@@ -2,8 +2,12 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Play, Trash2 } from "lucide-react";
+import { Play, Trash2, Smartphone } from "lucide-react";
 import { toast } from "sonner";
+
+import DeviceSelector from "./DeviceSelector";
+
+/* ---------------- TYPES ---------------- */
 
 interface RecordedAction {
   id: string;
@@ -13,18 +17,37 @@ interface RecordedAction {
   duration?: number;
 }
 
+interface SelectedDevice {
+  device: string;
+  os_version: string;
+  real_mobile: boolean;
+}
+
+/* ---------------- CONSTANTS ---------------- */
+
 const SUPABASE_FN =
   "https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/mobile-execution";
 
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+/* ---------------- COMPONENT ---------------- */
+
 export default function MobileRecorder() {
   const [actions, setActions] = useState<RecordedAction[]>([]);
+  const [selectedDevice, setSelectedDevice] =
+    useState<SelectedDevice | null>(null);
   const [running, setRunning] = useState(false);
+
+  /* ---------------- EXECUTION ---------------- */
 
   const runOnBrowserStack = async () => {
     if (actions.length === 0) {
       toast.error("No actions recorded");
+      return;
+    }
+
+    if (!selectedDevice) {
+      toast.error("Please select a device before execution");
       return;
     }
 
@@ -43,22 +66,17 @@ export default function MobileRecorder() {
           projectId: "demo-project",
           appUrl: "bs://acd0aca715e48bd633ed84879e31bc3caa2a0dc1",
           actions,
-          device: {
-            platform: "Android",
-            deviceName: "Google Pixel 7",
-            osVersion: "13.0",
-          },
+          device: selectedDevice,
         }),
       });
 
       const data = await res.json();
 
       if (!data.success) {
-        throw new Error(data.error);
+        throw new Error(data.error || "Execution failed");
       }
 
       toast.success("Execution queued successfully");
-
     } catch (e) {
       toast.error("Failed to start execution");
     } finally {
@@ -66,8 +84,11 @@ export default function MobileRecorder() {
     }
   };
 
+  /* ---------------- UI ---------------- */
+
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex items-center gap-4">
         <h2 className="text-xl font-bold">Mobile Recorder</h2>
         <Badge variant={running ? "destructive" : "secondary"}>
@@ -75,6 +96,29 @@ export default function MobileRecorder() {
         </Badge>
       </div>
 
+      {/* DEVICE SELECTOR */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5" />
+            Select Device
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DeviceSelector onSelect={setSelectedDevice} />
+
+          {selectedDevice && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Selected:{" "}
+              <strong>
+                {selectedDevice.device} (Android {selectedDevice.os_version})
+              </strong>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ACTIONS */}
       <Card>
         <CardHeader>
           <CardTitle>Recorded Actions</CardTitle>

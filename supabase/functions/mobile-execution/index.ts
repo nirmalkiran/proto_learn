@@ -12,8 +12,6 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-
     const username = Deno.env.get("BROWSERSTACK_USERNAME");
     const accessKey = Deno.env.get("BROWSERSTACK_ACCESS_KEY");
 
@@ -27,84 +25,53 @@ serve(async (req) => {
       );
     }
 
-    /* ------------------------------------------
-       1. HEALTH CHECK (Setup Wizard)
-    ------------------------------------------ */
-    if (body.type === "health-check") {
-      const auth = btoa(`${username}:${accessKey}`);
+    const auth = btoa(`${username}:${accessKey}`);
 
-      const [devicesRes, appsRes] = await Promise.all([
-        fetch("https://api.browserstack.com/app-automate/devices.json", {
-          headers: { Authorization: `Basic ${auth}` },
-        }),
-        fetch("https://api.browserstack.com/app-automate/apps.json", {
-          headers: { Authorization: `Basic ${auth}` },
-        }),
-      ]);
-
-      if (!devicesRes.ok || !appsRes.ok) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Invalid BrowserStack credentials",
-          }),
-          { status: 401, headers: corsHeaders }
-        );
+    /* -------- CHECK DEVICES -------- */
+    const devicesRes = await fetch(
+      "https://api.browserstack.com/app-automate/devices.json",
+      {
+        headers: { Authorization: `Basic ${auth}` },
       }
+    );
 
-      const devices = await devicesRes.json();
-      const apps = await appsRes.json();
-
+    if (!devicesRes.ok) {
       return new Response(
         JSON.stringify({
-          success: true,
-          devices: devices.length,
-          apps: apps.length,
+          success: false,
+          error: "Invalid BrowserStack credentials",
         }),
-        { status: 200, headers: corsHeaders }
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    /* ------------------------------------------
-       2. EXECUTION REQUEST (Recorder)
-    ------------------------------------------ */
-    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+    const devices = await devicesRes.json();
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    /* -------- CHECK APPS -------- */
+    const appsRes = await fetch(
+      "https://api.browserstack.com/app-automate/apps.json",
+      {
+        headers: { Authorization: `Basic ${auth}` },
+      }
+    );
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { projectId, actions, appUrl, device } = body;
-
-    if (!actions || !appUrl) {
-      throw new Error("Missing actions or appUrl");
-    }
-
-    // ✅ Save execution intent
-    const { data, error } = await supabase
-      .from("mobile_execution_history")
-      .insert([
-        {
-          project_id: projectId,
-          app_url: appUrl,
-          status: "QUEUED",
-          device,
-          actions,
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    const apps = appsRes.ok ? await appsRes.json() : [];
 
     return new Response(
       JSON.stringify({
         success: true,
-        executionId: data.id,
-        status: data.status,
+        devices: Array.isArray(devices) ? devices.length : 0,
+        apps: Array.isArray(apps) ? apps.length : 0,
       }),
       { status: 200, headers: corsHeaders }
     );
+  } catch (e) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: String(e),
+      }),
+      { status: 500, headers: corsHeaders }
+    );
+  }
+});
