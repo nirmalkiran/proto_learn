@@ -39,9 +39,11 @@ import {
 interface GitFile {
   id: string;
   file_path: string;
-  file_content: string;
-  file_type: string;
+  file_content: string | null;
   last_modified: string;
+  project_id: string;
+  user_id: string;
+  created_at: string;
 }
 
 interface FolderNode {
@@ -264,13 +266,16 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ projectId }) => {
 
   const createAutomationFile = async (filePath: string, content: string) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      
       const { error } = await supabase
         .from("git_files")
         .insert({
           project_id: projectId,
           file_path: filePath,
           file_content: content,
-          file_type: getFileType(filePath),
+          user_id: user.id,
         });
 
       if (error) throw error;
@@ -332,14 +337,16 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ projectId }) => {
     }
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      
       const { error } = await supabase
         .from("git_files")
         .insert({
           project_id: projectId,
           file_path: newFilePath,
           file_content: newFileContent,
-          file_type: getFileType(newFilePath),
-          last_modified: new Date().toISOString(),
+          user_id: user.id,
         });
 
       if (error) throw error;

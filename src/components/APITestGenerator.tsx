@@ -80,8 +80,8 @@ export const APITestGenerator = () => {
               integration_configs!left(id, enabled)
             `,
             )
-            .eq("created_by", user.id)
-            .eq("integration_configs.integration_id", "openai");
+            .eq("user_id", user.id)
+            .eq("integration_configs.integration_type", "openai");
 
           if (userProjects) {
             const projectsWithConfig = userProjects.map((p) => ({
@@ -518,7 +518,7 @@ export const APITestGenerator = () => {
             .from("integration_configs")
             .select("config")
             .eq("project_id", projectId)
-            .eq("integration_id", "openai")
+            .eq("integration_type", "openai")
             .single();
 
           if (configError || !configData) {

@@ -66,7 +66,7 @@ interface DBTestCase {
   title: string;
   description: string | null;
   structured_steps: any;
-  steps: string | null;
+  steps: any; // Can be JSON or string
   expected_result: string | null;
   user_stories?: {
     title: string;
@@ -609,7 +609,7 @@ export const NoCodeAutomation = ({
       .insert([{
         project_id: projectId,
         name: UNGROUPED_FOLDER_NAME,
-        created_by: userId
+        user_id: userId
       }])
       .select()
       .single();
@@ -644,7 +644,7 @@ export const NoCodeAutomation = ({
       } = await supabase.from("nocode_test_folders").insert([{
         project_id: projectId,
         name: newFolderName.trim(),
-        created_by: user.id
+        user_id: user.id
       }]).select().single();
       if (error) throw error;
       toast({
@@ -1395,7 +1395,7 @@ playwright/.cache/
         project_id: projectId,
         name: suiteName,
         description: suiteDescription || null,
-        created_by: user.id
+        user_id: user.id
       }).select().single();
       if (error) throw error;
       toast({
@@ -1450,10 +1450,13 @@ playwright/.cache/
   const handleAddTestsToSuite = async () => {
     if (!selectedSuite || selectedTestsForSuite.size === 0) return;
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
       const testsToAdd = Array.from(selectedTestsForSuite).map((testId, index) => ({
         suite_id: selectedSuite.id,
         test_id: testId,
-        execution_order: suiteTests.length + index
+        execution_order: suiteTests.length + index,
+        user_id: user.id
       }));
       const {
         error
@@ -1659,9 +1662,8 @@ playwright/.cache/
         error: execError
       } = await supabase.from("nocode_suite_executions").insert({
         suite_id: selectedSuite.id,
-        project_id: projectId,
         status: "running",
-        executed_by: user.id,
+        user_id: user.id,
         total_tests: suiteTests.length,
         passed_tests: 0,
         failed_tests: 0
@@ -1686,9 +1688,8 @@ playwright/.cache/
             error: testExecError
           } = await supabase.from("nocode_test_executions").insert({
             test_id: suiteTest.test.id,
-            project_id: projectId,
             status: "running",
-            executed_by: user.id
+            user_id: user.id
           }).select().single();
           if (testExecError) throw testExecError;
 
@@ -1865,7 +1866,7 @@ playwright/.cache/
       const {
         data: azureConfig,
         error: configError
-      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_id", "openai").single();
+      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_type", "openai").single();
       if (configError && configError.code !== "PGRST116") {
         console.error("Error fetching Azure config:", configError);
       }
@@ -2007,13 +2008,12 @@ playwright/.cache/
         error
       } = await supabase.from("nocode_visual_baselines").upsert({
         test_id: selectedTest.id,
-        step_id: stepId,
         step_name: stepName,
         baseline_image: screenshot,
-        created_by: userId,
+        user_id: userId,
         updated_at: new Date().toISOString()
       }, {
-        onConflict: "test_id,step_id"
+        onConflict: "test_id,step_name"
       });
       if (error) throw error;
       toast({
@@ -2066,7 +2066,7 @@ playwright/.cache/
       const {
         data: azureConfig,
         error: configError
-      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_id", "openai").single();
+      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_type", "openai").single();
       if (configError && configError.code !== "PGRST116") {
         console.error("Error fetching Azure config:", configError);
       }
@@ -2426,7 +2426,7 @@ playwright/.cache/
         description: testCase.description || "",
         base_url: "https://example.com",
         steps: editedSteps as any,
-        created_by: user.id,
+        user_id: user.id,
         test_case_id: testCase.id,
         // Link to original test case
         folder_id: importToFolderId // Import to selected folder
@@ -2508,7 +2508,7 @@ playwright/.cache/
         description: testDescription,
         base_url: baseUrl,
         steps: currentSteps as any,
-        created_by: user.id,
+        user_id: user.id,
         folder_id: folderId
       }]).select().single();
       if (error) throw error;
@@ -2630,9 +2630,8 @@ playwright/.cache/
         error: execError
       } = await supabase.from("nocode_test_executions").insert({
         test_id: test.id,
-        project_id: projectId,
         status: "running",
-        executed_by: user.id
+        user_id: user.id
       }).select().single();
       if (execError) throw execError;
 
@@ -2729,7 +2728,7 @@ playwright/.cache/
         description: test.description,
         base_url: test.base_url,
         steps: test.steps,
-        created_by: user.id,
+        user_id: user.id,
         status: "draft"
       });
       if (error) throw error;
@@ -3001,7 +3000,7 @@ playwright/.cache/
         base_url: recordingUrl.trim(),
         steps: recordedSteps as any,
         status: "draft",
-        created_by: user.id,
+        user_id: user.id,
         folder_id: folderId
       }]);
       if (error) throw error;

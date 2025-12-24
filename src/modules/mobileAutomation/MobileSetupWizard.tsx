@@ -23,14 +23,8 @@ interface CheckResult {
   message: string;
 }
 
-/* ---------------- CONSTANTS ---------------- */
-
-const SUPABASE_FN =
-  "https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/mobile-execution";
-
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-/* ---------------- COMPONENT ---------------- */
+const BS_USERNAME = import.meta.env.VITE_BS_USERNAME;
+const BS_ACCESS_KEY = import.meta.env.VITE_BS_ACCESS_KEY;
 
 export default function MobileSetupWizard() {
   const [checks, setChecks] = useState<Record<string, CheckResult>>({

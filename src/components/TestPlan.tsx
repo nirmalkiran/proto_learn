@@ -215,7 +215,7 @@ export const TestPlan = ({ projectId }: TestPlanProps) => {
         .from('integration_configs')
         .select('config')
         .eq('project_id', projectId)
-        .eq('integration_id', 'openai')
+        .eq('integration_type', 'openai')
         .eq('enabled', true)
         .single();
 

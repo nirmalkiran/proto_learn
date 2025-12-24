@@ -82,10 +82,10 @@ const loadSavedConfigurations = async (projectId: string) => {
     const configs: Record<string, any> = {};
     data?.forEach((config) => {
       const configData = config.config && typeof config.config === 'object' ? config.config : {};
-      configs[config.integration_id] = {
+      configs[config.integration_type] = {
         ...configData,
         enabled: config.enabled,
-        lastSync: config.last_sync
+        lastSync: config.updated_at
       };
     });
 
@@ -97,18 +97,28 @@ const loadSavedConfigurations = async (projectId: string) => {
 };
 
 // Save configurations to database (project-specific)
-const saveConfigurations = async (integrationId: string, config: any, projectId: string, enabled: boolean = true) => {
+const saveConfigurations = async (integrationId: string, config: any, projectId: string, enabled: boolean = true, userId?: string) => {
+  // If userId not provided, get it from auth
+  let effectiveUserId = userId;
+  if (!effectiveUserId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (!effectiveUserId) {
+    throw new Error('User not authenticated');
+  }
   try {
     const { error } = await supabase
       .from('integration_configs')
       .upsert({
         project_id: projectId,
-        integration_id: integrationId,
+        integration_type: integrationId,
         config: config,
         enabled: enabled,
-        last_sync: new Date().toISOString()
+        user_id: effectiveUserId,
+        updated_at: new Date().toISOString()
       }, {
-        onConflict: 'project_id,integration_id'
+        onConflict: 'id'
       });
 
     if (error) throw error;

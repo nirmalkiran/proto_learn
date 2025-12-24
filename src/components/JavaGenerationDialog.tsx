@@ -139,7 +139,7 @@ export const JavaGenerationDialog = ({
         .from('integration_configs')
         .select('config')
         .eq('project_id', projectId)
-        .eq('integration_id', 'openai')
+        .eq('integration_type', 'openai')
         .single();
 
       if (configError && configError.code !== 'PGRST116') {

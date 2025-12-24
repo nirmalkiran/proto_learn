@@ -186,7 +186,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
     try {
       const { data, error } = await (supabase as any)
         .from("integration_configs")
-        .select("integration_id, config, enabled, last_sync")
+        .select("integration_type, config, enabled")
         .eq("project_id", projectId);
 
       if (error || !data) {
@@ -196,10 +196,9 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
       // Transform database records into the expected config format
       const configs: any = {};
       data.forEach((record: any) => {
-        configs[record.integration_id] = {
+        configs[record.integration_type] = {
           ...record.config,
           enabled: record.enabled,
-          lastSync: record.last_sync,
         };
       });
 
@@ -606,8 +605,10 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
                   }
                 } else {
                   // Insert new story (let database generate UUID)
+                  const { data: { user: currentUser } } = await supabase.auth.getUser();
                   const { error } = await supabase.from("user_stories").insert({
                     project_id: projectId,
+                    user_id: currentUser?.id,
                     readable_id: story.key || story.id || null,
                     title: story.title,
                     description: extractTextFromJiraContent(story.description),
@@ -723,8 +724,10 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
                   }
                 } else {
                   // Insert new story (let database generate UUID)
+                  const { data: { user: currentUser } } = await supabase.auth.getUser();
                   const { error } = await supabase.from("user_stories").insert({
                     project_id: projectId,
+                    user_id: currentUser?.id,
                     readable_id: story.key || story.id || null,
                     title: story.title,
                     description: story.description,
@@ -843,6 +846,7 @@ export const UserStories = ({ onViewChange, projectId }: UserStoriesProps) => {
         .from("user_stories")
         .insert({
           project_id: projectId,
+          user_id: session.user.id,
           title: newStory.title,
           description: newStory.description,
           acceptance_criteria: newStory.acceptanceCriteria,

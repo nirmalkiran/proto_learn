@@ -58,20 +58,19 @@ const AppSidebar = ({
   const fetchCounts = async (projectId: string) => {
     try {
       // Fetch all counts in parallel
-      const [storiesResult, defectsResult, plansResult, casesResult] = await Promise.all([
+      const [storiesResult, defectsResult, casesResult] = await Promise.all([
         supabase.from("user_stories").select("*", { count: "exact", head: true }).eq("project_id", projectId),
         supabase
           .from("test_cases")
           .select("*", { count: "exact", head: true })
           .eq("project_id", projectId)
           .eq("status", "failed"),
-        supabase.from("saved_test_plans").select("*", { count: "exact", head: true }).eq("project_id", projectId),
         supabase.from("test_cases").select("*", { count: "exact", head: true }).eq("project_id", projectId),
       ]);
 
       setUserStoriesCount(storiesResult.count || 0);
       setDefectsCount(defectsResult.count || 0);
-      setTestPlansCount(plansResult.count || 0);
+      setTestPlansCount(0); // saved_test_plans table doesn't exist
       setTestCasesCount(casesResult.count || 0);
     } catch (error) {
       console.error("Error fetching counts:", error);
@@ -79,31 +78,21 @@ const AppSidebar = ({
   };
 
   const fetchMenuConfig = async () => {
-    try {
-      const { data, error } = await supabase.from("menu_config").select("menu_id, is_visible").eq("is_visible", true);
-
-      if (error) throw error;
-
-      const visibleIds = new Set(data?.map((item) => item.menu_id) || []);
-      setVisibleMenuIds(visibleIds);
-    } catch (error) {
-      console.error("Error fetching menu config:", error);
-      // Fallback: show all items if fetch fails
-      setVisibleMenuIds(
-        new Set([
-          "dashboard",
-          "test-plan",
-          "user-stories",
-          "test-cases",
-          "repository",
-          "api",
-          "nocode-automation",
-          "mobile-no-code-automation",
-          "test-report",
-          "integrations",
-        ]),
-      );
-    }
+    // menu_config table doesn't exist, use default visible items
+    setVisibleMenuIds(
+      new Set([
+        "dashboard",
+        "test-plan",
+        "user-stories",
+        "test-cases",
+        "repository",
+        "api",
+        "nocode-automation",
+        "mobile-no-code-automation",
+        "test-report",
+        "integrations",
+      ]),
+    );
   };
 
   const sdlcPhases = [
