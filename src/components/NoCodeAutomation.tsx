@@ -1866,7 +1866,7 @@ playwright/.cache/
       const {
         data: azureConfig,
         error: configError
-      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_id", "openai").single();
+      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_type", "openai").single();
       if (configError && configError.code !== "PGRST116") {
         console.error("Error fetching Azure config:", configError);
       }
@@ -2066,7 +2066,7 @@ playwright/.cache/
       const {
         data: azureConfig,
         error: configError
-      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_id", "openai").single();
+      } = await supabase.from("integration_configs").select("config").eq("project_id", projectId).eq("integration_type", "openai").single();
       if (configError && configError.code !== "PGRST116") {
         console.error("Error fetching Azure config:", configError);
       }

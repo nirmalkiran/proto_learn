@@ -115,7 +115,7 @@ export const SwaggerTestGenerator = ({ projectId: initialProjectId }: { projectI
           .from('integration_configs')
           .select('config')
           .eq('project_id', projectId)
-          .eq('integration_id', 'api_test_auth')
+          .eq('integration_type', 'api_test_auth')
           .maybeSingle();
 
         if (!error && data?.config) {
@@ -145,11 +145,23 @@ export const SwaggerTestGenerator = ({ projectId: initialProjectId }: { projectI
 
     setIsSavingToken(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id;
+      
+      if (!currentUserId) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to save the token",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const { data: existing } = await supabase
         .from('integration_configs')
         .select('id')
         .eq('project_id', projectId)
-        .eq('integration_id', 'api_test_auth')
+        .eq('integration_type', 'api_test_auth')
         .maybeSingle();
 
       if (existing) {
@@ -162,7 +174,8 @@ export const SwaggerTestGenerator = ({ projectId: initialProjectId }: { projectI
           .from('integration_configs')
           .insert({
             project_id: projectId,
-            integration_id: 'api_test_auth',
+            user_id: currentUserId,
+            integration_type: 'api_test_auth',
             config: { auth_token: apiAuthToken }
           });
       }
@@ -278,7 +291,7 @@ export const SwaggerTestGenerator = ({ projectId: initialProjectId }: { projectI
             .from('integration_configs')
             .select('config')
             .eq('project_id', projectId)
-            .eq('integration_id', 'openai')
+            .eq('integration_type', 'openai')
             .single();
 
           if (configError || !configData) {
