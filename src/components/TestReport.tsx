@@ -358,7 +358,7 @@ export const TestReport = ({ projectId }: TestReportProps) => {
     try {
       const { data, error } = await supabase
         .from("integration_configs")
-        .select("integration_id, config, enabled, last_sync")
+        .select("integration_type, config, enabled")
         .eq("project_id", projectId);
 
       if (error || !data) {
@@ -368,10 +368,9 @@ export const TestReport = ({ projectId }: TestReportProps) => {
       // Transform database records into the expected config format
       const configs: any = {};
       data.forEach((record: any) => {
-        configs[record.integration_id] = {
+        configs[record.integration_type] = {
           ...record.config,
           enabled: record.enabled,
-          lastSync: record.last_sync,
         };
       });
 
@@ -415,6 +414,7 @@ export const TestReport = ({ projectId }: TestReportProps) => {
       const reportData = {
         project_id: projectId,
         user_id: userId,
+        name: saveReportName.trim(),
         report_name: saveReportName.trim(),
         report_content: testReport,
         statistics: statistics,

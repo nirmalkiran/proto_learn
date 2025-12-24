@@ -205,9 +205,10 @@ export const TestCases = ({ projectId }: TestCasesProps) => {
           }
         }
 
-        if (structuredSteps.length === 0 && tc.steps) {
-          const legacySteps = tc.steps.split("\n").filter(step => step.trim());
-          structuredSteps = legacySteps.map((step, index) => ({
+        const stepsStr = typeof tc.steps === 'string' ? tc.steps : '';
+        if (structuredSteps.length === 0 && stepsStr) {
+          const legacySteps = stepsStr.split("\n").filter((step: string) => step.trim());
+          structuredSteps = legacySteps.map((step: string, index: number) => ({
             stepNumber: index + 1,
             action: step,
             testData: "",
@@ -215,14 +216,16 @@ export const TestCases = ({ projectId }: TestCasesProps) => {
           }));
         }
 
+        const testDataStr = typeof tc.test_data === 'string' ? tc.test_data : (tc.test_data ? JSON.stringify(tc.test_data) : '');
+        
         return {
           id: tc.id,
           readableId: tc.readable_id,
           title: tc.title,
           description: tc.description || "",
-          steps: tc.steps ? tc.steps.split("\n").filter(step => step.trim()) : [],
+          steps: stepsStr ? stepsStr.split("\n").filter((step: string) => step.trim()) : [],
           structuredSteps: structuredSteps,
-          testData: tc.test_data || "",
+          testData: testDataStr,
           expectedResult: tc.expected_result || "",
           priority: tc.priority as "low" | "medium" | "high",
           status: tc.status as "draft" | "not-run" | "passed" | "failed" | "blocked",

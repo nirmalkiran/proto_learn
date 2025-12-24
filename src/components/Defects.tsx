@@ -265,7 +265,7 @@ export const Defects = ({ onViewChange, projectId }: DefectsProps) => {
         .from('integration_configs')
         .select('config, enabled')
         .eq('project_id', projectId)
-        .eq('integration_id', 'openai')
+        .eq('integration_type', 'openai')
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
@@ -403,7 +403,7 @@ export const Defects = ({ onViewChange, projectId }: DefectsProps) => {
         .from('integration_configs')
         .select('config, enabled')
         .eq('project_id', projectId)
-        .eq('integration_id', 'azure-devops')
+        .eq('integration_type', 'azure-devops')
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
@@ -574,7 +574,7 @@ export const Defects = ({ onViewChange, projectId }: DefectsProps) => {
         .from('integration_configs')
         .select('config, enabled')
         .eq('project_id', projectId)
-        .eq('integration_id', 'azure-devops')
+        .eq('integration_type', 'azure-devops')
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
@@ -655,7 +655,7 @@ export const Defects = ({ onViewChange, projectId }: DefectsProps) => {
         .from('integration_configs')
         .select('config, enabled')
         .eq('project_id', projectId)
-        .eq('integration_id', 'jira')
+        .eq('integration_type', 'jira')
         .maybeSingle();
 
       if (error) {
@@ -1444,7 +1444,7 @@ export const Defects = ({ onViewChange, projectId }: DefectsProps) => {
                             .from('integration_configs')
                             .select('config')
                             .eq('project_id', projectId)
-                            .eq('integration_id', 'jira')
+                            .eq('integration_type', 'jira')
                             .single()
                             .then(({ data }) => {
                               const config = data?.config as any;
