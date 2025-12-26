@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Smartphone } from "lucide-react";
+import { toast } from "sonner";
 
-interface Device {
+const AGENT_URL = "http://localhost:3001";
+
+/* ---------------- TYPES ---------------- */
+
+interface DeviceInfo {
+  id: string;
+  type: "emulator" | "real";
+  os_version?: string;
+}
+
+interface SelectedDevice {
   device: string;
   os_version: string;
   real_mobile: boolean;
@@ -12,67 +24,95 @@ interface Device {
 export default function DeviceSelector({
   onSelect,
 }: {
-  onSelect: (device: Device) => void;
+  onSelect: (d: SelectedDevice) => void;
 }) {
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadDevices();
-  }, []);
+  /* ---------------- FETCH DEVICES ---------------- */
 
-  const loadDevices = async () => {
+  const fetchDevices = async () => {
     setLoading(true);
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mobile-execution`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ type: "get-devices" }),
-      }
-    );
+    try {
+      const res = await fetch(`${AGENT_URL}/device/check`);
+      const data = await res.json();
 
-    const data = await res.json();
-    setDevices(data.devices || []);
-    setLoading(false);
+      if (!data.connected || !data.devices?.length) {
+        setDevices([]);
+        return;
+      }
+
+      const parsed: DeviceInfo[] = data.devices.map((d: string) => ({
+        id: d.split("\t")[0],
+        type: d.includes("emulator") ? "emulator" : "real",
+        os_version: "13", // Safe default for emulator
+      }));
+
+      setDevices(parsed);
+    } catch {
+      toast.error("Failed to fetch devices");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Select Device</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {loading && <p>Loading devices...</p>}
+  useEffect(() => {
+    fetchDevices();
+  }, []);
 
-        {devices.slice(0, 15).map((d, i) => (
-          <div
-            key={i}
-            className="flex justify-between items-center border p-2 rounded"
-          >
+  /* ---------------- SELECT DEVICE ---------------- */
+
+  const selectDevice = (d: DeviceInfo) => {
+    onSelect({
+      device: d.id,
+      os_version: d.os_version || "13",
+      real_mobile: d.type === "real",
+    });
+
+    toast.success(`Selected device: ${d.id}`);
+  };
+
+  /* ---------------- UI ---------------- */
+
+  return (
+    <div className="space-y-3">
+      <Button variant="outline" size="sm" onClick={fetchDevices}>
+        Refresh Devices
+      </Button>
+
+      {loading && <p className="text-sm">Checking devices...</p>}
+
+      {!loading && devices.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No device detected. Start emulator from Setup.
+        </p>
+      )}
+
+      {devices.map((d) => (
+        <Card
+          key={d.id}
+          className="p-3 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-2">
+            <Smartphone className="h-4 w-4" />
             <div>
-              <p className="font-medium">
-                {d.device}
-              </p>
+              <p className="text-sm font-medium">{d.id}</p>
               <p className="text-xs text-muted-foreground">
                 Android {d.os_version}
               </p>
             </div>
+          </div>
 
-            <Button size="sm" onClick={() => onSelect(d)}>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              {d.type === "emulator" ? "Emulator" : "Real Device"}
+            </Badge>
+            <Button size="sm" onClick={() => selectDevice(d)}>
               Select
             </Button>
           </div>
-        ))}
-
-        <Badge variant="outline">
-          Showing first 15 devices (credit safe)
-        </Badge>
-      </CardContent>
-    </Card>
+        </Card>
+      ))}
+    </div>
   );
 }

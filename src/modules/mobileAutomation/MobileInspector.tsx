@@ -8,13 +8,14 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 
 /**
- * NOTE:
- * UI hierarchy is fetched from BrowserStack Inspector (cloud).
- * We DO NOT fetch raw XML directly in frontend (security + credits).
+ * LOCAL APPIUM INSPECTOR
+ * - Works with local Appium + Emulator / Real Device
+ * - Inspector is opened via local agent
+ * - QA pastes inspected values to generate locators
  */
 
 interface SelectedElement {
@@ -24,24 +25,56 @@ interface SelectedElement {
   contentDesc?: string;
 }
 
+const AGENT_URL = "http://localhost:3001";
+
 export default function MobileInspector() {
   const [selectedNode, setSelectedNode] = useState<SelectedElement | null>(null);
+  const [opening, setOpening] = useState(false);
 
-  /**
-   * Locator generation logic (kept from your original implementation)
-   */
+  /* =====================================================
+   * 🔹 OPEN LOCAL APPIUM INSPECTOR
+   * ===================================================== */
+  const openLocalInspector = async () => {
+    try {
+      setOpening(true);
+      const res = await fetch(`${AGENT_URL}/appium/inspector`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (!data.success) throw new Error();
+
+      toast.success("Local Appium Inspector opened");
+    } catch {
+      toast.error("Failed to open Local Appium Inspector");
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  /* =====================================================
+   * 🔹 LOCATOR GENERATION (STABLE-FIRST)
+   * ===================================================== */
   const generateLocators = (node: SelectedElement) => {
     const locators: { type: string; value: string; confidence: string }[] = [];
 
     if (node.resourceId) {
       locators.push({
-        type: "ID",
+        type: "ID (Recommended)",
         value: `By.id("${node.resourceId}")`,
         confidence: "high",
       });
       locators.push({
         type: "XPath (resource-id)",
         value: `//*[@resource-id='${node.resourceId}']`,
+        confidence: "high",
+      });
+    }
+
+    if (node.contentDesc) {
+      locators.push({
+        type: "Accessibility ID",
+        value: `By.accessibilityId("${node.contentDesc}")`,
         confidence: "high",
       });
     }
@@ -54,16 +87,8 @@ export default function MobileInspector() {
       });
     }
 
-    if (node.contentDesc) {
-      locators.push({
-        type: "Accessibility ID",
-        value: `By.accessibilityId("${node.contentDesc}")`,
-        confidence: "high",
-      });
-    }
-
     locators.push({
-      type: "XPath (class only)",
+      type: "XPath (fallback)",
       value: `//${node.class}`,
       confidence: "low",
     });
@@ -76,60 +101,67 @@ export default function MobileInspector() {
     toast.success("Locator copied");
   };
 
+  /* =====================================================
+   * 🔹 UI
+   * ===================================================== */
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold">Locator Finder / Inspector (Cloud)</h2>
+      <h2 className="text-xl font-bold">
+        Local Appium Inspector
+      </h2>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* LEFT: BrowserStack Inspector */}
+        {/* LEFT: LOCAL INSPECTOR */}
         <Card>
           <CardHeader>
-            <CardTitle>BrowserStack Inspector</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5" />
+              Open Local Appium Inspector
+            </CardTitle>
             <CardDescription>
-              Inspect live mobile UI running on BrowserStack
+              Inspect UI elements from your local emulator or real device
             </CardDescription>
           </CardHeader>
+
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              1. Start a mobile test run  
+              How to use:
               <br />
-              2. Open BrowserStack Inspector  
+              1. Start Appium & Emulator from Setup tab  
               <br />
-              3. Click elements to view properties  
+              2. Click the button below  
               <br />
-              4. Manually select element details below
+              3. Inspect element properties in Appium Inspector  
+              <br />
+              4. Paste values on the right to generate locators
             </p>
 
             <Button
               variant="outline"
               className="w-full"
-              onClick={() =>
-                window.open(
-                  "https://app-automate.browserstack.com/dashboard/v2/quick-start",
-                  "_blank"
-                )
-              }
+              onClick={openLocalInspector}
+              disabled={opening}
             >
               <ExternalLink className="mr-2 h-4 w-4" />
-              Open BrowserStack Inspector
+              Open Local Appium Inspector
             </Button>
 
             <Badge variant="secondary">
-              Cloud-based · No local device required
+              Local • Emulator / Real Device
             </Badge>
           </CardContent>
         </Card>
 
-        {/* RIGHT: Locator Generator */}
+        {/* RIGHT: LOCATOR GENERATOR */}
         <Card>
           <CardHeader>
             <CardTitle>Generated Locators</CardTitle>
             <CardDescription>
-              Paste element details from BrowserStack Inspector
+              Paste element details from Local Appium Inspector
             </CardDescription>
           </CardHeader>
+
           <CardContent className="space-y-4">
-            {/* Simple manual input (matches BrowserStack Inspector fields) */}
             <div className="space-y-2">
               <input
                 className="w-full border rounded p-2 text-sm"
@@ -141,9 +173,10 @@ export default function MobileInspector() {
                   }) as SelectedElement)
                 }
               />
+
               <input
                 className="w-full border rounded p-2 text-sm"
-                placeholder="Resource ID (optional)"
+                placeholder="Resource ID (best option)"
                 onChange={(e) =>
                   setSelectedNode((prev) => ({
                     ...prev,
@@ -151,23 +184,25 @@ export default function MobileInspector() {
                   }) as SelectedElement)
                 }
               />
+
               <input
                 className="w-full border rounded p-2 text-sm"
-                placeholder="Text (optional)"
-                onChange={(e) =>
-                  setSelectedNode((prev) => ({
-                    ...prev,
-                    text: e.target.value,
-                  }) as SelectedElement)
-                }
-              />
-              <input
-                className="w-full border rounded p-2 text-sm"
-                placeholder="Accessibility ID (optional)"
+                placeholder="Accessibility ID (content-desc)"
                 onChange={(e) =>
                   setSelectedNode((prev) => ({
                     ...prev,
                     contentDesc: e.target.value,
+                  }) as SelectedElement)
+                }
+              />
+
+              <input
+                className="w-full border rounded p-2 text-sm"
+                placeholder="Visible text (optional)"
+                onChange={(e) =>
+                  setSelectedNode((prev) => ({
+                    ...prev,
+                    text: e.target.value,
                   }) as SelectedElement)
                 }
               />
@@ -176,6 +211,7 @@ export default function MobileInspector() {
             {selectedNode?.class ? (
               <div className="space-y-2">
                 <h4 className="font-medium">Suggested Locators</h4>
+
                 {generateLocators(selectedNode).map((loc, idx) => (
                   <div
                     key={idx}
@@ -192,9 +228,11 @@ export default function MobileInspector() {
                     >
                       {loc.type}
                     </Badge>
+
                     <code className="flex-1 text-xs text-zinc-300 truncate">
                       {loc.value}
                     </code>
+
                     <Button
                       variant="ghost"
                       size="icon"

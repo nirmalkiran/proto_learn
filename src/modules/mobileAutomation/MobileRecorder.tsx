@@ -1,20 +1,35 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Play, Trash2, Smartphone } from "lucide-react";
-import { toast } from "sonner";
+import {
+  Play,
+  Trash2,
+  Smartphone,
+  Circle,
+  Square,
+} from "lucide-react";
 
 import DeviceSelector from "./DeviceSelector";
 
-/* ---------------- TYPES ---------------- */
+/* =====================================================
+ * TYPES
+ * ===================================================== */
+
+export type ActionType = "tap" | "input" | "scroll" | "wait" | "assert";
 
 interface RecordedAction {
   id: string;
-  type: "tap" | "input" | "wait" | "assert";
-  locator?: string;
+  type: ActionType;
+  locator: string;
   value?: string;
-  duration?: number;
+  timestamp: number;
 }
 
 interface SelectedDevice {
@@ -23,80 +38,119 @@ interface SelectedDevice {
   real_mobile: boolean;
 }
 
-/* ---------------- CONSTANTS ---------------- */
+interface RecorderProps {
+  setupState: {
+    appium: boolean;
+    emulator: boolean;
+    device: boolean;
+  };
+}
 
-const SUPABASE_FN =
-  "https://lwlqfrsqwyvwqveqksuz.supabase.co/functions/v1/mobile-execution";
+/* =====================================================
+ * COMPONENT
+ * ===================================================== */
 
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-/* ---------------- COMPONENT ---------------- */
-
-export default function MobileRecorder() {
+export default function MobileRecorder({ setupState }: RecorderProps) {
+  const [isRecording, setIsRecording] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
   const [selectedDevice, setSelectedDevice] =
     useState<SelectedDevice | null>(null);
-  const [running, setRunning] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
 
-  /* ---------------- EXECUTION ---------------- */
+  /* =====================================================
+   * RECORDING CONTROLS
+   * ===================================================== */
 
-  const runOnBrowserStack = async () => {
-    if (actions.length === 0) {
-      toast.error("No actions recorded");
+  const startRecording = () => {
+    if (!setupState.appium || !setupState.emulator || !setupState.device) {
+      toast.error("Please complete Setup before recording");
       return;
     }
 
     if (!selectedDevice) {
-      toast.error("Please select a device before execution");
+      toast.error("Please select a device");
       return;
     }
 
-    setRunning(true);
-    toast.info("Sending execution to BrowserStack...");
+    setActions([]);
+    setIsRecording(true);
 
-    try {
-      const res = await fetch(SUPABASE_FN, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-        body: JSON.stringify({
-          projectId: "demo-project",
-          appUrl: "bs://acd0aca715e48bd633ed84879e31bc3caa2a0dc1",
-          actions,
-          device: selectedDevice,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!data.success) {
-        throw new Error(data.error || "Execution failed");
-      }
-
-      toast.success("Execution queued successfully");
-    } catch (e) {
-      toast.error("Failed to start execution");
-    } finally {
-      setRunning(false);
-    }
+    toast.success("Recording started", {
+      description: `Connected to ${selectedDevice.device}`,
+    });
   };
 
-  /* ---------------- UI ---------------- */
+  const stopRecording = () => {
+    setIsRecording(false);
+
+    toast.success("Recording stopped", {
+      description: `${actions.length} actions captured`,
+    });
+  };
+
+  /* =====================================================
+   * ACTION CAPTURE (SIMULATED FOR NOW)
+   * Real capture will come from Appium hooks later
+   * ===================================================== */
+
+  const captureAction = (type: ActionType) => {
+    if (!isRecording) return;
+
+    const newAction: RecordedAction = {
+      id: crypto.randomUUID(),
+      type,
+      locator: "//android.widget.View", // placeholder
+      timestamp: Date.now(),
+    };
+
+    setActions((prev) => [...prev, newAction]);
+  };
+
+  const removeAction = (index: number) => {
+    setActions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  /* =====================================================
+   * REPLAY TEST
+   * ===================================================== */
+
+  const replayTest = async () => {
+    if (actions.length === 0) {
+      toast.error("No actions to replay");
+      return;
+    }
+
+    setIsRunning(true);
+    toast.info("Replaying recorded steps...");
+
+    // Placeholder – will call agent/Appium later
+    setTimeout(() => {
+      setIsRunning(false);
+      toast.success("Execution completed");
+    }, 2000);
+  };
+
+  /* =====================================================
+   * UI
+   * ===================================================== */
 
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex items-center gap-4">
-        <h2 className="text-xl font-bold">Mobile Recorder</h2>
-        <Badge variant={running ? "destructive" : "secondary"}>
-          {running ? "Running" : "Idle"}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold">Mobile Recorder</h2>
+          <p className="text-sm text-muted-foreground">
+            Record once, replay anytime
+          </p>
+        </div>
+
+        <Badge variant={isRecording ? "destructive" : "secondary"}>
+          {isRecording ? "Recording" : "Idle"}
         </Badge>
       </div>
 
-      {/* DEVICE SELECTOR */}
+      {/* DEVICE SELECTION */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -108,22 +162,72 @@ export default function MobileRecorder() {
           <DeviceSelector onSelect={setSelectedDevice} />
 
           {selectedDevice && (
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground">
               Selected:{" "}
               <strong>
-                {selectedDevice.device} (Android {selectedDevice.os_version})
+                {selectedDevice.device} (Android{" "}
+                {selectedDevice.os_version})
               </strong>
             </p>
           )}
         </CardContent>
       </Card>
 
-      {/* ACTIONS */}
+      {/* RECORD CONTROLS */}
+      <div className="flex gap-3">
+        {!isRecording ? (
+          <Button onClick={startRecording}>
+            <Circle className="mr-2 h-4 w-4 text-red-500" />
+            Start Recording
+          </Button>
+        ) : (
+          <Button variant="destructive" onClick={stopRecording}>
+            <Square className="mr-2 h-4 w-4" />
+            Stop Recording
+          </Button>
+        )}
+      </div>
+
+      {/* QUICK ACTION SIMULATION (FOR NOW) */}
+      {isRecording && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Simulate Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => captureAction("tap")}
+            >
+              + Tap
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => captureAction("input")}
+            >
+              + Input
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => captureAction("scroll")}
+            >
+              + Scroll
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => captureAction("wait")}
+            >
+              + Wait
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* RECORDED ACTIONS */}
       <Card>
         <CardHeader>
-          <CardTitle>Recorded Actions</CardTitle>
+          <CardTitle>Recorded Steps</CardTitle>
         </CardHeader>
-
         <CardContent>
           {actions.length === 0 && (
             <p className="text-muted-foreground">
@@ -136,15 +240,13 @@ export default function MobileRecorder() {
               key={a.id}
               className="flex justify-between items-center p-2 border rounded mb-2"
             >
-              <span>
-                {i + 1}. {a.type} — {a.locator || a.value}
+              <span className="text-sm">
+                {i + 1}. {a.type} → {a.locator}
               </span>
               <Button
                 size="icon"
                 variant="ghost"
-                onClick={() =>
-                  setActions(actions.filter((x) => x.id !== a.id))
-                }
+                onClick={() => removeAction(i)}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -153,11 +255,11 @@ export default function MobileRecorder() {
 
           <Button
             className="w-full mt-4"
-            onClick={runOnBrowserStack}
-            disabled={running}
+            onClick={replayTest}
+            disabled={isRunning}
           >
             <Play className="mr-2 h-4 w-4" />
-            Run on BrowserStack
+            Replay Test
           </Button>
         </CardContent>
       </Card>

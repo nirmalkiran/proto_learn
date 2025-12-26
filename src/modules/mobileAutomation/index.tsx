@@ -33,20 +33,31 @@ import MobileSetupWizard from "./MobileSetupWizard";
 import MobileExecutionHistory from "./MobileExecutionHistory";
 
 export default function MobileAutomation() {
+  /** Project context (can later come from route / selector) */
+  const projectId = "mobile-no-code-project";
+
+  /** Active tab */
   const [activeTab, setActiveTab] = useState("overview");
 
-  /** 👉 This can later come from route / project selector */
-  const projectId = "mobile-no-code-project";
+  /**
+   * ✅ SHARED SETUP STATE
+   * This persists across tabs and is the single source of truth
+   */
+  const [setupState, setSetupState] = useState({
+    appium: false,
+    emulator: false,
+    device: false,
+  });
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
+      {/* ================= HEADER ================= */}
       <div className="flex items-center gap-4">
         <Smartphone className="h-8 w-8 text-primary" />
         <div>
           <h1 className="text-2xl font-bold">Mobile No-Code Automation</h1>
           <p className="text-muted-foreground">
-            Cloud-based Android automation using BrowserStack App Automate
+            Android automation for manual QA engineers
           </p>
         </div>
 
@@ -55,11 +66,11 @@ export default function MobileAutomation() {
           className="ml-auto flex items-center gap-1"
         >
           <Cloud className="h-3 w-3" />
-          Cloud Execution
+          Local / Cloud Ready
         </Badge>
       </div>
 
-      {/* TABS */}
+      {/* ================= TABS ================= */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -95,61 +106,62 @@ export default function MobileAutomation() {
           </TabsTrigger>
         </TabsList>
 
-        {/* OVERVIEW */}
+        {/* ================= OVERVIEW ================= */}
         <TabsContent value="overview" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-blue-500" />
-                Cloud-Based Execution (BrowserStack)
+                How this works
               </CardTitle>
               <CardDescription>
-                Mobile automation runs entirely on BrowserStack devices.
-                No local Appium, ADB, or emulator setup required.
+                Record once, reuse many times — no coding required
               </CardDescription>
             </CardHeader>
 
             <CardContent>
-              <div className="bg-muted p-4 rounded-lg space-y-3">
-                <p className="font-medium">How it works:</p>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li>Configure BrowserStack credentials</li>
-                  <li>Upload APK / AAB to BrowserStack</li>
-                  <li>Record actions visually</li>
-                  <li>Reusable scripts generated automatically</li>
-                  <li>Run tests on real cloud devices</li>
-                </ol>
-              </div>
+              <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                <li>Complete local setup (Appium + Emulator)</li>
+                <li>Select device</li>
+                <li>Record actions visually</li>
+                <li>Replay or generate automation</li>
+                <li>Track execution history</li>
+              </ol>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* SETUP */}
+        {/* ================= SETUP ================= */}
         <TabsContent value="setup">
-          <MobileSetupWizard />
+          <MobileSetupWizard
+            setupState={setupState}
+            setSetupState={setSetupState}
+          />
         </TabsContent>
 
-        {/* RECORDER */}
-        <TabsContent value="recorder">
-          <MobileRecorder projectId={projectId} />
+        {/* ================= RECORDER ================= */}
+        <TabsContent value="recorder" >
+          <MobileRecorder
+            setupState={setupState}
+          />
         </TabsContent>
 
-        {/* INSPECTOR */}
-        <TabsContent value="inspector">
+        {/* ================= INSPECTOR ================= */}
+        <TabsContent value="inspector" >
           <MobileInspector />
         </TabsContent>
 
-        {/* TERMINAL */}
+        {/* ================= TERMINAL ================= */}
         <TabsContent value="terminal">
           <MobileTerminal projectId={projectId} />
         </TabsContent>
 
-        {/* GENERATOR */}
+        {/* ================= GENERATOR ================= */}
         <TabsContent value="generator">
           <MobileTestGenerator />
         </TabsContent>
 
-        {/* HISTORY */}
+        {/* ================= HISTORY ================= */}
         <TabsContent value="history">
           <MobileExecutionHistory />
         </TabsContent>
