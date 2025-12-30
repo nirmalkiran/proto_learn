@@ -51,13 +51,13 @@ export default function MobileAutomation() {
 
   return (
     <div className="space-y-6">
-      {/* ================= HEADER ================= */}
+      
       <div className="flex items-center gap-4">
         <Smartphone className="h-8 w-8 text-primary" />
         <div>
           <h1 className="text-2xl font-bold">Mobile No-Code Automation</h1>
           <p className="text-muted-foreground">
-            Android automation for manual QA engineers
+            Android automation for QAs
           </p>
         </div>
 
@@ -70,7 +70,6 @@ export default function MobileAutomation() {
         </Badge>
       </div>
 
-      {/* ================= TABS ================= */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>

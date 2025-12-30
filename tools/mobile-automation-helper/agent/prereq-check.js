@@ -11,7 +11,7 @@ function check(cmd, name) {
   }
 }
 
-console.log("🔍 Checking Mobile Automation prerequisites...\n");
+console.log("Checking Mobile Automation prerequisites...\n");
 
 const results = [
   check("node -v", "Node.js"),

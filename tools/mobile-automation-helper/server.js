@@ -1,23 +1,35 @@
+/* =====================================================
+   IMPORTS (TOP ONLY)
+===================================================== */
+
 import express from "express";
 import cors from "cors";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import path from "path";
+
 import {
   startRecording,
   stopRecording,
   replayRecording,
   getRecordingStatus,
+  subscribe,
 } from "./agent/mobile-agent.js";
+
+/* =====================================================
+   APP INIT
+===================================================== */
 
 const app = express();
 const PORT = 3001;
+let agentProcess = null;
+let serverProcess = null;
 
 app.use(cors());
 app.use(express.json());
 
 /* =====================================================
-   🔹 ANDROID SDK DETECTION
-   ===================================================== */
+   ANDROID SDK DETECTION
+===================================================== */
 
 const ANDROID_SDK =
   process.env.ANDROID_SDK_ROOT ||
@@ -25,7 +37,7 @@ const ANDROID_SDK =
   null;
 
 if (!ANDROID_SDK) {
-  console.error("ANDROID_SDK_ROOT or ANDROID_HOME not set");
+  console.warn("? ANDROID_SDK_ROOT / ANDROID_HOME not set");
 }
 
 const ADB_PATH = ANDROID_SDK
@@ -37,8 +49,8 @@ const EMULATOR_PATH = ANDROID_SDK
   : "emulator";
 
 /* =====================================================
-   🔹 COMMAND RUNNER
-   ===================================================== */
+   UTIL
+===================================================== */
 
 function run(command, res) {
   exec(
@@ -52,11 +64,11 @@ function run(command, res) {
           : process.env.PATH,
       },
     },
-    (error, stdout, stderr) => {
-      if (error) {
+    (err, stdout, stderr) => {
+      if (err) {
         return res.json({
           success: false,
-          error: stderr || error.message,
+          error: stderr || err.message,
         });
       }
 
@@ -69,8 +81,8 @@ function run(command, res) {
 }
 
 /* =====================================================
-   ✅ HEALTH
-   ===================================================== */
+   HEALTH & SETUP STATUS
+===================================================== */
 
 app.get("/health", (req, res) => {
   res.json({
@@ -79,32 +91,18 @@ app.get("/health", (req, res) => {
   });
 });
 
-/* =====================================================
-   ✅ APPIUM STATUS
-   ===================================================== */
-
 app.get("/appium/status", (req, res) => {
   exec("appium --version", (err, stdout) => {
-    if (err) {
-      return res.json({ running: false });
-    }
+    if (err) return res.json({ running: false });
     res.json({ running: true, version: stdout.trim() });
   });
 });
 
-/* =====================================================
-   ✅ EMULATOR STATUS
-   ===================================================== */
-
 app.get("/emulator/status", (req, res) => {
-  exec("adb devices", (err, stdout) => {
-    if (err) return res.json({ running: false });
-
+  exec("adb devices", (_, stdout) => {
     const emulators = stdout
       .split("\n")
-      .filter(
-        (l) => l.startsWith("emulator-") && l.includes("device")
-      );
+      .filter((l) => l.startsWith("emulator-") && l.includes("device"));
 
     res.json({
       running: emulators.length > 0,
@@ -113,14 +111,8 @@ app.get("/emulator/status", (req, res) => {
   });
 });
 
-/* =====================================================
-   ✅ DEVICE STATUS
-   ===================================================== */
-
 app.get("/device/check", (req, res) => {
-  exec("adb devices", (err, stdout) => {
-    if (err) return res.json({ connected: false });
-
+  exec("adb devices", (_, stdout) => {
     const devices = stdout
       .split("\n")
       .filter((l) => l.includes("\tdevice"));
@@ -133,24 +125,20 @@ app.get("/device/check", (req, res) => {
 });
 
 /* =====================================================
-   ✅ TERMINAL
-   ===================================================== */
+   TERMINAL (APPIUM / ADB / EMULATOR)
+===================================================== */
 
 app.post("/terminal", (req, res) => {
   const { command } = req.body;
-
   if (!command) {
-    return res.json({ success: false, error: "No command" });
+    return res.json({ success: false, error: "No command provided" });
   }
 
-  if (command.startsWith("appium:start")) {
+  if (command === "appium:start") {
     exec(
-      "appium --address 127.0.0.1 --port 4723 --base-path /wd/hub",
-      () => {
-        res.json({ success: true });
-      }
+      "appium --address 127.0.0.1 --port 4723 --base-path /wd/hub"
     );
-    return;
+    return res.json({ success: true });
   }
 
   if (command.startsWith("adb")) {
@@ -167,34 +155,22 @@ app.post("/terminal", (req, res) => {
 });
 
 /* =====================================================
-   🎥 RECORDING ENDPOINTS
-   ===================================================== */
+   ?? RECORDING API
+===================================================== */
 
-app.post("/recording/start", async (req, res) => {
-  try {
-    await startRecording();
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
+app.post("/recording/start", (req, res) => {
+  startRecording();
+  res.json({ success: true });
 });
 
-app.post("/recording/stop", async (req, res) => {
-  try {
-    const steps = await stopRecording();
-    res.json({ success: true, steps });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
+app.post("/recording/stop", (req, res) => {
+  const steps = stopRecording();
+  res.json({ success: true, steps });
 });
 
-app.post("/recording/replay", async (req, res) => {
-  try {
-    await replayRecording(req.body.steps);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
+app.post("/recording/replay", (req, res) => {
+  replayRecording(req.body.steps || []);
+  res.json({ success: true });
 });
 
 app.get("/recording/status", (req, res) => {
@@ -202,106 +178,111 @@ app.get("/recording/status", (req, res) => {
 });
 
 /* =====================================================
-   🚀 START
-   ===================================================== */
+   ?? RECORDING EVENTS (SSE)
+===================================================== */
+
+app.get("/recording/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const unsubscribe = subscribe((event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  });
+
+  req.on("close", () => {
+    unsubscribe();
+    res.end();
+  });
+});
+
+/* =====================================================
+   ?? DEVICE MIRROR (SCRCPY – DESKTOP WINDOW)
+===================================================== */
+
+app.post("/device/mirror", (req, res) => {
+  const cmd =
+    process.platform === "win32"
+      ? "scrcpy --window-title Recorder"
+      : "scrcpy";
+
+  exec(cmd, (err) => {
+    if (err) {
+      return res.json({
+        success: false,
+        error: err.message,
+      });
+    }
+
+    res.json({ success: true });
+  });
+});
+
+/* =====================================================
+   ?? LOCAL APPIUM INSPECTOR
+===================================================== */
+
+app.post("/appium/inspector", (req, res) => {
+  let cmd = "";
+
+  if (process.platform === "win32") {
+    cmd = `"${process.env.LOCALAPPDATA}\\Programs\\Appium Inspector\\Appium Inspector.exe"`;
+  } else if (process.platform === "darwin") {
+    cmd = "open -a 'Appium Inspector'";
+  } else {
+    cmd = "appium-inspector";
+  }
+
+  exec(cmd, (err) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        error: "Appium Inspector not found",
+      });
+    }
+
+    res.json({ success: true });
+  });
+});
+
+/* =====================================================
+   ?? AGENT CONTROL
+===================================================== */
+
+app.post("/agent/start", (req, res) => {
+  if (agentProcess) {
+    return res.json({
+      success: true,
+      message: "Agent already running",
+    });
+  }
+
+  agentProcess = spawn("npm", ["run", "agent"], {
+    shell: true,
+    cwd: process.cwd(),
+    detached: true,
+    stdio: "ignore",
+  });
+
+  agentProcess.unref();
+
+  console.log("Local Agent started (npm run agent)");
+
+  res.json({ success: true });
+});
+
+app.get("/agent/status", (req, res) => {
+  res.json({
+    running: Boolean(agentProcess),
+  });
+});
+
+/* =====================================================
+   ?? START SERVER
+===================================================== */
 
 app.listen(PORT, () => {
   console.log(
     `Mobile Automation Helper running at http://localhost:${PORT}`
   );
 });
-/**
- * =====================================================
- * ✅ LIVE DEVICE SCREEN STREAM (SCRCPY)
- * =====================================================
- */
-import { spawn } from "child_process";
-
-app.get("/device/stream", (req, res) => {
-  res.writeHead(200, {
-    "Content-Type": "multipart/x-mixed-replace; boundary=frame",
-    "Cache-Control": "no-cache",
-    "Connection": "close",
-    "Pragma": "no-cache",
-  });
-
-  const scrcpy = spawn("scrcpy", [
-    "--no-control",
-    "--no-audio",
-    "--max-size=720",
-    "--output-format=mjpeg",
-    "-"
-  ]);
-
-  scrcpy.stdout.on("data", (chunk) => {
-    res.write(`--frame\r\n`);
-    res.write(`Content-Type: image/jpeg\r\n\r\n`);
-    res.write(chunk);
-    res.write("\r\n");
-  });
-
-  scrcpy.on("close", () => {
-    res.end();
-  });
-
-  req.on("close", () => {
-    scrcpy.kill("SIGINT");
-  });
-});
-
-/**
- * =====================================================
- * ✅ OPEN LOCAL APPIUM INSPECTOR (ROBUST)
- * =====================================================
- */
-app.post("/appium/inspector", (req, res) => {
-  let inspectorCmd = "";
-
-  if (process.platform === "win32") {
-    inspectorCmd =
-      `"${process.env.LOCALAPPDATA}\\Programs\\Appium Inspector\\Appium Inspector.exe"`;
-  } else if (process.platform === "darwin") {
-    inspectorCmd = "open -a 'Appium Inspector'";
-  } else {
-    inspectorCmd = "appium-inspector";
-  }
-
-  console.log("Launching Appium Inspector:", inspectorCmd);
-
-  exec(inspectorCmd, (err) => {
-    if (err) {
-      console.error("Inspector launch failed:", err.message);
-      return res.status(500).json({
-        success: false,
-        error:
-          "Appium Inspector not found. Please install Appium Inspector first.",
-      });
-    }
-
-    return res.json({
-      success: true,
-      message: "Local Appium Inspector launched",
-    });
-  });
-});
-/**
- * =====================================================
- * ✅ START SCRCPY (SCREEN MIRROR)
- * =====================================================
- */
-app.post("/mirror/start", (req, res) => {
-  exec("scrcpy --no-control", (err) => {
-    if (err) {
-      return res.json({
-        success: false,
-        error: "Failed to start scrcpy",
-      });
-    }
-
-    return res.json({
-      success: true,
-      message: "Screen mirroring started",
-    });
-  });
-});
-

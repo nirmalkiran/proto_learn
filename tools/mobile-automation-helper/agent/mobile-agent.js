@@ -1,86 +1,116 @@
-import { remote } from "webdriverio";
-
-let driver = null;
-let recording = false;
-let steps = [];
+import { spawn } from "child_process";
 
 /* =====================================================
-   🔌 APPIUM SESSION
-   ===================================================== */
+   INTERNAL STATE
+===================================================== */
 
-async function ensureSession() {
-  if (driver) return;
+let recording = false;
+let eventProcess = null;
+let recordedSteps = [];
+let lastEmit = 0;
 
-  driver = await remote({
-    hostname: "127.0.0.1",
-    port: 4723,
-    path: "/wd/hub",
-    capabilities: {
-      platformName: "Android",
-      "appium:automationName": "UiAutomator2",
-      "appium:deviceName": "emulator-5554",
-      "appium:noReset": true,
-    },
-  });
+const listeners = new Set();
+
+/* =====================================================
+   UTIL
+===================================================== */
+
+function emit(event) {
+  listeners.forEach((fn) => fn(event));
 }
 
 /* =====================================================
-   🎥 START RECORDING
-   ===================================================== */
+   START RECORDING
+===================================================== */
 
-export async function startRecording() {
-  await ensureSession();
-  steps = [];
+export function startRecording() {
+  if (recording) return;
+
   recording = true;
+  recordedSteps = [];
+  lastEmit = 0;
 
-  driver.on("command", (cmd) => {
+  console.log("Recording started");
+
+  // Use basic adb input monitor (stable)
+  eventProcess = spawn("adb", ["shell", "getevent", "-l"]);
+
+  eventProcess.stdout.on("data", (data) => {
     if (!recording) return;
 
-    if (
-      cmd.method === "POST" &&
-      cmd.endpoint.includes("/element") &&
-      cmd.body?.value
-    ) {
-      steps.push({
+    const now = Date.now();
+
+    // debounce to avoid noise
+    if (now - lastEmit < 800) return;
+
+    const output = data.toString();
+
+    // VERY basic tap detection (Phase-1)
+    if (output.includes("BTN_TOUCH")) {
+      lastEmit = now;
+
+      const step = {
         type: "tap",
-        locator: `${cmd.body.using}=${cmd.body.value}`,
+        description: "Tap on screen",
+        locator: "~TODO_locator",
         timestamp: Date.now(),
-      });
+      };
+
+      recordedSteps.push(step);
+      emit(step);
     }
+  });
+
+  eventProcess.on("error", (e) => {
+    console.error("ADB getevent error:", e.message);
   });
 }
 
 /* =====================================================
-   ⏹ STOP RECORDING
-   ===================================================== */
+   STOP RECORDING
+===================================================== */
 
-export async function stopRecording() {
+export function stopRecording() {
   recording = false;
-  return steps;
+
+  if (eventProcess) {
+    eventProcess.kill("SIGINT");
+    eventProcess = null;
+  }
+
+  console.log("🛑 Recording stopped");
+  return recordedSteps;
 }
 
 /* =====================================================
-   ▶ REPLAY STEPS
-   ===================================================== */
+   REPLAY RECORDING (PHASE-1)
+===================================================== */
 
-export async function replayRecording(recordedSteps) {
-  await ensureSession();
+export async function replayRecording(steps = []) {
+  console.log("▶ Replaying steps:", steps.length);
 
-  for (const step of recordedSteps) {
-    if (step.type === "tap") {
-      const [using, value] = step.locator.split("=");
-      await driver.$({ [using]: value }).click();
-    }
+  for (const step of steps) {
+    console.log("Replaying:", step.description);
+    await new Promise((r) => setTimeout(r, 700));
   }
 }
 
 /* =====================================================
-   📊 STATUS
-   ===================================================== */
+   STATUS
+===================================================== */
 
 export function getRecordingStatus() {
   return {
     recording,
-    stepCount: steps.length,
+    steps: recordedSteps.length,
   };
+}
+
+/* =====================================================
+   SUBSCRIBE (SSE)
+===================================================== */
+
+export function subscribe(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }

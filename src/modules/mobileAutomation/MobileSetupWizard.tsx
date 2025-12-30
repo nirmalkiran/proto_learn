@@ -49,6 +49,8 @@ export default function MobileSetupWizard({
     appium: { status: "pending", message: "Not checked" },
     emulator: { status: "pending", message: "Not checked" },
     device: { status: "pending", message: "Not checked" },
+    agent: { status: "pending", message: "Not checked" },
+    backend: { status: "pending", message: "Not checked" },
   });
 
   const update = (key: string, value: CheckResult) =>
@@ -153,6 +155,40 @@ export default function MobileSetupWizard({
     });
     setTimeout(checkAppium, 3000);
   };
+  const startBackend = async () => {
+    toast.info("Starting backend...");
+    try {
+      await fetch(`${AGENT_URL}/backend/start`, { method: "POST" });
+      update("backend", {
+        status: "success",
+        message: "Backend running",
+      });
+      toast.success("Backend started");
+    } catch {
+      update("backend", {
+        status: "error",
+        message: "Failed to start backend",
+      });
+      toast.error("Backend failed");
+    }
+  };
+  const startAgent = async () => {
+    toast.info("Starting local agent...");
+    try {
+      await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
+      update("agent", {
+        status: "success",
+        message: "Agent running",
+      });
+      toast.success("Agent started");
+    } catch {
+      update("agent", {
+        status: "error",
+        message: "Failed to start agent",
+      });
+      toast.error("Agent failed");
+    }
+  };
 
   /* =====================================================
    * START EMULATOR
@@ -185,10 +221,13 @@ export default function MobileSetupWizard({
     );
 
   const items = [
+    { key: "backend", label: "Backend Server", icon: Server },
+    { key: "agent", label: "Local Agent", icon: Server },
     { key: "appium", label: "Appium Server", icon: Server },
     { key: "emulator", label: "Android Emulator", icon: Terminal },
     { key: "device", label: "ADB Device", icon: Smartphone },
   ];
+
 
   return (
     <div className="space-y-6">
@@ -200,16 +239,28 @@ export default function MobileSetupWizard({
         </Button>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Button variant="outline" onClick={startEmulator}>
           <Power className="mr-2 h-4 w-4" />
           Start Emulator
         </Button>
+
         <Button variant="outline" onClick={startAppium}>
           <Power className="mr-2 h-4 w-4" />
           Start Appium
         </Button>
+
+        <Button variant="outline" onClick={startBackend}>
+          <Power className="mr-2 h-4 w-4" />
+          Start Backend
+        </Button>
+
+        <Button variant="outline" onClick={startAgent}>
+          <Power className="mr-2 h-4 w-4" />
+          Start Agent
+        </Button>
       </div>
+
 
       <Card>
         <CardHeader>

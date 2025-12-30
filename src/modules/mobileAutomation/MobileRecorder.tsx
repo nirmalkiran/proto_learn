@@ -1,20 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Play, Square, Trash2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Play,
-  Trash2,
-  Smartphone,
-  Circle,
-  Square,
-} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import DeviceSelector from "./DeviceSelector";
 
@@ -22,113 +12,164 @@ import DeviceSelector from "./DeviceSelector";
  * TYPES
  * ===================================================== */
 
-export type ActionType = "tap" | "input" | "scroll" | "wait" | "assert";
+export type ActionType =
+  | "tap"
+  | "input"
+  | "scroll"
+  | "wait"
+  | "assert";
 
 interface RecordedAction {
   id: string;
   type: ActionType;
+  description: string;
   locator: string;
   value?: string;
-  timestamp: number;
 }
 
-interface SelectedDevice {
-  device: string;
-  os_version: string;
-  real_mobile: boolean;
-}
+/* =====================================================
+ * CONSTANTS
+ * ===================================================== */
 
-interface RecorderProps {
-  setupState: {
-    appium: boolean;
-    emulator: boolean;
-    device: boolean;
-  };
-}
+const AGENT_URL = "http://localhost:3001";
 
 /* =====================================================
  * COMPONENT
  * ===================================================== */
 
-export default function MobileRecorder({ setupState }: RecorderProps) {
-  const [isRecording, setIsRecording] = useState(false);
+export default function MobileRecorder({
+  setupState,
+}: {
+  setupState: {
+    appium: boolean;
+    emulator: boolean;
+    device: boolean;
+  };
+}) {
+  const [recording, setRecording] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
-  const [selectedDevice, setSelectedDevice] =
-    useState<SelectedDevice | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<any>(null);
 
   /* =====================================================
-   * RECORDING CONTROLS
+   * 🔴 LIVE EVENT STREAM FROM APPIUM AGENT
    * ===================================================== */
 
-  const startRecording = () => {
+  useEffect(() => {
+    if (!recording) return;
+
+    const source = new EventSource(`${AGENT_URL}/recording/events`);
+
+    source.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+
+        // For now: raw tap → later mapped to locator
+        setActions((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            type: "tap",
+            description: "Tap on screen",
+            locator: "//TODO: resolve locator",
+          },
+        ]);
+      } catch (err) {
+        console.error("Invalid event data", err);
+      }
+    };
+
+    source.onerror = () => {
+      source.close();
+    };
+
+    return () => source.close();
+  }, [recording]);
+
+  /* =====================================================
+   * ▶ START RECORDING
+   * ===================================================== */
+
+  const startRecording = async () => {
     if (!setupState.appium || !setupState.emulator || !setupState.device) {
-      toast.error("Please complete Setup before recording");
+      toast.error("Complete setup before recording");
       return;
     }
 
     if (!selectedDevice) {
-      toast.error("Please select a device");
+      toast.error("Select a device first");
       return;
     }
 
-    setActions([]);
-    setIsRecording(true);
+    try {
+      await fetch(`${AGENT_URL}/recording/start`, {
+        method: "POST",
+      });
 
-    toast.success("Recording started", {
-      description: `Connected to ${selectedDevice.device}`,
-    });
-  };
+      setActions([]);
+      setRecording(true);
 
-  const stopRecording = () => {
-    setIsRecording(false);
-
-    toast.success("Recording stopped", {
-      description: `${actions.length} actions captured`,
-    });
-  };
-
-  /* =====================================================
-   * ACTION CAPTURE (SIMULATED FOR NOW)
-   * Real capture will come from Appium hooks later
-   * ===================================================== */
-
-  const captureAction = (type: ActionType) => {
-    if (!isRecording) return;
-
-    const newAction: RecordedAction = {
-      id: crypto.randomUUID(),
-      type,
-      locator: "//android.widget.View", // placeholder
-      timestamp: Date.now(),
-    };
-
-    setActions((prev) => [...prev, newAction]);
-  };
-
-  const removeAction = (index: number) => {
-    setActions((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  /* =====================================================
-   * REPLAY TEST
-   * ===================================================== */
-
-  const replayTest = async () => {
-    if (actions.length === 0) {
-      toast.error("No actions to replay");
-      return;
+      toast.success("Recording started", {
+        description: `Connected to ${selectedDevice.name || selectedDevice.device
+          }`,
+      });
+    } catch {
+      toast.error("Failed to start recording");
     }
-
-    setIsRunning(true);
-    toast.info("Replaying recorded steps...");
-
-    // Placeholder – will call agent/Appium later
-    setTimeout(() => {
-      setIsRunning(false);
-      toast.success("Execution completed");
-    }, 2000);
   };
+
+  /* =====================================================
+   * ⏹ STOP RECORDING
+   * ===================================================== */
+
+  const stopRecording = async () => {
+    try {
+      await fetch(`${AGENT_URL}/recording/stop`, {
+        method: "POST",
+      });
+
+      setRecording(false);
+
+      toast.success("Recording stopped", {
+        description: `${actions.length} actions captured`,
+      });
+    } catch {
+      toast.error("Failed to stop recording");
+    }
+  };
+
+  /* =====================================================
+   * GENERATED SCRIPT (APPIUM STYLE)
+   * ===================================================== */
+
+  const generatedScript = useMemo(() => {
+    if (!actions.length) return "";
+
+    return `// Auto-generated by Mobile Recorder
+// Platform: Android (Appium)
+
+describe("Recorded Mobile Test", () => {
+  it("should replay recorded steps", async () => {
+${actions
+        .map((a) => {
+          switch (a.type) {
+            case "tap":
+              return `    await driver.$("${a.locator}").click();`;
+            case "input":
+              return `    await driver.$("${a.locator}").setValue("${a.value}");`;
+            case "scroll":
+              return `    // scroll action`;
+            case "wait":
+              return `    await driver.pause(1000);`;
+            case "assert":
+              return `    await expect(driver.$("${a.locator}")).toBeDisplayed();`;
+            default:
+              return "";
+          }
+        })
+        .join("\n")}
+  });
+});`;
+  }, [actions]);
 
   /* =====================================================
    * UI
@@ -141,43 +182,13 @@ export default function MobileRecorder({ setupState }: RecorderProps) {
         <div>
           <h2 className="text-xl font-bold">Mobile Recorder</h2>
           <p className="text-sm text-muted-foreground">
-            Record once, replay anytime
+            Record actions on local emulator or device
           </p>
         </div>
 
-        <Badge variant={isRecording ? "destructive" : "secondary"}>
-          {isRecording ? "Recording" : "Idle"}
-        </Badge>
-      </div>
-
-      {/* DEVICE SELECTION */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Smartphone className="h-5 w-5" />
-            Select Device
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DeviceSelector onSelect={setSelectedDevice} />
-
-          {selectedDevice && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Selected:{" "}
-              <strong>
-                {selectedDevice.device} (Android{" "}
-                {selectedDevice.os_version})
-              </strong>
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* RECORD CONTROLS */}
-      <div className="flex gap-3">
-        {!isRecording ? (
+        {!recording ? (
           <Button onClick={startRecording}>
-            <Circle className="mr-2 h-4 w-4 text-red-500" />
+            <Play className="mr-2 h-4 w-4" />
             Start Recording
           </Button>
         ) : (
@@ -188,81 +199,124 @@ export default function MobileRecorder({ setupState }: RecorderProps) {
         )}
       </div>
 
-      {/* QUICK ACTION SIMULATION (FOR NOW) */}
-      {isRecording && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Simulate Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="flex gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              onClick={() => captureAction("tap")}
-            >
-              + Tap
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => captureAction("input")}
-            >
-              + Input
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => captureAction("scroll")}
-            >
-              + Scroll
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => captureAction("wait")}
-            >
-              + Wait
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* RECORDED ACTIONS */}
+      {/* DEVICE SELECTOR */}
       <Card>
         <CardHeader>
-          <CardTitle>Recorded Steps</CardTitle>
+          <CardTitle>Select Device</CardTitle>
         </CardHeader>
         <CardContent>
-          {actions.length === 0 && (
-            <p className="text-muted-foreground">
-              No actions recorded yet
+          <DeviceSelector onSelect={setSelectedDevice} />
+          {selectedDevice && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Selected:{" "}
+              <strong>
+                {selectedDevice.name || selectedDevice.device}
+              </strong>
             </p>
           )}
-
-          {actions.map((a, i) => (
-            <div
-              key={a.id}
-              className="flex justify-between items-center p-2 border rounded mb-2"
-            >
-              <span className="text-sm">
-                {i + 1}. {a.type} → {a.locator}
-              </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => removeAction(i)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-
-          <Button
-            className="w-full mt-4"
-            onClick={replayTest}
-            disabled={isRunning}
-          >
-            <Play className="mr-2 h-4 w-4" />
-            Replay Test
-          </Button>
         </CardContent>
       </Card>
+
+      {/* MAIN GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* DEVICE PREVIEW */}
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle>Device Preview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="border rounded-lg h-[500px] flex flex-col items-center justify-center bg-muted gap-3">
+              <span className="text-sm text-muted-foreground text-center">
+                Live device mirror (Appium + scrcpy)
+              </span>
+
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("http://localhost:3001/device/mirror", {
+                      method: "POST",
+                    });
+                    const data = await res.json();
+
+                    if (!data.success) throw new Error();
+                    toast.success("Device mirror started");
+                  } catch {
+                    toast.error("Failed to start device mirror");
+                  }
+                }}
+              >
+                Open Device Mirror
+              </Button>
+
+              <p className="text-xs text-muted-foreground text-center">
+                A native window will open (same as Katalon)
+              </p>
+            </div>
+
+          </CardContent>
+        </Card>
+
+        {/* ACTIONS + SCRIPT */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* CAPTURED ACTIONS */}
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Captured Actions{" "}
+                <Badge variant="secondary">{actions.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {actions.length === 0 ? (
+                <p className="text-muted-foreground">
+                  No actions recorded yet
+                </p>
+              ) : (
+                actions.map((a, i) => (
+                  <div
+                    key={a.id}
+                    className="flex justify-between items-center p-2 border rounded mb-2"
+                  >
+                    <span>
+                      {i + 1}. {a.description}
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() =>
+                        setActions((prev) =>
+                          prev.filter((x) => x.id !== a.id)
+                        )
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          {/* GENERATED SCRIPT */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Generated Script</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {generatedScript ? (
+                <pre className="bg-black text-white p-4 rounded text-xs overflow-x-auto">
+                  {generatedScript}
+                </pre>
+              ) : (
+                <p className="text-muted-foreground">
+                  Script will appear after recording
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
