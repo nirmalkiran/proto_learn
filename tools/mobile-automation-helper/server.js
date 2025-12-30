@@ -6,14 +6,23 @@ import express from "express";
 import cors from "cors";
 import { exec, spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 
 import {
   startRecording,
   stopRecording,
   replayRecording,
   getRecordingStatus,
+  getRecordedSteps,
   subscribe,
+  captureScreenshot,
+  getDeviceInfo,
 } from "./agent/mobile-agent.js";
+
+// Ensure screenshots directory exists
+if (!fs.existsSync("./screenshots")) {
+  fs.mkdirSync("./screenshots", { recursive: true });
+}
 
 /* =====================================================
    APP INIT
@@ -177,20 +186,51 @@ app.get("/recording/status", (req, res) => {
   res.json(getRecordingStatus());
 });
 
+app.get("/recording/steps", (req, res) => {
+  res.json({ success: true, steps: getRecordedSteps() });
+});
+
 /* =====================================================
-   ?? RECORDING EVENTS (SSE)
+   📷 SCREENSHOT & DEVICE INFO
+===================================================== */
+
+app.post("/device/screenshot", async (req, res) => {
+  try {
+    const path = await captureScreenshot();
+    res.json({ success: true, path });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+/* =====================================================
+   🔴 RECORDING EVENTS (SSE)
 ===================================================== */
 
 app.get("/recording/events", (req, res) => {
+  console.log("[SERVER] SSE client connected");
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  // Send initial heartbeat
+  res.write(": heartbeat\n\n");
 
   const unsubscribe = subscribe((event) => {
+    console.log("[SERVER] Sending SSE event:", event.type);
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   });
 
+  // Keep connection alive with periodic heartbeats
+  const heartbeat = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 15000);
+
   req.on("close", () => {
+    console.log("[SERVER] SSE client disconnected");
+    clearInterval(heartbeat);
     unsubscribe();
     res.end();
   });
