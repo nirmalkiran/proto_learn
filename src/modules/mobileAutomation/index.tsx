@@ -138,10 +138,10 @@ export default function MobileAutomation() {
           />
         </TabsContent>
 
-        {/* ================= RECORDER ================= */}
         <TabsContent value="recorder" >
           <MobileRecorder
             setupState={setupState}
+            setSetupState={setSetupState}
           />
         </TabsContent>
 

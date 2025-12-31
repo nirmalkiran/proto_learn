@@ -47,12 +47,14 @@ const AGENT_URL = "http://localhost:3001";
 
 export default function MobileRecorder({
   setupState,
+  setSetupState,
 }: {
   setupState: {
     appium: boolean;
     emulator: boolean;
     device: boolean;
   };
+  setSetupState?: (updater: any) => void;
 }) {
   const [recording, setRecording] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
@@ -159,10 +161,66 @@ export default function MobileRecorder({
    * ▶ START RECORDING
    * ===================================================== */
 
+  const fetchJsonWithTimeout = async (url: string, timeoutMs = 2500) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      return { ok: res.ok, json: await res.json() };
+    } finally {
+      clearTimeout(id);
+    }
+  };
+
+  const verifySetup = async () => {
+    try {
+      const [health, appium, device, emulator] = await Promise.all([
+        fetchJsonWithTimeout(`${AGENT_URL}/health`),
+        fetchJsonWithTimeout(`${AGENT_URL}/appium/status`),
+        fetchJsonWithTimeout(`${AGENT_URL}/device/check`),
+        fetchJsonWithTimeout(`${AGENT_URL}/emulator/status`),
+      ]);
+
+      if (!health.ok) return null;
+
+      const verified = {
+        appium: Boolean(appium.json?.running),
+        device: Boolean(device.json?.connected),
+        // Emulator is informative only (recording can also run on real devices)
+        emulator: Boolean(emulator.json?.running),
+      };
+
+      if (setSetupState) {
+        setSetupState((prev: any) => ({ ...prev, ...verified }));
+      }
+
+      return verified;
+    } catch {
+      return null;
+    }
+  };
+
   const startRecording = async () => {
-    if (!setupState.appium || !setupState.emulator || !setupState.device) {
-      toast.error("Complete setup before recording");
-      return;
+    // Recording relies on ADB input events, so we only require a connected device.
+    let canRecord = setupState.device;
+
+    if (!canRecord) {
+      const verified = await verifySetup();
+      canRecord = Boolean(verified?.device);
+
+      if (!verified) {
+        toast.error("Complete setup before recording", {
+          description: "Local agent not reachable at http://localhost:3001",
+        });
+        return;
+      }
+
+      if (!canRecord) {
+        toast.error("Complete setup before recording", {
+          description: "No ADB device detected",
+        });
+        return;
+      }
     }
 
     if (!selectedDevice) {
