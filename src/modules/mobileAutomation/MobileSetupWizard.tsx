@@ -149,31 +149,60 @@ export default function MobileSetupWizard({
 
   const startAppium = async () => {
     toast.info("Starting Appium...");
-    await fetch(`${AGENT_URL}/terminal`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "appium:start" }),
-    });
-    setTimeout(checkAppium, 3000);
+    try {
+      const res = await fetch(`${AGENT_URL}/terminal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "appium:start" }),
+      });
+
+      if (!res.ok) throw new Error("Local helper not reachable");
+      setTimeout(checkAppium, 3000);
+    } catch (e) {
+      toast.error("Cannot start Appium", {
+        description: "Local helper not reachable at http://localhost:3001",
+      });
+      update("appium", { status: "error", message: "Local helper offline" });
+      setSetupState((p: any) => ({ ...p, appium: false }));
+    }
   };
 
   const startEmulator = async () => {
     toast.info("Starting emulator...");
-    await fetch(`${AGENT_URL}/emulator/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avd: "Pixel_nirmal" }),
-    });
-    setTimeout(checkEmulator, 8000);
+    try {
+      const res = await fetch(`${AGENT_URL}/emulator/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avd: "Pixel_nirmal" }),
+      });
+
+      if (!res.ok) throw new Error("Local helper not reachable");
+      setTimeout(checkEmulator, 8000);
+    } catch (e) {
+      toast.error("Cannot start emulator", {
+        description: "Local helper not reachable at http://localhost:3001",
+      });
+      update("emulator", { status: "error", message: "Local helper offline" });
+      setSetupState((p: any) => ({ ...p, emulator: false }));
+    }
   };
 
   const startAgent = async () => {
     toast.info("Starting local agent...");
-    await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
-    update("agent", {
-      status: "success",
-      message: "Agent running",
-    });
+    try {
+      const res = await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
+      if (!res.ok) throw new Error("Local helper not reachable");
+
+      update("agent", {
+        status: "success",
+        message: "Agent running",
+      });
+    } catch (e) {
+      toast.error("Cannot start local agent", {
+        description: "Local helper not reachable at http://localhost:3001",
+      });
+      update("agent", { status: "error", message: "Local helper offline" });
+    }
   };
 
   const startBackend = async () => {
