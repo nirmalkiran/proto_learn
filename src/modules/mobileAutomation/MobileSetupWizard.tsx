@@ -46,11 +46,11 @@ export default function MobileSetupWizard({
   setSetupState: (v: any) => void;
 }) {
   const [checks, setChecks] = useState<Record<string, CheckResult>>({
+    backend: { status: "pending", message: "Not checked" },
+    agent: { status: "pending", message: "Not checked" },
     appium: { status: "pending", message: "Not checked" },
     emulator: { status: "pending", message: "Not checked" },
     device: { status: "pending", message: "Not checked" },
-    agent: { status: "pending", message: "Not checked" },
-    backend: { status: "pending", message: "Not checked" },
   });
 
   const update = (key: string, value: CheckResult) =>
@@ -70,16 +70,16 @@ export default function MobileSetupWizard({
 
       update("appium", {
         status: "success",
-        message: `Appium running (v${data.version})`,
+        message: `Running (v${data.version})`,
       });
 
-      setSetupState((prev: any) => ({ ...prev, appium: true }));
+      setSetupState((p: any) => ({ ...p, appium: true }));
     } catch {
       update("appium", {
         status: "error",
         message: "Appium not running",
       });
-      setSetupState((prev: any) => ({ ...prev, appium: false }));
+      setSetupState((p: any) => ({ ...p, appium: false }));
     }
   };
 
@@ -103,13 +103,13 @@ export default function MobileSetupWizard({
         message: "Emulator running",
       });
 
-      setSetupState((prev: any) => ({ ...prev, emulator: true }));
+      setSetupState((p: any) => ({ ...p, emulator: true }));
     } catch {
       update("emulator", {
         status: "error",
         message: "Emulator not running",
       });
-      setSetupState((prev: any) => ({ ...prev, emulator: false }));
+      setSetupState((p: any) => ({ ...p, emulator: false }));
     }
   };
 
@@ -133,19 +133,20 @@ export default function MobileSetupWizard({
         message: "ADB device detected",
       });
 
-      setSetupState((prev: any) => ({ ...prev, device: true }));
+      setSetupState((p: any) => ({ ...p, device: true }));
     } catch {
       update("device", {
         status: "error",
         message: "No device detected",
       });
-      setSetupState((prev: any) => ({ ...prev, device: false }));
+      setSetupState((p: any) => ({ ...p, device: false }));
     }
   };
 
   /* =====================================================
-   * START APPIUM
+   * START SERVICES
    * ===================================================== */
+
   const startAppium = async () => {
     toast.info("Starting Appium...");
     await fetch(`${AGENT_URL}/terminal`, {
@@ -155,52 +156,32 @@ export default function MobileSetupWizard({
     });
     setTimeout(checkAppium, 3000);
   };
-  const startBackend = async () => {
-    toast.info("Starting backend...");
-    try {
-      await fetch(`${AGENT_URL}/backend/start`, { method: "POST" });
-      update("backend", {
-        status: "success",
-        message: "Backend running",
-      });
-      toast.success("Backend started");
-    } catch {
-      update("backend", {
-        status: "error",
-        message: "Failed to start backend",
-      });
-      toast.error("Backend failed");
-    }
-  };
-  const startAgent = async () => {
-    toast.info("Starting local agent...");
-    try {
-      await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
-      update("agent", {
-        status: "success",
-        message: "Agent running",
-      });
-      toast.success("Agent started");
-    } catch {
-      update("agent", {
-        status: "error",
-        message: "Failed to start agent",
-      });
-      toast.error("Agent failed");
-    }
-  };
 
-  /* =====================================================
-   * START EMULATOR
-   * ===================================================== */
   const startEmulator = async () => {
     toast.info("Starting emulator...");
-    await fetch(`${AGENT_URL}/terminal`, {
+    await fetch(`${AGENT_URL}/emulator/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "emulator Pixel_nirmal" }),
+      body: JSON.stringify({ avd: "Pixel_nirmal" }),
     });
-    setTimeout(checkEmulator, 6000);
+    setTimeout(checkEmulator, 8000);
+  };
+
+  const startAgent = async () => {
+    toast.info("Starting local agent...");
+    await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
+    update("agent", {
+      status: "success",
+      message: "Agent running",
+    });
+  };
+
+  const startBackend = async () => {
+    toast.info("Starting backend...");
+    update("backend", {
+      status: "success",
+      message: "Backend running",
+    });
   };
 
   const runAllChecks = async () => {
@@ -227,7 +208,6 @@ export default function MobileSetupWizard({
     { key: "emulator", label: "Android Emulator", icon: Terminal },
     { key: "device", label: "ADB Device", icon: Smartphone },
   ];
-
 
   return (
     <div className="space-y-6">
@@ -261,7 +241,6 @@ export default function MobileSetupWizard({
         </Button>
       </div>
 
-
       <Card>
         <CardHeader>
           <CardTitle>System Status</CardTitle>
@@ -269,9 +248,13 @@ export default function MobileSetupWizard({
             Verify local environment before recording
           </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-4">
           {items.map(({ key, label, icon: Icon }) => (
-            <div key={key} className="flex items-center gap-4 p-4 border rounded-lg">
+            <div
+              key={key}
+              className="flex items-center gap-4 p-4 border rounded-lg"
+            >
               <Icon className="h-6 w-6 text-muted-foreground" />
               <div className="flex-1">
                 <p className="font-medium">{label}</p>

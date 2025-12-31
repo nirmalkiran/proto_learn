@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -8,15 +8,12 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, ExternalLink, Smartphone } from "lucide-react";
+import { Copy, ExternalLink, Smartphone, Download } from "lucide-react";
 import { toast } from "sonner";
 
-/**
- * LOCAL APPIUM INSPECTOR
- * - Works with local Appium + Emulator / Real Device
- * - Inspector is opened via local agent
- * - QA pastes inspected values to generate locators
- */
+/* =====================================================
+   TYPES
+===================================================== */
 
 interface SelectedElement {
   class: string;
@@ -26,14 +23,35 @@ interface SelectedElement {
 }
 
 const AGENT_URL = "http://localhost:3001";
+ const projectId = "mobile-no-code-project";
+/* =====================================================
+   COMPONENT
+===================================================== */
 
 export default function MobileInspector() {
-  const [selectedNode, setSelectedNode] = useState<SelectedElement | null>(null);
+  /* ---------- Inspector ---------- */
+  const [selectedNode, setSelectedNode] =
+    useState<SelectedElement | null>(null);
   const [opening, setOpening] = useState(false);
 
+  /* ---------- Device Config ---------- */
+  const [config, setConfig] = useState({
+    appiumHost: "127.0.0.1",
+    appiumPort: "4723",
+    deviceName: "emulator-5554",
+    platformVersion: "14",
+    //appPath: "/path/to/app.apk",
+    appPackage: "com.example.app",
+    appActivity: "com.example.app.MainActivity",
+  });
+
+  const updateConfig = (k: string, v: string) =>
+    setConfig((p) => ({ ...p, [k]: v }));
+
   /* =====================================================
-   * 🔹 OPEN LOCAL APPIUM INSPECTOR
-   * ===================================================== */
+     OPEN LOCAL APPIUM INSPECTOR
+  ===================================================== */
+
   const openLocalInspector = async () => {
     try {
       setOpening(true);
@@ -41,9 +59,7 @@ export default function MobileInspector() {
         method: "POST",
       });
       const data = await res.json();
-
       if (!data.success) throw new Error();
-
       toast.success("Local Appium Inspector opened");
     } catch {
       toast.error("Failed to open Local Appium Inspector");
@@ -53,8 +69,9 @@ export default function MobileInspector() {
   };
 
   /* =====================================================
-   * 🔹 LOCATOR GENERATION (STABLE-FIRST)
-   * ===================================================== */
+     LOCATOR GENERATION
+  ===================================================== */
+
   const generateLocators = (node: SelectedElement) => {
     const locators: { type: string; value: string; confidence: string }[] = [];
 
@@ -96,44 +113,94 @@ export default function MobileInspector() {
     return locators;
   };
 
-  const copyToClipboard = (text: string) => {
+  /* =====================================================
+     GENERATED CAPS & ENV
+  ===================================================== */
+
+  const capabilities = useMemo(
+    () => ({
+      platformName: "Android",
+      "appium:automationName": "UiAutomator2",
+      "appium:deviceName": config.deviceName,
+      "appium:platformVersion": config.platformVersion,
+      //"appium:app": config.appPath,
+      "appium:appPackage": config.appPackage,
+      "appium:appActivity": config.appActivity,
+      "appium:noReset": true,
+      "appium:newCommandTimeout": 300,
+    }),
+    [config]
+  );
+
+  const envFile = useMemo(
+    () => `# Mobile Automation Environment
+APPIUM_HOST=${config.appiumHost}
+APPIUM_PORT=${config.appiumPort}
+DEVICE_NAME=${config.deviceName}
+PLATFORM_VERSION=${config.platformVersion}
+#APP_PATH=${config.appPath}
+APP_PACKAGE=${config.appPackage}
+APP_ACTIVITY=${config.appActivity}
+BACKEND_PORT=3001`,
+    [config]
+  );
+
+  const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Locator copied");
+    toast.success(`${label} copied`);
   };
 
-  /* =====================================================
-   * 🔹 UI
-   * ===================================================== */
+  const download = (content: string, name: string) => {
+    const blob = new Blob([content], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+  };
+
+const saveCapabilities = async () => {
+  try {
+    await fetch("http://localhost:3001/capabilities/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        capabilities,
+      }),
+    });
+
+    toast.success("Capabilities saved for this project");
+  } catch {
+    toast.error("Failed to save capabilities");
+  }
+};
+
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold">
-        Local Appium Inspector
-      </h2>
+      <h2 className="text-xl font-bold">Local Appium Inspector & Configuration</h2>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* LEFT: LOCAL INSPECTOR */}
+        {/* LEFT: INSPECTOR */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Smartphone className="h-5 w-5" />
-              Open Local Appium Inspector
+              Local Appium Inspector
             </CardTitle>
             <CardDescription>
-              Inspect UI elements from your local emulator or real device
+              Inspect UI elements from emulator or real device
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              How to use:
+              1. Start Appium & Emulator
               <br />
-              1. Start Appium & Emulator from Setup tab  
+              2. Click button below
               <br />
-              2. Click the button below  
+              3. Inspect element properties
               <br />
-              3. Inspect element properties in Appium Inspector  
-              <br />
-              4. Paste values on the right to generate locators
+              4. Paste values to generate locators
             </p>
 
             <Button
@@ -147,110 +214,149 @@ export default function MobileInspector() {
             </Button>
 
             <Badge variant="secondary">
-              Local • Emulator / Real Device
+              Local • Emulator / Device
             </Badge>
           </CardContent>
         </Card>
 
-        {/* RIGHT: LOCATOR GENERATOR */}
+        {/* RIGHT: DEVICE CONFIG */}
         <Card>
           <CardHeader>
-            <CardTitle>Generated Locators</CardTitle>
+            <CardTitle>Device Configuration</CardTitle>
             <CardDescription>
-              Paste element details from Local Appium Inspector
+              Appium capabilities setup
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
+          <CardContent className="grid grid-cols-2 gap-3">
+            {Object.entries(config).map(([k, v]) => (
               <input
-                className="w-full border rounded p-2 text-sm"
-                placeholder="Class (e.g. android.widget.Button)"
-                onChange={(e) =>
-                  setSelectedNode((prev) => ({
-                    ...prev,
-                    class: e.target.value,
-                  }) as SelectedElement)
-                }
+                key={k}
+                className="border rounded p-2 text-sm"
+                value={v}
+                onChange={(e) => updateConfig(k, e.target.value)}
+                placeholder={k}
               />
-
-              <input
-                className="w-full border rounded p-2 text-sm"
-                placeholder="Resource ID (best option)"
-                onChange={(e) =>
-                  setSelectedNode((prev) => ({
-                    ...prev,
-                    resourceId: e.target.value,
-                  }) as SelectedElement)
-                }
-              />
-
-              <input
-                className="w-full border rounded p-2 text-sm"
-                placeholder="Accessibility ID (content-desc)"
-                onChange={(e) =>
-                  setSelectedNode((prev) => ({
-                    ...prev,
-                    contentDesc: e.target.value,
-                  }) as SelectedElement)
-                }
-              />
-
-              <input
-                className="w-full border rounded p-2 text-sm"
-                placeholder="Visible text (optional)"
-                onChange={(e) =>
-                  setSelectedNode((prev) => ({
-                    ...prev,
-                    text: e.target.value,
-                  }) as SelectedElement)
-                }
-              />
-            </div>
-
-            {selectedNode?.class ? (
-              <div className="space-y-2">
-                <h4 className="font-medium">Suggested Locators</h4>
-
-                {generateLocators(selectedNode).map((loc, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-2 p-3 bg-zinc-950 rounded-lg"
-                  >
-                    <Badge
-                      variant={
-                        loc.confidence === "high"
-                          ? "default"
-                          : loc.confidence === "medium"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {loc.type}
-                    </Badge>
-
-                    <code className="flex-1 text-xs text-zinc-300 truncate">
-                      {loc.value}
-                    </code>
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => copyToClipboard(loc.value)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Enter element details to generate locators
-              </p>
-            )}
+            ))}
           </CardContent>
         </Card>
       </div>
+
+      {/* LOCATOR GENERATOR */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Generated Locators</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <input
+            className="w-full border rounded p-2 text-sm"
+            placeholder="Class (android.widget.Button)"
+            onChange={(e) =>
+              setSelectedNode((p) => ({ ...p, class: e.target.value }) as any)
+            }
+          />
+          <input
+            className="w-full border rounded p-2 text-sm"
+            placeholder="Resource ID"
+            onChange={(e) =>
+              setSelectedNode((p) => ({ ...p, resourceId: e.target.value }) as any)
+            }
+          />
+          <input
+            className="w-full border rounded p-2 text-sm"
+            placeholder="Accessibility ID"
+            onChange={(e) =>
+              setSelectedNode((p) => ({ ...p, contentDesc: e.target.value }) as any)
+            }
+          />
+          <input
+            className="w-full border rounded p-2 text-sm"
+            placeholder="Text"
+            onChange={(e) =>
+              setSelectedNode((p) => ({ ...p, text: e.target.value }) as any)
+            }
+          />
+
+          {selectedNode?.class &&
+            generateLocators(selectedNode).map((l, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 p-3 bg-zinc-950 rounded"
+              >
+                <Badge>{l.type}</Badge>
+                <code className="flex-1 text-xs text-zinc-300 truncate">
+                  {l.value}
+                </code>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => copyText(l.value, "Locator")}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+        </CardContent>
+      </Card>
+
+      {/* GENERATED CAPS */}
+      <Card>
+        <CardHeader className="flex flex-row justify-between items-center">
+          <CardTitle>Generated Capabilities</CardTitle>
+          <div className="flex gap-2">
+            <Button onClick={saveCapabilities} variant="outline" className="w-full">
+              Save Capabilities
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() =>
+                copyText(JSON.stringify(capabilities, null, 2), "Capabilities")
+              }
+            >
+            
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() =>
+                download(
+                  JSON.stringify(capabilities, null, 2),
+                  "capabilities.json"
+                )
+              }
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <pre className="bg-black text-white p-4 rounded text-xs overflow-x-auto">
+            {JSON.stringify(capabilities, null, 2)}
+          </pre>
+        </CardContent>
+      </Card>
+
+      {/* ENV */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Environment File (.env)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="bg-black text-white p-4 rounded text-xs overflow-x-auto">
+            {envFile}
+          </pre>
+          <Button
+            className="mt-3"
+            variant="outline"
+            onClick={() => download(envFile, ".env")}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Download .env
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }
