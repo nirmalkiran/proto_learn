@@ -229,6 +229,24 @@ export default function MobileRecorder({
     }
 
     try {
+      // Best-effort: open device mirror via scrcpy
+      try {
+        const mirrorRes = await fetch(`${AGENT_URL}/device/mirror`, {
+          method: "POST",
+        });
+        const mirrorData = await mirrorRes.json().catch(() => null);
+
+        if (!mirrorRes.ok || !mirrorData?.success) {
+          toast.error("Device mirror not available", {
+            description:
+              mirrorData?.error ||
+              "scrcpy is missing or failed to start. Recording will continue without mirror.",
+          });
+        }
+      } catch {
+        // Ignore (recording can still work without mirror)
+      }
+
       const response = await fetch(`${AGENT_URL}/recording/start`, {
         method: "POST",
       });

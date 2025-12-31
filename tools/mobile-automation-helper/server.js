@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 
 import {
   startRecording,
@@ -181,12 +181,24 @@ app.get("/recording/events", (req, res) => {
 ===================================================== */
 
 app.post("/device/mirror", (_, res) => {
-  exec("scrcpy --window-title Recorder", (err) => {
-    if (err) {
-      console.error("scrcpy failed:", err.message);
-      return res.json({ success: false });
+  // Validate scrcpy exists so we can return a clear error immediately.
+  exec("scrcpy --version", (checkErr) => {
+    if (checkErr) {
+      return res.status(400).json({
+        success: false,
+        code: "SCRCPY_MISSING",
+        error:
+          "scrcpy is not installed or not on PATH. Install scrcpy and restart the local helper.",
+      });
     }
-    res.json({ success: true });
+
+    const p = spawn("scrcpy", ["--window-title", "Recorder"], {
+      detached: true,
+      stdio: "ignore",
+    });
+
+    p.unref();
+    return res.json({ success: true });
   });
 });
 

@@ -26,23 +26,29 @@ export const useRoles = () => {
 
     try {
       const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .limit(1);
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user role:', error);
+      if (error) {
+        console.error("Error fetching user role:", error);
         toast({
           variant: "destructive",
           title: "Error",
           description: "Failed to fetch user role",
         });
+        // Safe fallback: treat user as regular user
+        setUserRole("user");
+        return;
       }
 
-      setUserRole(data?.role || null);
+      // If there is no row yet, default to 'user' (prevents PostgREST 406 caused by .single())
+      setUserRole((data?.[0]?.role as UserRole) ?? "user");
     } catch (error) {
-      console.error('Error fetching user role:', error);
+      console.error("Error fetching user role:", error);
+      // Safe fallback
+      setUserRole("user");
     } finally {
       setLoading(false);
     }
