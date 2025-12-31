@@ -7,6 +7,7 @@ import {
   stopRecording,
   replayRecording,
   getRecordingStatus,
+  getRecordedSteps,
   subscribe,
 } from "./agent/mobile-agent.js";
 
@@ -26,6 +27,12 @@ app.use(express.json());
 
 app.get("/health", (_, res) => {
   res.json({ ok: true });
+});
+
+// NOTE: A web page cannot start Node processes on your machine.
+// This endpoint exists so the UI can "ping" the helper and confirm it's running.
+app.post("/agent/start", (_, res) => {
+  res.json({ success: true, alreadyRunning: true });
 });
 
 /* =====================================================
@@ -147,9 +154,9 @@ app.get("/recording/status", (_, res) => {
   res.json(getRecordingStatus());
 });
 
-/* =====================================================
-   RECORDING EVENTS (SSE)
-===================================================== */
+app.get("/recording/steps", (_, res) => {
+  res.json({ success: true, steps: getRecordedSteps() });
+});
 
 app.get("/recording/events", (req, res) => {
   console.log("📡 SSE client connected");
