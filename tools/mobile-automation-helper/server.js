@@ -206,13 +206,33 @@ app.post("/device/mirror", (_, res) => {
    DEVICE SCREENSHOT (FOR EMBEDDED PREVIEW)
 ===================================================== */
 
-app.get("/device/screenshot", (_, res) => {
-  exec("adb exec-out screencap -p", { encoding: "buffer", maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
-    if (err) {
-      return res.status(500).json({ success: false, error: err.message });
+app.get("/device/screenshot", (req, res) => {
+  // First check if device is connected
+  exec("adb devices", (adbErr, adbOut) => {
+    if (adbErr) {
+      return res.status(500).json({ success: false, error: "ADB not available" });
     }
-    res.setHeader("Content-Type", "image/png");
-    res.send(stdout);
+    
+    const devices = adbOut.split("\n").filter((l) => l.includes("\tdevice"));
+    if (devices.length === 0) {
+      return res.status(400).json({ success: false, error: "No device connected" });
+    }
+
+    // Capture screenshot with larger buffer
+    exec("adb exec-out screencap -p", { encoding: "buffer", maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
+      if (err) {
+        console.error("Screenshot error:", err.message);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+      
+      if (!stdout || stdout.length === 0) {
+        return res.status(500).json({ success: false, error: "Empty screenshot" });
+      }
+      
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.send(stdout);
+    });
   });
 });
 

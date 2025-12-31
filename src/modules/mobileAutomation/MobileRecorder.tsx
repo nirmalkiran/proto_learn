@@ -212,10 +212,68 @@ export default function MobileRecorder({
   };
 
   /* =====================================================
+   * 📷 SCREENSHOT STREAM FOR EMBEDDED PREVIEW
+   * ===================================================== */
+
+  const startScreenshotStream = useCallback(() => {
+    if (screenshotIntervalRef.current) {
+      clearInterval(screenshotIntervalRef.current);
+    }
+
+    let failCount = 0;
+    const maxFails = 3;
+
+    const captureScreenshot = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const res = await fetch(`${AGENT_URL}/device/screenshot`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) {
+            const url = URL.createObjectURL(blob);
+            setMirrorImage((prev) => {
+              if (prev) URL.revokeObjectURL(prev);
+              return url;
+            });
+            setMirrorError(null);
+            failCount = 0;
+          }
+        } else {
+          const data = await res.json().catch(() => ({}));
+          console.warn("[Mirror] Screenshot failed:", data.error);
+          failCount++;
+        }
+      } catch (err) {
+        console.warn("[Mirror] Fetch error:", err);
+        failCount++;
+      }
+
+      if (failCount >= maxFails) {
+        setMirrorActive(false);
+        setMirrorError("Connection lost to device. Please reconnect.");
+        if (screenshotIntervalRef.current) {
+          clearInterval(screenshotIntervalRef.current);
+          screenshotIntervalRef.current = null;
+        }
+      }
+    };
+
+    // Capture immediately then every 200ms for smooth updates
+    captureScreenshot();
+    screenshotIntervalRef.current = setInterval(captureScreenshot, 200);
+  }, []);
+
+  /* =====================================================
    * 📱 CONNECT DEVICE - EMBEDDED MIRROR
    * ===================================================== */
 
-  const connectDevice = async () => {
+  const connectDevice = useCallback(async () => {
     if (!selectedDevice) {
       toast.error("Select a device first");
       return;
@@ -225,6 +283,18 @@ export default function MobileRecorder({
     setMirrorLoading(true);
 
     try {
+      // First check if local helper is running
+      const healthRes = await fetch(`${AGENT_URL}/health`, { 
+        signal: AbortSignal.timeout(3000) 
+      }).catch(() => null);
+      
+      if (!healthRes?.ok) {
+        setMirrorLoading(false);
+        setMirrorError("Local helper not running. Run: cd tools/mobile-automation-helper && npm start");
+        toast.error("Local helper not running");
+        return;
+      }
+
       // Verify device is connected
       const deviceRes = await fetch(`${AGENT_URL}/device/check`);
       const deviceData = await deviceRes.json();
@@ -233,6 +303,16 @@ export default function MobileRecorder({
         setMirrorError("No device connected. Start an emulator or connect a device via ADB.");
         setMirrorLoading(false);
         toast.error("No device connected");
+        return;
+      }
+
+      // Test screenshot endpoint first
+      const testScreenshot = await fetch(`${AGENT_URL}/device/screenshot`);
+      if (!testScreenshot.ok) {
+        const err = await testScreenshot.json().catch(() => ({}));
+        setMirrorLoading(false);
+        setMirrorError(err.error || "Cannot capture device screen");
+        toast.error("Cannot capture device screen");
         return;
       }
 
@@ -245,49 +325,18 @@ export default function MobileRecorder({
         description: "Live preview active - interact with your device",
       });
     } catch (err: any) {
+      console.error("[connectDevice] Error:", err);
       setMirrorLoading(false);
       setMirrorError("Cannot connect to local helper. Run: npm start in tools/mobile-automation-helper");
       toast.error("Local helper not running");
     }
-  };
+  }, [selectedDevice, startScreenshotStream]);
 
-  /* =====================================================
-   * 📷 SCREENSHOT STREAM FOR EMBEDDED PREVIEW
-   * ===================================================== */
-
-  const startScreenshotStream = () => {
-    if (screenshotIntervalRef.current) {
-      clearInterval(screenshotIntervalRef.current);
-    }
-
-    const captureScreenshot = async () => {
-      try {
-        const res = await fetch(`${AGENT_URL}/device/screenshot`);
-        if (res.ok) {
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          setMirrorImage((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return url;
-          });
-        }
-      } catch {
-        // Connection lost
-        setMirrorActive(false);
-        setMirrorError("Connection lost to device");
-        if (screenshotIntervalRef.current) {
-          clearInterval(screenshotIntervalRef.current);
-        }
-      }
-    };
-
-    // Capture immediately then every 150ms for smooth updates
-    captureScreenshot();
-    screenshotIntervalRef.current = setInterval(captureScreenshot, 150);
-  };
-
-  const disconnectDevice = () => {
+  const disconnectDevice = useCallback(() => {
     setMirrorActive(false);
+    if (mirrorImage) {
+      URL.revokeObjectURL(mirrorImage);
+    }
     setMirrorImage(null);
     setMirrorError(null);
     if (screenshotIntervalRef.current) {
@@ -295,7 +344,7 @@ export default function MobileRecorder({
       screenshotIntervalRef.current = null;
     }
     toast.info("Device disconnected");
-  };
+  }, [mirrorImage]);
 
   /* =====================================================
    * ▶ START RECORDING
