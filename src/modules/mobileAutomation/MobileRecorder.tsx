@@ -320,6 +320,45 @@ export default function MobileRecorder({
   };
 
   /* =====================================================
+   * ▶ REPLAY (ADB)
+   * ===================================================== */
+
+  const replay = async () => {
+    if (!actions.length) {
+      toast.error("No actions to replay");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${AGENT_URL}/recording/replay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          steps: actions.map((a) => ({
+            type: a.type,
+            description: a.description,
+            locator: a.locator,
+            value: a.value,
+            coordinates: a.coordinates,
+            timestamp: a.timestamp,
+          })),
+        }),
+      });
+
+      if (!res.ok) throw new Error("Replay request failed");
+
+      toast.success("Replay started", {
+        description: "Replaying steps on your connected device",
+      });
+    } catch (err) {
+      console.error("[MobileRecorder] Replay error:", err);
+      toast.error("Failed to start replay", {
+        description: "Make sure the local helper is running and a device is connected",
+      });
+    }
+  };
+
+  /* =====================================================
    * GENERATED SCRIPT (APPIUM STYLE)
    * ===================================================== */
 
@@ -415,10 +454,20 @@ ${actions
           )}
 
           {!recording ? (
-            <Button onClick={startRecording}>
-              <Play className="mr-2 h-4 w-4" />
-              Start Recording
-            </Button>
+            <>
+              <Button onClick={startRecording}>
+                <Play className="mr-2 h-4 w-4" />
+                Start Recording
+              </Button>
+              <Button
+                variant="outline"
+                onClick={replay}
+                disabled={actions.length === 0}
+              >
+                <Play className="mr-2 h-4 w-4" />
+                Replay
+              </Button>
+            </>
           ) : (
             <Button variant="destructive" onClick={stopRecording}>
               <Square className="mr-2 h-4 w-4" />

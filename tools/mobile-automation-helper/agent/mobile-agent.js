@@ -93,6 +93,48 @@ export async function startRecording() {
 
     const lines = data.toString().split("\n");
 
+    const finalizeGesture = async () => {
+      if (!touchDown) return;
+
+      const now = Date.now();
+      // Debounce noisy devices (but always clear touchDown)
+      if (now - lastEmitTime < 250) {
+        touchDown = null;
+        return;
+      }
+      lastEmitTime = now;
+
+      const dx = Math.abs(currentX - touchDown.x);
+      const dy = Math.abs(currentY - touchDown.y);
+
+      let type = "tap";
+      let desc = "Tap on screen";
+
+      if (dx > 80 || dy > 80) {
+        type = "scroll";
+        desc = "Scroll gesture";
+      }
+
+      const locator = await resolveLocator(touchDown.x, touchDown.y);
+
+      const step = {
+        type,
+        description: desc,
+        locator,
+        coordinates: {
+          x: touchDown.x,
+          y: touchDown.y,
+          endX: currentX,
+          endY: currentY,
+        },
+        timestamp: Date.now(),
+      };
+
+      recordedSteps.push(step);
+      emit(step);
+      touchDown = null;
+    };
+
     for (const line of lines) {
       if (line.includes("ABS_MT_POSITION_X")) {
         const v = parseInt(line.split(" ").pop(), 16);
@@ -104,44 +146,27 @@ export async function startRecording() {
         currentY = Math.round((v / 32767) * h);
       }
 
+      // Touch down (some devices emit BTN_TOUCH; some only emit TRACKING_ID)
       if (line.includes("BTN_TOUCH") && line.includes("DOWN")) {
         touchDown = { x: currentX, y: currentY, t: Date.now() };
       }
 
-      if (line.includes("BTN_TOUCH") && line.includes("UP") && touchDown) {
-        const now = Date.now();
-        if (now - lastEmitTime < 300) return;
-        lastEmitTime = now;
+      if (line.includes("ABS_MT_TRACKING_ID")) {
+        const last = (line.split(" ").pop() || "").toLowerCase();
+        const isRelease = last === "ffffffff";
 
-        const dx = Math.abs(currentX - touchDown.x);
-        const dy = Math.abs(currentY - touchDown.y);
-
-        let type = "tap";
-        let desc = "Tap on screen";
-
-        if (dx > 80 || dy > 80) {
-          type = "scroll";
-          desc = "Scroll gesture";
+        if (!isRelease && !touchDown) {
+          touchDown = { x: currentX, y: currentY, t: Date.now() };
         }
 
-        const locator = await resolveLocator(touchDown.x, touchDown.y);
+        if (isRelease && touchDown) {
+          await finalizeGesture();
+        }
+      }
 
-        const step = {
-          type,
-          description: desc,
-          locator,
-          coordinates: {
-            x: touchDown.x,
-            y: touchDown.y,
-            endX: currentX,
-            endY: currentY,
-          },
-          timestamp: Date.now(),
-        };
-
-        recordedSteps.push(step);
-        emit(step);
-        touchDown = null;
+      // Touch up (BTN_TOUCH release)
+      if (line.includes("BTN_TOUCH") && line.includes("UP") && touchDown) {
+        await finalizeGesture();
       }
     }
   });
@@ -189,6 +214,10 @@ export async function replayRecording(steps = []) {
 
 export function getRecordingStatus() {
   return { recording, steps: recordedSteps.length };
+}
+
+export function getRecordedSteps() {
+  return recordedSteps;
 }
 
 export function subscribe(fn) {

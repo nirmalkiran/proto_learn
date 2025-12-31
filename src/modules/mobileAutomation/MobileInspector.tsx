@@ -40,7 +40,7 @@ export default function MobileInspector() {
     appiumPort: "4723",
     deviceName: "emulator-5554",
     platformVersion: "14",
-    //appPath: "/path/to/app.apk",
+    appPath: "", // optional .apk path
     appPackage: "com.example.app",
     appActivity: "com.example.app.MainActivity",
   });
