@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Play, Square, Trash2, RefreshCw, Copy, Download } from "lucide-react";
+import { Play, Square, Trash2, RefreshCw, Copy, Download, Plus, Monitor, Smartphone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,10 @@ interface RecordedAction {
 
 const AGENT_URL = "http://localhost:3001";
 
+// Standard phone dimensions (portrait)
+const DEVICE_WIDTH = 360;
+const DEVICE_HEIGHT = 640;
+
 /* =====================================================
  * COMPONENT
  * ===================================================== */
@@ -60,8 +64,12 @@ export default function MobileRecorder({
   const [actions, setActions] = useState<RecordedAction[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<any>(null);
   const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
+  const [mirrorActive, setMirrorActive] = useState(false);
+  const [mirrorImage, setMirrorImage] = useState<string | null>(null);
+  const [mirrorError, setMirrorError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const screenshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   /* =====================================================
    * 🔴 CONNECT TO SSE STREAM
@@ -138,6 +146,9 @@ export default function MobileRecorder({
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (screenshotIntervalRef.current) {
+        clearInterval(screenshotIntervalRef.current);
+      }
     };
   }, []);
 
@@ -158,7 +169,7 @@ export default function MobileRecorder({
   }, [recording, connectToEventStream]);
 
   /* =====================================================
-   * ▶ START RECORDING
+   * HELPER: fetch with timeout
    * ===================================================== */
 
   const fetchJsonWithTimeout = async (url: string, timeoutMs = 2500) => {
@@ -186,7 +197,6 @@ export default function MobileRecorder({
       const verified = {
         appium: Boolean(appium.json?.running),
         device: Boolean(device.json?.connected),
-        // Emulator is informative only (recording can also run on real devices)
         emulator: Boolean(emulator.json?.running),
       };
 
@@ -200,8 +210,98 @@ export default function MobileRecorder({
     }
   };
 
+  /* =====================================================
+   * 📱 CREATE - OPEN DEVICE MIRROR
+   * ===================================================== */
+
+  const openDeviceMirror = async () => {
+    if (!selectedDevice) {
+      toast.error("Select a device first");
+      return;
+    }
+
+    setMirrorError(null);
+    setMirrorActive(true);
+
+    try {
+      // First try to open scrcpy in separate window
+      const mirrorRes = await fetch(`${AGENT_URL}/device/mirror`, {
+        method: "POST",
+      });
+      const mirrorData = await mirrorRes.json().catch(() => null);
+
+      if (!mirrorRes.ok || !mirrorData?.success) {
+        const errMsg = mirrorData?.error || "Failed to start scrcpy";
+        
+        if (errMsg.includes("SCRCPY_MISSING")) {
+          setMirrorError("scrcpy is not installed. Install it: https://github.com/Genymobile/scrcpy");
+          toast.error("scrcpy not found", {
+            description: "Please install scrcpy to use device mirror",
+          });
+        } else {
+          setMirrorError(errMsg);
+          toast.error("Device mirror failed", { description: errMsg });
+        }
+        return;
+      }
+
+      toast.success("Device mirror opened", {
+        description: "scrcpy window is now running",
+      });
+
+      // Start periodic screenshot capture for embedded preview
+      startScreenshotStream();
+    } catch (err: any) {
+      setMirrorError("Cannot connect to local helper. Run: npm start in tools/mobile-automation-helper");
+      toast.error("Local helper not running");
+    }
+  };
+
+  /* =====================================================
+   * 📷 SCREENSHOT STREAM FOR EMBEDDED PREVIEW
+   * ===================================================== */
+
+  const startScreenshotStream = () => {
+    // Clear any existing interval
+    if (screenshotIntervalRef.current) {
+      clearInterval(screenshotIntervalRef.current);
+    }
+
+    const captureScreenshot = async () => {
+      try {
+        const res = await fetch(`${AGENT_URL}/device/screenshot`);
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          setMirrorImage((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return url;
+          });
+        }
+      } catch {
+        // Silently fail - scrcpy window is the main view
+      }
+    };
+
+    // Capture immediately then every 500ms
+    captureScreenshot();
+    screenshotIntervalRef.current = setInterval(captureScreenshot, 500);
+  };
+
+  const stopMirror = () => {
+    setMirrorActive(false);
+    setMirrorImage(null);
+    if (screenshotIntervalRef.current) {
+      clearInterval(screenshotIntervalRef.current);
+      screenshotIntervalRef.current = null;
+    }
+  };
+
+  /* =====================================================
+   * ▶ START RECORDING
+   * ===================================================== */
+
   const startRecording = async () => {
-    // Recording relies on ADB input events, so we only require a connected device.
     let canRecord = setupState.device;
 
     if (!canRecord) {
@@ -229,24 +329,6 @@ export default function MobileRecorder({
     }
 
     try {
-      // Best-effort: open device mirror via scrcpy
-      try {
-        const mirrorRes = await fetch(`${AGENT_URL}/device/mirror`, {
-          method: "POST",
-        });
-        const mirrorData = await mirrorRes.json().catch(() => null);
-
-        if (!mirrorRes.ok || !mirrorData?.success) {
-          toast.error("Device mirror not available", {
-            description:
-              mirrorData?.error ||
-              "scrcpy is missing or failed to start. Recording will continue without mirror.",
-          });
-        }
-      } catch {
-        // Ignore (recording can still work without mirror)
-      }
-
       const response = await fetch(`${AGENT_URL}/recording/start`, {
         method: "POST",
       });
@@ -473,7 +555,7 @@ ${actions
 
           {!recording ? (
             <>
-              <Button onClick={startRecording}>
+              <Button onClick={startRecording} disabled={!mirrorActive}>
                 <Play className="mr-2 h-4 w-4" />
                 Start Recording
               </Button>
@@ -517,39 +599,74 @@ ${actions
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* DEVICE PREVIEW */}
         <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Device Preview</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5" />
+              Device Preview
+            </CardTitle>
+            {mirrorActive && (
+              <Badge variant="default" className="animate-pulse">
+                <Monitor className="h-3 w-3 mr-1" />
+                Mirror Active
+              </Badge>
+            )}
           </CardHeader>
           <CardContent>
-            <div className="border rounded-lg h-[500px] flex flex-col items-center justify-center bg-muted gap-3">
-              <span className="text-sm text-muted-foreground text-center">
-                Live device mirror (scrcpy)
-              </span>
+            <div 
+              className="border-4 border-foreground/20 rounded-[2rem] overflow-hidden bg-black mx-auto relative"
+              style={{ 
+                width: DEVICE_WIDTH, 
+                height: DEVICE_HEIGHT,
+                boxShadow: "0 0 0 2px hsl(var(--foreground)/0.1), 0 10px 40px rgba(0,0,0,0.3)"
+              }}
+            >
+              {/* Notch */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-b-xl z-10" />
+              
+              {/* Screen Content */}
+              <div className="w-full h-full flex flex-col items-center justify-center bg-muted/10">
+                {!mirrorActive ? (
+                  <div className="text-center p-4 space-y-4">
+                    <Smartphone className="h-16 w-16 text-muted-foreground mx-auto opacity-50" />
+                    <p className="text-sm text-muted-foreground">
+                      Click Create to open device mirror
+                    </p>
+                    <Button onClick={openDeviceMirror} className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      Create
+                    </Button>
+                  </div>
+                ) : mirrorError ? (
+                  <div className="text-center p-4 space-y-3">
+                    <div className="text-destructive text-sm">{mirrorError}</div>
+                    <Button variant="outline" size="sm" onClick={openDeviceMirror}>
+                      Retry
+                    </Button>
+                  </div>
+                ) : mirrorImage ? (
+                  <img 
+                    src={mirrorImage} 
+                    alt="Device screen" 
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="text-center p-4 space-y-3">
+                    <div className="animate-pulse text-muted-foreground text-sm">
+                      scrcpy window is running...
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Interact with the scrcpy window.<br/>
+                      Actions will be recorded here.
+                    </p>
+                    <Button variant="outline" size="sm" onClick={stopMirror}>
+                      Close Mirror
+                    </Button>
+                  </div>
+                )}
+              </div>
 
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`${AGENT_URL}/device/mirror`, {
-                      method: "POST",
-                    });
-                    const data = await res.json();
-
-                    if (!data.success) throw new Error(data.error);
-                    toast.success("Device mirror started");
-                  } catch (err: any) {
-                    toast.error("Failed to start device mirror", {
-                      description: err.message || "Make sure scrcpy is installed",
-                    });
-                  }
-                }}
-              >
-                Open Device Mirror
-              </Button>
-
-              <p className="text-xs text-muted-foreground text-center">
-                A native window will open showing your device
-              </p>
+              {/* Home button */}
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-16 h-1 bg-foreground/30 rounded-full" />
             </div>
           </CardContent>
         </Card>

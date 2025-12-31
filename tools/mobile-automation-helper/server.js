@@ -203,6 +203,20 @@ app.post("/device/mirror", (_, res) => {
 });
 
 /* =====================================================
+   DEVICE SCREENSHOT (FOR EMBEDDED PREVIEW)
+===================================================== */
+
+app.get("/device/screenshot", (_, res) => {
+  exec("adb exec-out screencap -p", { encoding: "buffer", maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
+    if (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+    res.setHeader("Content-Type", "image/png");
+    res.send(stdout);
+  });
+});
+
+/* =====================================================
    APPIUM INSPECTOR (LOCAL)
 ===================================================== */
 
