@@ -29,7 +29,21 @@ app.use(express.json());
 ===================================================== */
 
 app.get("/health", (_, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, status: true });
+});
+
+/* =====================================================
+   AGENT STATUS
+===================================================== */
+
+app.get("/agent/status", (_, res) => {
+  const status = getRecordingStatus();
+  res.json({ 
+    success: true, 
+    running: true, 
+    recording: status.recording,
+    steps: status.steps 
+  });
 });
 
 // NOTE: A web page cannot start Node processes on your machine.
