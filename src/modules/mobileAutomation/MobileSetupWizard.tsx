@@ -7,6 +7,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CheckCircle2,
   XCircle,
@@ -16,8 +18,20 @@ import {
   Smartphone,
   Terminal,
   Power,
+  Usb,
+  Wifi,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+  Cable,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /* =====================================================
  * TYPES
@@ -29,6 +43,76 @@ interface CheckResult {
 }
 
 const AGENT_URL = "http://localhost:3001";
+
+/* =====================================================
+ * USB WIZARD STEPS
+ * ===================================================== */
+
+const USB_STEPS = [
+  {
+    id: 1,
+    title: "Prerequisites",
+    description: "Ensure you have the required tools installed",
+  },
+  {
+    id: 2,
+    title: "Enable Developer",
+    description: "Enable Developer Options on device",
+  },
+  {
+    id: 3,
+    title: "Enable USB Debug",
+    description: "Enable USB Debugging",
+  },
+  {
+    id: 4,
+    title: "Connect Device",
+    description: "Connect via USB cable",
+  },
+  {
+    id: 5,
+    title: "Authorize",
+    description: "Accept debugging on device",
+  },
+  {
+    id: 6,
+    title: "Verify Connection",
+    description: "Verify ADB connection",
+  },
+];
+
+const WIRELESS_STEPS = [
+  {
+    id: 1,
+    title: "Prerequisites",
+    description: "Ensure requirements are met",
+  },
+  {
+    id: 2,
+    title: "Enable Developer",
+    description: "Enable Developer Options",
+  },
+  {
+    id: 3,
+    title: "Enable Wireless",
+    description: "Enable Wireless debugging",
+  },
+  {
+    id: 4,
+    title: "Pair Device",
+    description: "Pair with pairing code",
+  },
+  {
+    id: 5,
+    title: "Connect ADB",
+    description: "Connect via IP address",
+  },
+  {
+    id: 6,
+    title: "Verify Connection",
+    description: "Verify connection",
+  },
+];
 
 /* =====================================================
  * COMPONENT
@@ -53,6 +137,10 @@ export default function MobileSetupWizard({
     device: { status: "pending", message: "Not checked" },
   });
 
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardTab, setWizardTab] = useState<"usb" | "wireless">("usb");
+  const [wizardStep, setWizardStep] = useState(1);
+
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));
 
@@ -63,8 +151,8 @@ export default function MobileSetupWizard({
     update("backend", { status: "checking", message: "Checking backend..." });
 
     try {
-      const res = await fetch(`${AGENT_URL}/health`, { 
-        signal: AbortSignal.timeout(3000) 
+      const res = await fetch(`${AGENT_URL}/health`, {
+        signal: AbortSignal.timeout(3000),
       });
       const data = await res.json();
 
@@ -90,7 +178,7 @@ export default function MobileSetupWizard({
 
     try {
       const res = await fetch(`${AGENT_URL}/agent/status`, {
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(3000),
       });
       const data = await res.json();
 
@@ -210,7 +298,7 @@ export default function MobileSetupWizard({
 
       if (!res.ok) throw new Error("Local helper not reachable");
       setTimeout(checkAppium, 3000);
-    } catch (e) {
+    } catch {
       toast.error("Cannot start Appium", {
         description: "Local helper not reachable at http://localhost:3001",
       });
@@ -230,7 +318,7 @@ export default function MobileSetupWizard({
 
       if (!res.ok) throw new Error("Local helper not reachable");
       setTimeout(checkEmulator, 8000);
-    } catch (e) {
+    } catch {
       toast.error("Cannot start emulator", {
         description: "Local helper not reachable at http://localhost:3001",
       });
@@ -249,7 +337,7 @@ export default function MobileSetupWizard({
         status: "success",
         message: "Agent running",
       });
-    } catch (e) {
+    } catch {
       toast.error("Cannot start local agent", {
         description: "Local helper not reachable at http://localhost:3001",
       });
@@ -266,7 +354,6 @@ export default function MobileSetupWizard({
   };
 
   const runAllChecks = async () => {
-    // Run all checks in parallel for speed
     await Promise.all([
       checkBackend(),
       checkAgent(),
@@ -284,7 +371,7 @@ export default function MobileSetupWizard({
     ) : status === "checking" ? (
       <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
     ) : (
-      <div className="h-5 w-5 rounded-full border" />
+      <div className="h-5 w-5 rounded-full border border-muted-foreground/30" />
     );
 
   const items = [
@@ -295,14 +382,260 @@ export default function MobileSetupWizard({
     { key: "device", label: "ADB Device", icon: Smartphone },
   ];
 
+  const currentSteps = wizardTab === "usb" ? USB_STEPS : WIRELESS_STEPS;
+
+  /* =====================================================
+   * WIZARD STEP CONTENT
+   * ===================================================== */
+
+  const renderWizardStepContent = () => {
+    if (wizardTab === "usb") {
+      switch (wizardStep) {
+        case 1:
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-primary">
+                <Usb className="h-5 w-5" />
+                <span className="font-semibold">Required Tools</span>
+              </div>
+              <div className="space-y-3 pl-2">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  <div>
+                    <span className="font-medium">ADB (Android Debug Bridge)</span>
+                    <span className="text-muted-foreground text-sm ml-2">- Part of Android SDK Platform Tools</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  <div>
+                    <span className="font-medium">Local Agent Server</span>
+                    <span className="text-muted-foreground text-sm ml-2">- Running on port 3001</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  <div>
+                    <span className="font-medium">USB Cable</span>
+                    <span className="text-muted-foreground text-sm ml-2">- Original or high-quality data cable</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mt-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5" />
+                  <div className="text-sm">
+                    <span className="font-medium text-amber-500">Installation Commands</span>
+                    <div className="mt-2 font-mono text-xs text-muted-foreground space-y-1">
+                      <p><span className="text-primary">Windows:</span> Download from developer.android.com</p>
+                      <p><span className="text-primary">Mac:</span> brew install android-platform-tools</p>
+                      <p><span className="text-primary">Linux:</span> sudo apt install adb</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-4">
+                <span className="text-sm text-muted-foreground">Agent Status:</span>
+                <Badge variant={checks.agent.status === "success" ? "default" : "destructive"}>
+                  {checks.agent.status === "success" ? "Connected" : "Disconnected"}
+                </Badge>
+              </div>
+            </div>
+          );
+        case 2:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">On your Android device:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Go to <span className="font-mono bg-muted px-1 rounded">Settings → About phone</span></li>
+                <li>Tap <span className="font-mono bg-muted px-1 rounded">Build number</span> 7 times</li>
+                <li>You'll see "Developer mode enabled"</li>
+              </ol>
+            </div>
+          );
+        case 3:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Enable USB Debugging:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Go to <span className="font-mono bg-muted px-1 rounded">Settings → Developer options</span></li>
+                <li>Enable <span className="font-mono bg-muted px-1 rounded">USB debugging</span></li>
+                <li>Confirm the warning dialog</li>
+              </ol>
+            </div>
+          );
+        case 4:
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Cable className="h-8 w-8 text-primary" />
+                <p className="text-muted-foreground">Connect your device to computer via USB cable</p>
+              </div>
+              <p className="text-sm text-muted-foreground">Use a high-quality data cable (not charging-only)</p>
+            </div>
+          );
+        case 5:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">When prompted on your device:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Check "Always allow from this computer"</li>
+                <li>Tap <span className="font-mono bg-muted px-1 rounded">Allow</span></li>
+              </ol>
+            </div>
+          );
+        case 6:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Verify connection:</p>
+              <div className="bg-muted rounded-lg p-3 font-mono text-sm">
+                adb devices
+              </div>
+              <p className="text-sm text-muted-foreground">You should see your device listed.</p>
+              <Button onClick={checkDevice} variant="outline" className="w-full">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Verify Connection
+              </Button>
+              {checks.device.status === "success" && (
+                <Badge className="w-full justify-center" variant="default">
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Device Connected
+                </Badge>
+              )}
+            </div>
+          );
+        default:
+          return null;
+      }
+    } else {
+      // Wireless ADB
+      switch (wizardStep) {
+        case 1:
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-primary">
+                <Wifi className="h-5 w-5" />
+                <span className="font-semibold">Requirements for Wireless ADB</span>
+              </div>
+              <div className="space-y-3 pl-2">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  <div>
+                    <span className="font-medium">Android 11+</span>
+                    <span className="text-muted-foreground text-sm ml-2">- For native wireless debugging support</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  <div>
+                    <span className="font-medium">Same WiFi Network</span>
+                    <span className="text-muted-foreground text-sm ml-2">- Device and computer on same network</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  <div>
+                    <span className="font-medium">ADB & Local Agent</span>
+                    <span className="text-muted-foreground text-sm ml-2">- Same as USB requirements</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mt-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5" />
+                  <p className="text-sm">
+                    For Android 10 and below, connect via USB first, then run:{" "}
+                    <code className="font-mono bg-muted px-1 rounded">adb tcpip 5555</code>
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        case 2:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Enable Developer Options (same as USB)</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Go to Settings → About phone</li>
+                <li>Tap Build number 7 times</li>
+              </ol>
+            </div>
+          );
+        case 3:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Enable Wireless debugging:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Go to <span className="font-mono bg-muted px-1 rounded">Developer options</span></li>
+                <li>Enable <span className="font-mono bg-muted px-1 rounded">Wireless debugging</span></li>
+                <li>Confirm when prompted</li>
+              </ol>
+            </div>
+          );
+        case 4:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Pair your device:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Tap <span className="font-mono bg-muted px-1 rounded">Pair device with pairing code</span></li>
+                <li>Note the IP address, port, and pairing code</li>
+                <li>Run: <code className="font-mono bg-muted px-1 rounded">adb pair IP:PORT</code></li>
+                <li>Enter the pairing code when prompted</li>
+              </ol>
+            </div>
+          );
+        case 5:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Connect to device:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>Get the IP and port from Wireless debugging screen</li>
+                <li>Run: <code className="font-mono bg-muted px-1 rounded">adb connect IP:PORT</code></li>
+              </ol>
+            </div>
+          );
+        case 6:
+          return (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">Verify connection:</p>
+              <div className="bg-muted rounded-lg p-3 font-mono text-sm">
+                adb devices
+              </div>
+              <Button onClick={checkDevice} variant="outline" className="w-full">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Verify Connection
+              </Button>
+              {checks.device.status === "success" && (
+                <Badge className="w-full justify-center" variant="default">
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Device Connected
+                </Badge>
+              )}
+            </div>
+          );
+        default:
+          return null;
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Local Setup Wizard</h2>
-        <Button onClick={runAllChecks}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Run All Checks
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setWizardOpen(true)}>
+            <Smartphone className="mr-2 h-4 w-4" />
+            Device Connection Wizard
+          </Button>
+          <Button onClick={runAllChecks}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Run All Checks
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -353,6 +686,106 @@ export default function MobileSetupWizard({
           ))}
         </CardContent>
       </Card>
+
+      {/* Device Connection Wizard Dialog */}
+      <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5" />
+              Device Connection Wizard
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Follow these steps to connect your Android device
+            </p>
+          </DialogHeader>
+
+          <Tabs value={wizardTab} onValueChange={(v) => { setWizardTab(v as "usb" | "wireless"); setWizardStep(1); }}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="usb" className="flex items-center gap-2">
+                <Usb className="h-4 w-4" />
+                USB Connection
+              </TabsTrigger>
+              <TabsTrigger value="wireless" className="flex items-center gap-2">
+                <Wifi className="h-4 w-4" />
+                Wireless ADB
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value={wizardTab} className="mt-4">
+              {/* Step Indicators */}
+              <div className="flex items-center justify-between mb-6">
+                {currentSteps.map((step, idx) => (
+                  <div key={step.id} className="flex items-center">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                        wizardStep === step.id
+                          ? "bg-primary text-primary-foreground"
+                          : wizardStep > step.id
+                          ? "bg-green-500 text-white"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {wizardStep > step.id ? <CheckCircle2 className="h-4 w-4" /> : step.id}
+                    </div>
+                    {idx < currentSteps.length - 1 && (
+                      <div className={`h-0.5 w-8 mx-1 ${wizardStep > step.id ? "bg-green-500" : "bg-muted"}`} />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step Labels */}
+              <div className="flex justify-between text-xs text-muted-foreground mb-6">
+                {currentSteps.map((step) => (
+                  <span key={step.id} className="w-16 text-center truncate">
+                    {step.title}
+                  </span>
+                ))}
+              </div>
+
+              {/* Step Content */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{currentSteps[wizardStep - 1].title}</CardTitle>
+                  <CardDescription>{currentSteps[wizardStep - 1].description}</CardDescription>
+                </CardHeader>
+                <CardContent>{renderWizardStepContent()}</CardContent>
+              </Card>
+
+              {/* Navigation */}
+              <div className="flex items-center justify-between mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setWizardStep((s) => Math.max(1, s - 1))}
+                  disabled={wizardStep === 1}
+                >
+                  <ChevronLeft className="mr-2 h-4 w-4" />
+                  Previous
+                </Button>
+
+                <span className="text-sm text-muted-foreground">
+                  Step {wizardStep} of {currentSteps.length}
+                </span>
+
+                <Button
+                  onClick={() => {
+                    if (wizardStep === currentSteps.length) {
+                      setWizardOpen(false);
+                      toast.success("Device setup complete!");
+                    } else {
+                      setWizardStep((s) => s + 1);
+                    }
+                  }}
+                >
+                  {wizardStep === currentSteps.length ? "Finish" : "Next"}
+                  {wizardStep < currentSteps.length && <ChevronRight className="ml-2 h-4 w-4" />}
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
