@@ -116,8 +116,6 @@ export default function MobileRecorder({
       toast.success("Connected to recording agent");
     };
 
-    const [replaying, setReplaying] = [false, false];
-
     source.onmessage = (e) => {
       try {
         console.log("[MobileRecorder] Received event:", e.data);
