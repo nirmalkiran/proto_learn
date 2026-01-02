@@ -9,6 +9,9 @@ import {
   getRecordingStatus,
   getRecordedSteps,
   subscribe,
+  getScreenSize,
+  captureTap,
+  captureInput,
 } from "./agent/mobile-agent.js";
 
 /* =====================================================
@@ -145,9 +148,15 @@ app.post("/recording/stop", (_, res) => {
   res.json({ success: true, steps });
 });
 
-app.post("/recording/replay", (req, res) => {
-  replayRecording(req.body.steps || []);
-  res.json({ success: true });
+app.post("/recording/replay", async (req, res) => {
+  try {
+    const steps = req.body.steps || [];
+    await replayRecording(steps);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Replay failed:", err);
+    res.status(500).json({ success: false, error: String(err) });
+  }
 });
 
 app.get("/recording/status", (_, res) => {
@@ -199,6 +208,59 @@ app.post("/device/mirror", (_, res) => {
 
     p.unref();
     return res.json({ success: true });
+  });
+});
+
+/* =====================================================
+   DEVICE HELPERS (SIZE / TAP)
+===================================================== */
+
+app.get("/device/size", async (_, res) => {
+  try {
+    const size = await getScreenSize();
+    res.json({ success: true, size });
+  } catch (err) {
+    console.error("/device/size error:", err);
+    res.status(500).json({ success: false, error: "Failed to get device size", details: String(err) });
+  }
+});
+
+app.post("/device/tap", express.json(), async (req, res) => {
+  const { x, y } = req.body || {};
+
+  if (typeof x !== "number" || typeof y !== "number") {
+    return res.status(400).json({ success: false, error: "x and y required" });
+  }
+
+  try {
+    const step = await captureTap(x, y);
+    return res.json({ success: true, step });
+  } catch (err) {
+    console.error("Tap error:", err);
+    res.status(500).json({ success: false, error: String(err) });
+  }
+});
+
+app.post('/device/input', express.json(), async (req, res) => {
+  const { x, y, text } = req.body || {};
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof text !== 'string') {
+    return res.status(400).json({ success: false, error: 'x,y,text required' });
+  }
+
+  try {
+    const step = await captureInput(x, y, text);
+    return res.json({ success: true, step });
+  } catch (err) {
+    console.error('Input error:', err);
+    res.status(500).json({ success: false, error: String(err) });
+  }
+});
+
+// Debug raw wm size command
+app.get('/device/size-raw', (_, res) => {
+  exec('adb shell wm size', (err, stdout, stderr) => {
+    if (err) return res.status(500).json({ err: String(err), stderr });
+    res.json({ stdout: stdout.trim(), stderr });
   });
 });
 

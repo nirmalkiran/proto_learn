@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Play, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff } from "lucide-react";
+import { Play, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import DeviceSelector from "./DeviceSelector";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
 
 /* =====================================================
  * TYPES
@@ -68,6 +72,25 @@ export default function MobileRecorder({
   const [mirrorImage, setMirrorImage] = useState<string | null>(null);
   const [mirrorError, setMirrorError] = useState<string | null>(null);
   const [mirrorLoading, setMirrorLoading] = useState(false);
+  const [captureMode, setCaptureMode] = useState(false);
+  const [deviceSize, setDeviceSize] = useState<{w:number;h:number} | null>(null);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveDescription, setSaveDescription] = useState("");
+  const [savingToCloud, setSavingToCloud] = useState(false);
+
+  // Input capture modal state
+  const [inputModalOpen, setInputModalOpen] = useState(false);
+  const [inputModalText, setInputModalText] = useState("");
+  const [inputModalCoords, setInputModalCoords] = useState<{x:number;y:number} | null>(null);
+  const [inputModalPending, setInputModalPending] = useState(false);
+
+  // Inline edit state for input actions
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string>("");
+  const [previewPendingId, setPreviewPendingId] = useState<string | null>(null);
+  const [replaying, setReplaying] = useState<boolean>(false);
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const screenshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -93,10 +116,38 @@ export default function MobileRecorder({
       toast.success("Connected to recording agent");
     };
 
+    const [replaying, setReplaying] = [false, false];
+
     source.onmessage = (e) => {
       try {
         console.log("[MobileRecorder] Received event:", e.data);
         const event = JSON.parse(e.data);
+
+        // Handle replay progress events separately (do not add them as recorded actions)
+        if (event.type && event.type.startsWith("replay")) {
+          if (event.type === "replay:start") {
+            setReplaying(true);
+            toast.info(event.description);
+          } else if (event.type === "replay:info") {
+            toast.info(event.description);
+          } else if (event.type === "replay:step:start") {
+            setReplayIndex(typeof event.stepIndex === 'number' ? event.stepIndex : null);
+            toast(`▶ ${event.description}`);
+          } else if (event.type === "replay:step:done") {
+            setReplayIndex(null);
+            toast.success(event.description);
+          } else if (event.type === "replay:finished") {
+            setReplayIndex(null);
+            setReplaying(false);
+            toast.success(event.description);
+          } else if (event.type === "replay:error" || event.type === "replay:step:error") {
+            setReplaying(false);
+            setReplayIndex(null);
+            toast.error(event.description);
+          }
+
+          return;
+        }
 
         if (event.type && event.description) {
           const newAction: RecordedAction = {
@@ -133,7 +184,7 @@ export default function MobileRecorder({
     };
 
     return source;
-  }, [recording]);
+  }, [recording, captureMode]);
 
   /* =====================================================
    * CLEANUP ON UNMOUNT
@@ -148,7 +199,7 @@ export default function MobileRecorder({
         clearTimeout(reconnectTimeoutRef.current);
       }
       if (screenshotIntervalRef.current) {
-        clearInterval(screenshotIntervalRef.current);
+        clearTimeout(screenshotIntervalRef.current as unknown as number);
       }
     };
   }, []);
@@ -216,21 +267,39 @@ export default function MobileRecorder({
    * ===================================================== */
 
   const startScreenshotStream = useCallback(() => {
+    // Clear any existing scheduled capture
     if (screenshotIntervalRef.current) {
-      clearInterval(screenshotIntervalRef.current);
+      clearTimeout(screenshotIntervalRef.current as unknown as number);
+      screenshotIntervalRef.current = null;
     }
 
     let failCount = 0;
     const maxFails = 3;
+    const intervalMs = 200; // desired interval between captures
+    const timeoutMs = 5000; // fetch timeout
+
+    // Prevent overlapping requests
+    let inFlight = false;
+    let active = true;
+
+    const stopLoop = () => {
+      active = false;
+      if (screenshotIntervalRef.current) {
+        clearTimeout(screenshotIntervalRef.current as unknown as number);
+        screenshotIntervalRef.current = null;
+      }
+    };
 
     const captureScreenshot = async () => {
+      if (!active) return;
+      if (inFlight) return; // skip if previous fetch still running
+      inFlight = true;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
-        const res = await fetch(`${AGENT_URL}/device/screenshot`, {
-          signal: controller.signal,
-        });
+        const res = await fetch(`${AGENT_URL}/device/screenshot`, { signal: controller.signal });
         clearTimeout(timeoutId);
 
         if (res.ok) {
@@ -243,30 +312,44 @@ export default function MobileRecorder({
             });
             setMirrorError(null);
             failCount = 0;
+          } else {
+            failCount++;
           }
         } else {
           const data = await res.json().catch(() => ({}));
           console.warn("[Mirror] Screenshot failed:", data.error);
           failCount++;
         }
-      } catch (err) {
-        console.warn("[Mirror] Fetch error:", err);
+      } catch (err: any) {
+        if (err.name === "AbortError") {
+          // Timeout/abort - expected sometimes, keep debug-level log only
+          console.debug("[Mirror] Screenshot request timed out");
+        } else {
+          console.warn("[Mirror] Fetch error:", err);
+        }
         failCount++;
+      } finally {
+        inFlight = false;
       }
 
       if (failCount >= maxFails) {
         setMirrorActive(false);
         setMirrorError("Connection lost to device. Please reconnect.");
-        if (screenshotIntervalRef.current) {
-          clearInterval(screenshotIntervalRef.current);
-          screenshotIntervalRef.current = null;
-        }
+        stopLoop();
+        return;
+      }
+
+      // Schedule next capture after configured interval
+      if (active) {
+        screenshotIntervalRef.current = setTimeout(captureScreenshot as any, intervalMs);
       }
     };
 
-    // Capture immediately then every 200ms for smooth updates
+    // Start the capture loop
     captureScreenshot();
-    screenshotIntervalRef.current = setInterval(captureScreenshot, 200);
+
+    // Ensure we clear loop when mirror is deactivated elsewhere
+    return () => stopLoop();
   }, []);
 
   /* =====================================================
@@ -316,6 +399,13 @@ export default function MobileRecorder({
         return;
       }
 
+      // Fetch device size for accurate click mapping
+      try {
+        const sizeRes = await fetch(`${AGENT_URL}/device/size`);
+        const sizeJson = await sizeRes.json();
+        if (sizeJson.success && sizeJson.size) setDeviceSize(sizeJson.size);
+      } catch {}
+
       // Start embedded screenshot streaming
       setMirrorActive(true);
       setMirrorLoading(false);
@@ -340,7 +430,7 @@ export default function MobileRecorder({
     setMirrorImage(null);
     setMirrorError(null);
     if (screenshotIntervalRef.current) {
-      clearInterval(screenshotIntervalRef.current);
+      clearTimeout(screenshotIntervalRef.current as unknown as number);
       screenshotIntervalRef.current = null;
     }
     toast.info("Device disconnected");
@@ -479,6 +569,7 @@ export default function MobileRecorder({
     }
 
     try {
+      setReplaying(true);
       const res = await fetch(`${AGENT_URL}/recording/replay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -494,13 +585,18 @@ export default function MobileRecorder({
         }),
       });
 
-      if (!res.ok) throw new Error("Replay request failed");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Replay request failed");
+      }
 
-      toast.success("Replay started", {
-        description: "Replaying steps on your connected device",
+      toast.success("Replay completed", {
+        description: "All steps were replayed on the connected device",
       });
+      setReplaying(false);
     } catch (err) {
       console.error("[MobileRecorder] Replay error:", err);
+      setReplaying(false);
       toast.error("Failed to start replay", {
         description: "Make sure the local helper is running and a device is connected",
       });
@@ -530,7 +626,11 @@ ${actions
         }
         return `${comment}\n    await driver.$("${a.locator}").click();`;
       case "input":
-        return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value || ''}");`;
+        if (a.value && String(a.value).trim()) {
+          return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value}");`;
+        }
+        // If value is not recorded, add a placeholder that can be supplied via environment variable at runtime
+        return `${comment}\n    // TODO: Replace INPUT_${index + 1} value or provide via env var\n    const input${index + 1} = process.env.INPUT_${index + 1} || "";\n    await driver.$("${a.locator}").setValue(input${index + 1});`;
       case "scroll":
         if (a.coordinates) {
           return `${comment}\n    await driver.touchAction([
@@ -577,6 +677,176 @@ ${actions
     toast.success("Script downloaded");
   };
 
+  // Input modal confirm handler
+  const handleConfirmInput = async () => {
+    if (!inputModalCoords) return setInputModalOpen(false);
+    if (!inputModalText || String(inputModalText).trim().length === 0) {
+      // If empty, just close (original prompt allowed skipping)
+      setInputModalOpen(false);
+      return;
+    }
+
+    try {
+      setInputModalPending(true);
+      const r = await fetch(`${AGENT_URL}/device/input`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ x: inputModalCoords.x, y: inputModalCoords.y, text: inputModalText }),
+      });
+
+      if (!r.ok) {
+        const jj = await r.json().catch(() => ({}));
+        toast.error(jj.error || "Failed to input text");
+      } else {
+        toast.success("Text input captured");
+      }
+    } catch (err) {
+      console.error("Input post failed:", err);
+      toast.error("Failed to input text");
+    } finally {
+      setInputModalPending(false);
+      setInputModalOpen(false);
+      setInputModalText("");
+      setInputModalCoords(null);
+    }
+  };
+
+  // Preview input value on device for a given step (or edited value)
+  const previewInput = async (step: RecordedAction, overrideValue?: string) => {
+    const text = (typeof overrideValue !== 'undefined') ? overrideValue : step.value;
+    if (!text || String(text).trim().length === 0) {
+      toast.error("No value to preview");
+      return;
+    }
+
+    if (!step.coordinates || typeof step.coordinates.x !== 'number' || typeof step.coordinates.y !== 'number') {
+      toast.error("No coordinates available for this step");
+      return;
+    }
+
+    try {
+      setPreviewPendingId(step.id);
+      const r = await fetch(`${AGENT_URL}/device/input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: step.coordinates.x, y: step.coordinates.y, text }),
+      });
+
+      if (!r.ok) {
+        const jj = await r.json().catch(() => ({}));
+        toast.error(jj.error || 'Failed to send preview input');
+      } else {
+        toast.success('Preview input sent to device');
+      }
+    } catch (err) {
+      console.error('Preview input failed:', err);
+      toast.error('Failed to send preview input');
+    } finally {
+      setPreviewPendingId(null);
+    }
+  };
+
+  // Save recording to Supabase (nocode_tests)
+  const openSaveDialog = () => {
+    if (!actions.length) {
+      toast.error("No actions to save");
+      return;
+    }
+    setSaveName(`Recording ${new Date().toISOString().slice(0,19).replace('T',' ')}`);
+    setSaveDescription("");
+    setShowSaveDialog(true);
+  };
+
+  const handleSaveToCloud = async () => {
+    if (!saveName.trim()) {
+      toast.error("Please provide a name for the recording");
+      return;
+    }
+
+    try {
+      setSavingToCloud(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("You must be signed in to save recordings. Go to the Auth page to sign in.");
+        setSavingToCloud(false);
+        return;
+      }
+
+      // Ensure a project exists to attach the test to. Use "Mobile Recorder" project per-user.
+      let projectId: string | null = null;
+
+      const { data: existingProject, error: fetchProjErr } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("name", "Mobile Recorder")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (fetchProjErr) {
+        console.warn("Could not query projects:", fetchProjErr);
+      }
+
+      if (existingProject && existingProject.id) {
+        projectId = existingProject.id;
+      } else {
+        const { data: created, error: createErr } = await supabase
+          .from("projects")
+          .insert([{ name: "Mobile Recorder", user_id: user.id }])
+          .select("id")
+          .single();
+
+        if (createErr) {
+          console.warn("Failed to create Mobile Recorder project:", createErr);
+        } else if (created && created.id) {
+          projectId = created.id;
+        }
+      }
+
+      if (!projectId) {
+        throw new Error("Failed to determine or create project to attach recording");
+      }
+
+      const steps = actions.map((a, idx) => ({
+        type: a.type,
+        description: a.description,
+        locator: a.locator,
+        value: a.value ?? null,
+        coordinates: a.coordinates ?? null,
+        timestamp: a.timestamp ?? Date.now(),
+      }));
+
+      const { data: inserted, error } = await supabase
+        .from("nocode_tests")
+        .insert([
+          {
+            project_id: projectId,
+            name: saveName.trim(),
+            description: saveDescription.trim() || null,
+            base_url: null,
+            steps: steps as any,
+            status: "draft",
+            user_id: user.id,
+            folder_id: null,
+          },
+        ])
+        .select("id");
+
+      if (error) {
+        console.error("Supabase insert error:", error);
+        toast.error(error.message || "Failed to save recording to cloud");
+        return;
+      }
+
+      toast.success("Recording saved to cloud");
+      setShowSaveDialog(false);
+    } catch (err: any) {
+      console.error("Failed to save recording:", err);
+      toast.error(err.message || "Failed to save recording to cloud");
+    } finally {
+      setSavingToCloud(false);
+    }
+  };
+
   /* =====================================================
    * UI
    * ===================================================== */
@@ -608,13 +878,23 @@ ${actions
                 <Play className="mr-2 h-4 w-4" />
                 Start Recording
               </Button>
+
               <Button
                 variant="outline"
                 onClick={replay}
-                disabled={actions.length === 0}
+                disabled={actions.length === 0 || replaying}
               >
                 <Play className="mr-2 h-4 w-4" />
-                Replay
+                {replaying ? "Replaying..." : "Replay"}
+              </Button>
+
+              <Button
+                variant="secondary"
+                onClick={openSaveDialog}
+                disabled={actions.length === 0}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                Save to Cloud
               </Button>
             </>
           ) : (
@@ -623,6 +903,52 @@ ${actions
               Stop Recording
             </Button>
           )}
+
+          {/* Save Dialog */}
+          <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Save Recording to Cloud</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 mt-2">
+                <Input value={saveName} onChange={(e:any) => setSaveName(e.target.value)} placeholder="Recording name" />
+                <Textarea value={saveDescription} onChange={(e:any) => setSaveDescription(e.target.value)} placeholder="Short description (optional)" />
+              </div>
+
+              <DialogFooter>
+                <div className="flex gap-2">
+                  <Button onClick={() => setShowSaveDialog(false)}>Cancel</Button>
+                  <Button onClick={handleSaveToCloud} disabled={savingToCloud}>
+                    {savingToCloud ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Input capture dialog (replaces blocking prompt) */}
+          <Dialog open={inputModalOpen} onOpenChange={setInputModalOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Enter text to input</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 mt-2">
+                <Input value={inputModalText} onChange={(e:any) => setInputModalText(e.target.value)} placeholder="Type text to send to device" />
+                <div className="text-xs text-muted-foreground">Leave empty to skip</div>
+              </div>
+
+              <DialogFooter>
+                <div className="flex gap-2">
+                  <Button onClick={() => { setInputModalOpen(false); setInputModalText(""); }}>Cancel</Button>
+                  <Button onClick={handleConfirmInput} disabled={inputModalPending}>
+                    {inputModalPending ? "Sending..." : "Send"}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -703,17 +1029,60 @@ ${actions
                     <img 
                       src={mirrorImage} 
                       alt="Device screen" 
-                      className="w-full h-full object-contain"
+                      className={`w-full h-full object-contain ${captureMode ? 'cursor-crosshair ring-2 ring-offset-2 ring-primary/40' : ''}`}
+                      onClick={async (e) => {
+                        if (!captureMode) return;
+                        const el = e.currentTarget as HTMLImageElement;
+                        const rect = el.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left;
+                        const clickY = e.clientY - rect.top;
+
+                        const imgWidth = rect.width;
+                        const imgHeight = rect.height;
+
+                        const dev = deviceSize;
+                        try {
+                          if (!dev) {
+                            const sizeRes = await fetch(`${AGENT_URL}/device/size`);
+                            const sizeJson = await sizeRes.json();
+                            if (sizeJson.success && sizeJson.size) setDeviceSize(sizeJson.size);
+                          }
+                        } catch {}
+
+                        const finalDev = deviceSize || { w: 1080, h: 2400 };
+
+                        const deviceX = Math.round((clickX / imgWidth) * finalDev.w);
+                        const deviceY = Math.round((clickY / imgHeight) * finalDev.h);
+
+                        try {
+                          const res = await fetch(`${AGENT_URL}/device/tap`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ x: deviceX, y: deviceY }),
+                          });
+
+                          const json = await res.json().catch(() => ({}));
+
+                          if (res.ok && json.step) {
+                            toast.success("Captured step");
+
+                            // If this element looks like an input, prompt user to enter text
+                            if (json.step.isInputCandidate) {
+                              // Open non-blocking modal to collect input text
+                              setInputModalCoords({ x: deviceX, y: deviceY });
+                              setInputModalText("");
+                              setInputModalPending(false);
+                              setInputModalOpen(true);
+                            }
+
+                          } else {
+                            toast.error(json.error || "Failed to capture");
+                          }
+                        } catch (err) {
+                          toast.error("Failed to capture");
+                        }
+                      }}
                     />
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="absolute bottom-8 bg-background/80 backdrop-blur-sm"
-                      onClick={disconnectDevice}
-                    >
-                      <WifiOff className="h-3 w-3 mr-1" />
-                      Disconnect
-                    </Button>
                   </>
                 ) : (
                   <div className="text-center p-4 space-y-3">
@@ -728,6 +1097,26 @@ ${actions
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-16 h-1 bg-foreground/30 rounded-full" />
             </div>
           </CardContent>
+
+          {/* Controls moved outside the emulator preview */}
+          <div className="flex items-center justify-between gap-2 mt-4">
+            <Button variant={captureMode ? "destructive" : "ghost"} size="sm" onClick={() => setCaptureMode((s) => !s)} className="gap-2">
+              <Monitor className="h-3 w-3 mr-1" />
+              {captureMode ? "Capture Mode: ON" : "Capture Mode: OFF"}
+            </Button>
+
+            <div className="flex items-center gap-2">
+              {deviceSize && (
+                <div className="text-xs text-muted-foreground mr-2">
+                  Device: {deviceSize.w}x{deviceSize.h}
+                </div>
+              )}
+              <Button variant="ghost" size="sm" onClick={disconnectDevice}>
+                <WifiOff className="h-3 w-3 mr-1" />
+                Disconnect
+              </Button>
+            </div>
+          </div>
         </Card>
 
         {/* ACTIONS + SCRIPT */}
@@ -756,7 +1145,7 @@ ${actions
                   {actions.map((a, i) => (
                     <div
                       key={a.id}
-                      className="flex justify-between items-center p-2 border rounded mb-2 hover:bg-muted/50"
+                      className={`flex justify-between items-center p-2 border rounded mb-2 hover:bg-muted/50 ${replayIndex === i ? 'bg-yellow-50 border-yellow-200' : ''}`}
                     >
                       <div className="flex-1">
                         <span className="font-medium">
@@ -770,6 +1159,64 @@ ${actions
                         <p className="text-xs text-muted-foreground truncate max-w-md">
                           {a.locator}
                         </p>
+
+                        {/* Inline edit for input actions */}
+                        {a.type === "input" && (
+                          <div className="mt-2 flex items-center gap-2">
+                            {editingStepId === a.id ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  value={editingValue}
+                                  onChange={(e:any) => setEditingValue(e.target.value)}
+                                  onKeyDown={(e:any) => {
+                                    if (e.key === "Enter") {
+                                      // save
+                                      setActions((prev) =>
+                                        prev.map((p) =>
+                                          p.id === a.id ? { ...p, value: editingValue } : p
+                                        )
+                                      );
+                                      setEditingStepId(null);
+                                      setEditingValue("");
+                                      toast.success("Step value updated");
+                                    }
+                                    if (e.key === "Escape") {
+                                      setEditingStepId(null);
+                                      setEditingValue("");
+                                    }
+                                  }}
+                                  placeholder="Enter value for this step"
+                                  className="max-w-xs"
+                                />
+                                <Button size="sm" onClick={() => {
+                                  setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, value: editingValue } : p));
+                                  setEditingStepId(null);
+                                  setEditingValue("");
+                                  toast.success("Step value updated");
+                                }}>Save</Button>
+                                <Button size="sm" variant="ghost" onClick={() => { setEditingStepId(null); setEditingValue(""); }}>Cancel</Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm text-muted-foreground">
+                                  {a.value ? (
+                                    <span className="font-mono">"{a.value}"</span>
+                                  ) : (
+                                    <em className="text-xs">(no value)</em>
+                                  )}
+                                </div>
+
+                                <Button size="sm" variant="outline" disabled={!a.value || previewPendingId === a.id} onClick={() => previewInput(a)}>
+                                  {previewPendingId === a.id ? 'Sending...' : 'Preview'}
+                                </Button>
+
+                                <Button size="sm" onClick={() => { setEditingStepId(a.id); setEditingValue(a.value || ""); }}>
+                                  Edit
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <Button
                         size="icon"
