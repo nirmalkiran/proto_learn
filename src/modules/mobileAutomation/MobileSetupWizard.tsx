@@ -57,6 +57,58 @@ export default function MobileSetupWizard({
     setChecks((prev) => ({ ...prev, [key]: value }));
 
   /* =====================================================
+   * CHECK: BACKEND SERVER
+   * ===================================================== */
+  const checkBackend = async () => {
+    update("backend", { status: "checking", message: "Checking backend..." });
+
+    try {
+      const res = await fetch(`${AGENT_URL}/health`, { 
+        signal: AbortSignal.timeout(3000) 
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.status) throw new Error();
+
+      update("backend", {
+        status: "success",
+        message: "Backend running",
+      });
+    } catch {
+      update("backend", {
+        status: "error",
+        message: "Backend not reachable",
+      });
+    }
+  };
+
+  /* =====================================================
+   * CHECK: LOCAL AGENT
+   * ===================================================== */
+  const checkAgent = async () => {
+    update("agent", { status: "checking", message: "Checking agent..." });
+
+    try {
+      const res = await fetch(`${AGENT_URL}/agent/status`, {
+        signal: AbortSignal.timeout(3000)
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error();
+
+      update("agent", {
+        status: "success",
+        message: data.recording ? "Recording active" : "Agent ready",
+      });
+    } catch {
+      update("agent", {
+        status: "error",
+        message: "Agent not running",
+      });
+    }
+  };
+
+  /* =====================================================
    * CHECK: APPIUM
    * ===================================================== */
   const checkAppium = async () => {
@@ -214,9 +266,14 @@ export default function MobileSetupWizard({
   };
 
   const runAllChecks = async () => {
-    await checkAppium();
-    await checkEmulator();
-    await checkDevice();
+    // Run all checks in parallel for speed
+    await Promise.all([
+      checkBackend(),
+      checkAgent(),
+      checkAppium(),
+      checkEmulator(),
+      checkDevice(),
+    ]);
   };
 
   const icon = (status: CheckResult["status"]) =>
