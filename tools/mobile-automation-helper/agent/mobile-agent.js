@@ -263,7 +263,7 @@ export function stopRecording() {
 }
 
 /* =====================================================
-   REPLAY (ADB)
+   REPLAY (ADB) - Smart Replay with auto-wait and retry
 ===================================================== */
 
 function extractPackageFromSteps(steps = []) {
@@ -271,7 +271,6 @@ function extractPackageFromSteps(steps = []) {
     const loc = s.locator || "";
     const m = loc.match(/resource-id=\"([^:\"]+):/);
     if (m && m[1]) return m[1];
-    // also check description for package-looking strings
     if (s.description) {
       const dm = s.description.match(/([a-zA-Z0-9_\.]+)\:\/\//);
       if (dm && dm[1]) return dm[1];
@@ -280,22 +279,43 @@ function extractPackageFromSteps(steps = []) {
   return null;
 }
 
+// Smart wait: wait for screen to stabilize before action
+async function smartWait(ms = 500) {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+// Retry wrapper for replay actions
+async function retryAction(action, maxRetries = 2, delayMs = 300) {
+  let lastErr;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await action();
+    } catch (err) {
+      lastErr = err;
+      if (i < maxRetries) await smartWait(delayMs);
+    }
+  }
+  throw lastErr;
+}
+
 export async function replayRecording(steps = []) {
   try {
-    if (!Array.isArray(steps) || steps.length === 0) {
-      emit({ type: "replay:start", description: "No steps provided for replay" });
+    // Filter out disabled steps (Katalon-style step control)
+    const activeSteps = steps.filter((s) => s.enabled !== false);
+    
+    if (!Array.isArray(activeSteps) || activeSteps.length === 0) {
+      emit({ type: "replay:start", description: "No active steps provided for replay" });
       return;
     }
 
-    emit({ type: "replay:start", description: `Starting replay of ${steps.length} steps` });
+    emit({ type: "replay:start", description: `Starting replay of ${activeSteps.length} active steps` });
 
-    const pkg = extractPackageFromSteps(steps);
+    const pkg = extractPackageFromSteps(activeSteps);
     if (pkg) {
       emit({ type: "replay:info", description: `Opening app ${pkg} on device` });
       try {
         await adbExec(`shell monkey -p ${pkg} -c android.intent.category.LAUNCHER 1`);
-        // give app a moment to start
-        await new Promise((r) => setTimeout(r, 1200));
+        await smartWait(1200);
       } catch (e) {
         emit({ type: "replay:error", description: `Failed to launch app ${pkg}: ${String(e)}` });
       }
@@ -303,44 +323,45 @@ export async function replayRecording(steps = []) {
       emit({ type: "replay:info", description: "No package found in steps. Proceeding without launching an app." });
     }
 
-    for (let i = 0; i < steps.length; i++) {
-      const s = steps[i];
-      emit({ type: "replay:step:start", description: `Replaying step ${i + 1}/${steps.length}: ${s.description || s.type}`, stepIndex: i, step: s });
+    for (let i = 0; i < activeSteps.length; i++) {
+      const s = activeSteps[i];
+      emit({ type: "replay:step:start", description: `Replaying step ${i + 1}/${activeSteps.length}: ${s.description || s.type}`, stepIndex: i, step: s });
+
+      // Auto-wait before each step for stability
+      await smartWait(300);
 
       try {
         if (s.type === "tap") {
-          await adbExec(`shell input tap ${s.coordinates.x} ${s.coordinates.y}`);
+          await retryAction(() => adbExec(`shell input tap ${s.coordinates.x} ${s.coordinates.y}`));
         } else if (s.type === "scroll") {
-          await adbExec(
+          await retryAction(() => adbExec(
             `shell input swipe ${s.coordinates.x} ${s.coordinates.y} ${s.coordinates.endX} ${s.coordinates.endY} 300`
-          );
+          ));
         } else if (s.type === "input") {
           const text = String(s.value || "");
           const escaped = text.replace(/ /g, '%s').replace(/"/g, '\\"');
-          try {
+          await retryAction(async () => {
             await adbExec(`shell input text '${escaped}'`).catch(() => adbExec(`shell input text ${escaped}`));
             await adbExec('shell input keyevent 66');
-          } catch (e) {
-            emit({ type: "replay:error", description: `Input failed for step ${i + 1}: ${String(e)}` });
-          }
+          });
         } else if (s.type === "wait") {
           const ms = Number(s.value) || 500;
-          await new Promise((r) => setTimeout(r, ms));
+          await smartWait(ms);
         } else {
-          // Unknown step: still wait a short time
-          await new Promise((r) => setTimeout(r, 350));
+          await smartWait(350);
         }
 
-        emit({ type: "replay:step:done", description: `Completed step ${i + 1}/${steps.length}: ${s.description || s.type}`, stepIndex: i, step: s });
+        emit({ type: "replay:step:done", description: `Completed step ${i + 1}/${activeSteps.length}: ${s.description || s.type}`, stepIndex: i, step: s });
       } catch (stepErr) {
         emit({ type: "replay:step:error", description: `Error on step ${i + 1}: ${String(stepErr)}`, stepIndex: i, step: s });
+        // Continue to next step instead of aborting (safer)
       }
 
-      // small pause between steps
-      await new Promise((r) => setTimeout(r, 400));
+      // Pause between steps
+      await smartWait(400);
     }
 
-    emit({ type: "replay:finished", description: `Replay finished (${steps.length} steps)` });
+    emit({ type: "replay:finished", description: `Replay finished (${activeSteps.length} steps)` });
   } catch (err) {
     emit({ type: "replay:error", description: String(err) });
   }
