@@ -26,11 +26,61 @@ app.use(cors());
 app.use(express.json());
 
 /* =====================================================
+   HELPER: Safe exec with JSON error response
+===================================================== */
+
+function safeExec(command, timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    const child = exec(command, { timeout }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message));
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+/* =====================================================
+   HELPER: Check if ADB is available
+===================================================== */
+
+async function isAdbAvailable() {
+  try {
+    await safeExec("adb version", 3000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* =====================================================
+   HELPER: Check if device is connected
+===================================================== */
+
+async function getConnectedDevices() {
+  try {
+    const out = await safeExec("adb devices");
+    const lines = out.split("\n").filter((l) => l.includes("\tdevice"));
+    return lines.map((l) => {
+      const id = l.split("\t")[0];
+      const isEmulator = id.startsWith("emulator-");
+      const isWireless = id.includes(":");
+      return {
+        id,
+        type: isEmulator ? "emulator" : isWireless ? "wireless" : "usb",
+        priority: isEmulator ? 2 : isWireless ? 3 : 1, // USB has highest priority
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/* =====================================================
    HEALTH
 ===================================================== */
 
-app.get("/health", (_, res) => {
-  res.json({ ok: true, status: true });
+app.get("/health", async (_, res) => {
+  const adbOk = await isAdbAvailable();
+  res.json({ ok: true, status: true, adb: adbOk });
 });
 
 /* =====================================================
@@ -54,29 +104,41 @@ app.post("/agent/start", (_, res) => {
 });
 
 /* =====================================================
-   APPIUM STATUS
+   APPIUM STATUS (with defensive check)
 ===================================================== */
 
 app.get("/appium/status", (_, res) => {
-  exec("appium --version", (err, stdout) => {
+  exec("appium --version", { timeout: 5000 }, (err, stdout) => {
     if (err) {
-      return res.json({ running: false });
+      return res.json({ running: false, error: "Appium not found or not running" });
     }
     res.json({ running: true, version: stdout.trim() });
   });
 });
 
 /* =====================================================
-   DEVICE / ADB STATUS
+   DEVICE / ADB STATUS (enhanced with device type)
 ===================================================== */
 
-app.get("/device/check", (_, res) => {
-  exec("adb devices", (_, out) => {
-    const devices = out
-      .split("\n")
-      .filter((l) => l.includes("\tdevice"));
-    res.json({ connected: devices.length > 0, devices });
-  });
+app.get("/device/check", async (_, res) => {
+  try {
+    const devices = await getConnectedDevices();
+    if (devices.length === 0) {
+      return res.json({ connected: false, devices: [], deviceType: null });
+    }
+    // Sort by priority (USB first)
+    devices.sort((a, b) => a.priority - b.priority);
+    const primary = devices[0];
+    res.json({ 
+      connected: true, 
+      devices: devices.map(d => d.id), 
+      deviceType: primary.type,
+      primaryDevice: primary.id,
+      allDevices: devices
+    });
+  } catch (err) {
+    res.json({ connected: false, devices: [], error: String(err) });
+  }
 });
 
 /* =====================================================
@@ -347,19 +409,41 @@ app.get("/device/screenshot", (req, res) => {
 });
 
 /* =====================================================
-   APPIUM INSPECTOR (LOCAL)
+   APPIUM INSPECTOR (LOCAL) - Non-blocking & Safe
 ===================================================== */
 
 app.post("/appium/inspector", (_, res) => {
-  const inspectorPath =
-    `"${process.env.LOCALAPPDATA}\\Programs\\Appium Inspector\\Appium Inspector.exe"`;
+  // Try multiple paths for cross-platform support
+  const paths = [
+    process.env.LOCALAPPDATA ? `"${process.env.LOCALAPPDATA}\\Programs\\Appium Inspector\\Appium Inspector.exe"` : null,
+    "/Applications/Appium Inspector.app/Contents/MacOS/Appium Inspector",
+    "appium-inspector",
+  ].filter(Boolean);
 
-  exec(inspectorPath, (err) => {
-    if (err) {
-      return res.status(500).json({ success: false });
+  let launched = false;
+
+  const tryLaunch = (idx) => {
+    if (idx >= paths.length) {
+      return res.json({ success: false, error: "Appium Inspector not found. Please install it." });
     }
-    res.json({ success: true });
-  });
+    
+    const p = spawn(paths[idx], [], { detached: true, stdio: "ignore", shell: true });
+    p.unref();
+    
+    p.on("error", () => {
+      tryLaunch(idx + 1);
+    });
+    
+    // Assume success if no immediate error
+    setTimeout(() => {
+      if (!launched) {
+        launched = true;
+        res.json({ success: true });
+      }
+    }, 500);
+  };
+
+  tryLaunch(0);
 });
 
 /* =====================================================

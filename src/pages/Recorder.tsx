@@ -171,7 +171,7 @@ runTest();`;
               <div className="flex gap-2">
                 <Button
                   variant={isRecording ? "destructive" : "default"}
-                  onClick={isRecording ? stopRecording : startRecording}
+                  onClick={() => setIsRecording(!isRecording)}
                   className="flex-1"
                 >
                   {isRecording ? <Square className="mr-2 h-4 w-4" /> : <Circle className="mr-2 h-4 w-4" />}
