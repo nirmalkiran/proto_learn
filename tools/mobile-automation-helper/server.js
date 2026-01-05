@@ -180,17 +180,16 @@ app.post("/emulator/start", (req, res) => {
 
   console.log("Starting emulator:", avd);
 
-  exec(`emulator -avd ${avd}`, (err) => {
-    if (err) {
-      console.error("Emulator start failed:", err.message);
-      return res.json({
-        success: false,
-        error: err.message,
-      });
-    }
-
-    res.json({ success: true });
+  // Start emulator in background without opening terminal window
+  const emulatorProcess = spawn("emulator", ["-avd", avd], {
+    detached: true,
+    stdio: "ignore",
   });
+
+  emulatorProcess.unref();
+
+  // Respond immediately - emulator will start in background
+  res.json({ success: true, message: "Emulator starting in background" });
 });
 
 /* =====================================================
@@ -201,12 +200,15 @@ app.post("/terminal", (req, res) => {
   const { command } = req.body;
 
   if (command === "appium:start") {
-    exec(
-      "appium --address 127.0.0.1 --port 4723 --base-path /wd/hub",
-      () => {
-        res.json({ success: true });
-      }
-    );
+    // Start Appium in background without opening terminal window
+    const appiumProcess = spawn("appium", ["--address", "127.0.0.1", "--port", "4723", "--base-path", "/wd/hub"], {
+      detached: true,
+      stdio: "ignore",
+    });
+
+    appiumProcess.unref();
+
+    res.json({ success: true, message: "Appium starting in background" });
     return;
   }
 

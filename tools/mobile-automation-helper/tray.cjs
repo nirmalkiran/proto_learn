@@ -7,14 +7,26 @@ let tray = null;
 let serverProcess = null;
 let statusTimer = null;
 
-/* =====================================================
+// Prevent multiple instances and hide dock icon
+app.setActivationPolicy('accessory');
+app.dock?.hide();
+
+// Prevent window creation and focus
+app.on('window-all-closed', () => {
+  // Don't quit when all windows are closed - keep running in tray
+});
+
+app.on('activate', () => {
+  // Don't create windows on activation
+});
+
    ICON PATHS
 ===================================================== */
 
 const ICONS = {
-  green: path.join(__dirname, "tray-green.png"),
-  red: path.join(__dirname, "tray-red.png"),
-  yellow: path.join(__dirname, "tray-yellow.png"),
+  green: path.join(__dirname, "tray-icon.png"),
+  red: path.join(__dirname, "tray-icon.png"),
+  yellow: path.join(__dirname, "tray-icon.png"),
 };
 
 /* =====================================================
@@ -22,12 +34,27 @@ const ICONS = {
 ===================================================== */
 
 function startServer() {
-  if (serverProcess) return;
+  if (serverProcess) {
+    console.log("Server already running");
+    return;
+  }
 
+  console.log("Starting server in background...");
   serverProcess = spawn("node", ["server.js"], {
     cwd: __dirname,
     detached: true,
     stdio: "ignore",
+    windowsHide: true, // Hide console window on Windows
+  });
+
+  serverProcess.on('error', (err) => {
+    console.error("Server start error:", err);
+    serverProcess = null;
+  });
+
+  serverProcess.on('exit', (code) => {
+    console.log("Server exited with code:", code);
+    serverProcess = null;
   });
 
   serverProcess.unref();
@@ -35,8 +62,15 @@ function startServer() {
 
 function stopServer() {
   if (serverProcess) {
-    serverProcess.kill();
-    serverProcess = null;
+    console.log("Stopping server...");
+    try {
+      serverProcess.kill();
+      serverProcess = null;
+      console.log("Server stopped");
+    } catch (error) {
+      console.error("Error stopping server:", error);
+      serverProcess = null;
+    }
   }
 }
 
@@ -72,16 +106,31 @@ async function checkStatus() {
     const device = await getJSON("http://localhost:3001/device/check");
 
     if (health?.status && device?.connected) {
-      tray.setImage(ICONS.green);
-      tray.setToolTip("Mobile Automation Agent • Ready");
+      if (tray) {
+        tray.setImage(ICONS.green);
+        tray.setToolTip("Mobile Automation Agent • Ready");
+      }
       return;
     }
 
-    tray.setImage(ICONS.red);
-    tray.setToolTip("Mobile Automation Agent • No Device Connected");
-  } catch {
-    tray.setImage(ICONS.yellow);
-    tray.setToolTip("Mobile Automation Agent • Starting...");
+    if (health?.status) {
+      if (tray) {
+        tray.setImage(ICONS.red);
+        tray.setToolTip("Mobile Automation Agent • No Device Connected");
+      }
+      return;
+    }
+
+    if (tray) {
+      tray.setImage(ICONS.yellow);
+      tray.setToolTip("Mobile Automation Agent • Agent Offline");
+    }
+  } catch (error) {
+    console.log("Status check failed:", error.message);
+    if (tray) {
+      tray.setImage(ICONS.yellow);
+      tray.setToolTip("Mobile Automation Agent • Starting...");
+    }
   }
 }
 
@@ -126,8 +175,8 @@ app.whenReady().then(() => {
   tray.setContextMenu(menu);
 
   // Initial check
-  setTimeout(checkStatus, 10000);
+  setTimeout(checkStatus, 2000);
 
   // Re-check every 5 seconds
-  statusTimer = setInterval(checkStatus, 50000);
+  statusTimer = setInterval(checkStatus, 5000);
 });
