@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,18 +6,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ArrowLeft, Circle, Square, Play, Download, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 interface RecordedAction {
   id: string;
-  type: "tap" | "swipe" | "input" | "wait" | "assert";
+  type: "tap" | "swipe" | "input" | "wait" | "assert" | "scroll";
   locator?: string;
   value?: string;
   coordinates?: { x: number; y: number };
   direction?: "up" | "down" | "left" | "right";
   duration?: number;
+  description?: string;
 }
 
 const SAMPLE_ACTIONS: RecordedAction[] = [
@@ -30,14 +32,133 @@ const SAMPLE_ACTIONS: RecordedAction[] = [
   { id: "7", type: "assert", locator: "//android.widget.TextView[@text='Welcome']" },
 ];
 
+const AGENT_URL = "http://localhost:3001";
+
 export default function Recorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
   const [newAction, setNewAction] = useState<Partial<RecordedAction>>({ type: "tap" });
-  const [eventSource, setEventSource] = useState<EventSource | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  
+  // Input dialog state
   const [showInputDialog, setShowInputDialog] = useState(false);
-  const [currentInputAction, setCurrentInputAction] = useState<RecordedAction | null>(null);
+  const [pendingInputAction, setPendingInputAction] = useState<RecordedAction | null>(null);
   const [inputText, setInputText] = useState("");
+
+  // Cleanup SSE on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/recording/start`, { method: "POST" });
+      const data = await res.json();
+      
+      if (!data.success) {
+        toast.error(data.error || "Failed to start recording");
+        return;
+      }
+
+      setIsRecording(true);
+      toast.success("Recording started - interact with device");
+
+      // Connect to SSE for live events
+      const es = new EventSource(`${AGENT_URL}/recording/events`);
+      eventSourceRef.current = es;
+
+      es.onmessage = (event) => {
+        try {
+          const eventData = JSON.parse(event.data);
+          handleRecordedEvent(eventData);
+        } catch (err) {
+          console.error("SSE parse error:", err);
+        }
+      };
+
+      es.onerror = () => {
+        console.error("SSE connection error");
+      };
+
+    } catch (err) {
+      toast.error("Failed to connect to agent");
+      console.error(err);
+    }
+  };
+
+  const stopRecording = async () => {
+    // Close SSE connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    try {
+      await fetch(`${AGENT_URL}/recording/stop`, { method: "POST" });
+    } catch (err) {
+      console.error("Stop recording error:", err);
+    }
+
+    setIsRecording(false);
+    toast.success(`Recording stopped - ${actions.length} actions captured`);
+  };
+
+  const handleRecordedEvent = (eventData: any) => {
+    const action: RecordedAction = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      type: eventData.type || "tap",
+      locator: eventData.locator,
+      coordinates: eventData.coordinates,
+      direction: eventData.direction,
+      description: eventData.description,
+    };
+
+    // If it's an input action, prompt for text
+    if (eventData.type === "input" || eventData.isInputField) {
+      setPendingInputAction(action);
+      setInputText("");
+      setShowInputDialog(true);
+    } else {
+      setActions(prev => [...prev, action]);
+    }
+  };
+
+  const handleInputSubmit = () => {
+    if (pendingInputAction) {
+      const actionWithValue: RecordedAction = {
+        ...pendingInputAction,
+        type: "input",
+        value: inputText,
+      };
+      setActions(prev => [...prev, actionWithValue]);
+    }
+    setShowInputDialog(false);
+    setPendingInputAction(null);
+    setInputText("");
+  };
+
+  const handleInputCancel = () => {
+    // Add action without value if user cancels
+    if (pendingInputAction) {
+      setActions(prev => [...prev, { ...pendingInputAction, type: "tap" }]);
+    }
+    setShowInputDialog(false);
+    setPendingInputAction(null);
+    setInputText("");
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
 
   const addAction = () => {
     if (!newAction.type) return;  
@@ -84,11 +205,17 @@ async function runTest() {
 ${actions.map((a) => {
   switch (a.type) {
     case "tap":
-      return `    await driver.$('${a.locator}').click();`;
+      if (a.locator) {
+        return `    await driver.$('${a.locator}').click();`;
+      } else if (a.coordinates) {
+        return `    await driver.touchAction({ action: 'tap', x: ${a.coordinates.x}, y: ${a.coordinates.y} });`;
+      }
+      return `    // Tap action`;
     case "input":
       return `    await driver.$('${a.locator}').setValue('${a.value || ''}');`;
     case "swipe":
-      return `    // Swipe ${a.direction}`;
+    case "scroll":
+      return `    // Swipe/Scroll ${a.direction || 'down'}`;
     case "wait":
       return `    await driver.pause(${a.duration || 1000});`;
     case "assert":
@@ -131,7 +258,7 @@ runTest();`;
   const playback = async () => {
     toast.info("Starting playback...");
     try {
-      const res = await fetch("http://localhost:3001/api/playback", {
+      const res = await fetch(`${AGENT_URL}/api/playback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actions }),
@@ -171,7 +298,7 @@ runTest();`;
               <div className="flex gap-2">
                 <Button
                   variant={isRecording ? "destructive" : "default"}
-                  onClick={() => setIsRecording(!isRecording)}
+                  onClick={toggleRecording}
                   className="flex-1"
                 >
                   {isRecording ? <Square className="mr-2 h-4 w-4" /> : <Circle className="mr-2 h-4 w-4" />}
@@ -288,7 +415,9 @@ runTest();`;
                         <div className="flex-1 min-w-0">
                           <p className="font-medium capitalize">{action.type}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {action.locator || action.value || `${action.duration}ms` || action.direction}
+                            {action.type === "input" && action.value 
+                              ? `${action.locator} → "${action.value}"`
+                              : action.locator || action.description || (action.coordinates ? `(${action.coordinates.x}, ${action.coordinates.y})` : `${action.duration}ms`) || action.direction}
                           </p>
                         </div>
                         <Button
@@ -329,6 +458,38 @@ runTest();`;
           </Card>
         )}
       </div>
+
+      {/* Input Text Dialog */}
+      <Dialog open={showInputDialog} onOpenChange={setShowInputDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enter Input Text</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Label>Text to input into the field</Label>
+            <Input
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Enter text..."
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleInputSubmit()}
+            />
+            {pendingInputAction?.locator && (
+              <p className="text-xs text-muted-foreground mt-2 truncate">
+                Locator: {pendingInputAction.locator}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleInputCancel}>
+              Skip (Tap Only)
+            </Button>
+            <Button onClick={handleInputSubmit}>
+              Add Input
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
