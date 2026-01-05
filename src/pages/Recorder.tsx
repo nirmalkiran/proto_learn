@@ -34,9 +34,13 @@ export default function Recorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
   const [newAction, setNewAction] = useState<Partial<RecordedAction>>({ type: "tap" });
+  const [eventSource, setEventSource] = useState<EventSource | null>(null);
+  const [showInputDialog, setShowInputDialog] = useState(false);
+  const [currentInputAction, setCurrentInputAction] = useState<RecordedAction | null>(null);
+  const [inputText, setInputText] = useState("");
 
   const addAction = () => {
-    if (!newAction.type) return;
+    if (!newAction.type) return;  
     const action: RecordedAction = {
       id: Date.now().toString(),
       type: newAction.type as RecordedAction["type"],
@@ -82,7 +86,7 @@ ${actions.map((a) => {
     case "tap":
       return `    await driver.$('${a.locator}').click();`;
     case "input":
-      return `    await driver.$('${a.locator}').setValue('${a.value}');`;
+      return `    await driver.$('${a.locator}').setValue('${a.value || ''}');`;
     case "swipe":
       return `    // Swipe ${a.direction}`;
     case "wait":
@@ -167,7 +171,7 @@ runTest();`;
               <div className="flex gap-2">
                 <Button
                   variant={isRecording ? "destructive" : "default"}
-                  onClick={() => setIsRecording(!isRecording)}
+                  onClick={isRecording ? stopRecording : startRecording}
                   className="flex-1"
                 >
                   {isRecording ? <Square className="mr-2 h-4 w-4" /> : <Circle className="mr-2 h-4 w-4" />}

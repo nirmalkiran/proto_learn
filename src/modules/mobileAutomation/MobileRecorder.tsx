@@ -435,7 +435,7 @@ export default function MobileRecorder({
   }, [mirrorImage]);
 
   /* =====================================================
-   * ▶ START RECORDING
+   * START RECORDING
    * ===================================================== */
 
   const startRecording = async () => {
@@ -489,7 +489,7 @@ export default function MobileRecorder({
   };
 
   /* =====================================================
-   * ⏹ STOP RECORDING
+   * STOP RECORDING
    * ===================================================== */
 
   const stopRecording = async () => {
@@ -672,7 +672,33 @@ ${actions
     a.download = `recorded-test-${Date.now()}.spec.js`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Script downloaded");
+  toast.success("Script downloaded");
+};
+
+  const saveTestCase = async () => {
+    if (actions.length === 0) {
+      toast.error("No steps to save");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:3001/testcases/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Recorded_Test_${Date.now()}`,
+          steps: actions,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) throw new Error();
+
+      toast.success("Test case saved successfully");
+    } catch {
+      toast.error("Failed to save test case");
+    }
   };
 
   // Input modal confirm handler
@@ -866,7 +892,7 @@ ${actions
               variant={connectionStatus === "connected" ? "default" : "secondary"}
               className="animate-pulse"
             >
-              {connectionStatus === "connected" ? "🔴 Recording" : "⏳ Connecting..."}
+              {connectionStatus === "connected" ? "Recording" : "Connecting..."}
             </Badge>
           )}
 
@@ -985,11 +1011,11 @@ ${actions
             )}
           </CardHeader>
           <CardContent>
-            <div 
+            <div
               className="border-4 border-foreground/20 rounded-[2rem] overflow-hidden bg-black mx-auto relative"
-              style={{ 
-                width: DEVICE_WIDTH, 
-                height: DEVICE_HEIGHT,
+              style={{
+                width: mirrorActive ? 'auto' : DEVICE_WIDTH,
+                height: mirrorActive ? 'auto' : DEVICE_HEIGHT,
                 boxShadow: "0 0 0 2px hsl(var(--foreground)/0.1), 0 10px 40px rgba(0,0,0,0.3)"
               }}
             >
@@ -1027,7 +1053,7 @@ ${actions
                     <img 
                       src={mirrorImage} 
                       alt="Device screen" 
-                      className={`w-full h-full object-contain ${captureMode ? 'cursor-crosshair ring-2 ring-offset-2 ring-primary/40' : ''}`}
+                      className={`w-full h-full object-contain ${captureMode ? 'cursor-pointer ring-2 ring-offset-2 ring-primary/40' : ''}`}
                       onClick={async (e) => {
                         if (!captureMode) return;
                         const el = e.currentTarget as HTMLImageElement;
@@ -1047,7 +1073,7 @@ ${actions
                           }
                         } catch {}
 
-                        const finalDev = deviceSize || { w: 1080, h: 2400 };
+                        const finalDev = deviceSize || { w: 1344, h: 2400 };
 
                         const deviceX = Math.round((clickX / imgWidth) * finalDev.w);
                         const deviceY = Math.round((clickY / imgHeight) * finalDev.h);
@@ -1097,19 +1123,19 @@ ${actions
           </CardContent>
 
           {/* Controls moved outside the emulator preview */}
-          <div className="flex items-center justify-between gap-2 mt-4">
-            <Button variant={captureMode ? "destructive" : "ghost"} size="sm" onClick={() => setCaptureMode((s) => !s)} className="gap-2">
+          <div className="flex items-center justify-between gap-2 mt-4 p-2">
+            <Button variant={captureMode ? "destructive" : "default"} size="sm" onClick={() => setCaptureMode((s) => !s)} className="gap-2">
               <Monitor className="h-3 w-3 mr-1" />
               {captureMode ? "Capture Mode: ON" : "Capture Mode: OFF"}
             </Button>
 
             <div className="flex items-center gap-2">
-              {deviceSize && (
+              {/* {deviceSize && (
                 <div className="text-xs text-muted-foreground mr-2">
                   Device: {deviceSize.w}x{deviceSize.h}
                 </div>
-              )}
-              <Button variant="ghost" size="sm" onClick={disconnectDevice}>
+              )} */}
+              <Button variant="destructive" size="sm" onClick={disconnectDevice}>
                 <WifiOff className="h-3 w-3 mr-1" />
                 Disconnect
               </Button>
@@ -1265,6 +1291,14 @@ ${actions
               )}
             </CardContent>
           </Card>
+
+          <Button
+            className="w-full mt-3"
+            variant="secondary"
+            onClick={saveTestCase}
+          >
+            Save Test Case
+          </Button>
         </div>
       </div>
     </div>

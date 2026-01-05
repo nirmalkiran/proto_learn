@@ -20,6 +20,7 @@ import {
 
 const app = express();
 const PORT = 3001;
+const savedTestCases = [];
 
 app.use(cors());
 app.use(express.json());
@@ -110,7 +111,7 @@ app.post("/emulator/start", (req, res) => {
       .json({ success: false, error: "AVD name required" });
   }
 
-  console.log("🚀 Starting emulator:", avd);
+  console.log("Starting emulator:", avd);
 
   exec(`emulator -avd ${avd}`, (err) => {
     if (err) {
@@ -195,9 +196,42 @@ app.get("/recording/events", (req, res) => {
   req.on("close", () => {
     unsubscribe();
     res.end();
-    console.log("❌ SSE client disconnected");
+    console.log("SSE client disconnected");
   });
 });
+app.post("/testcases/save", (req, res) => {
+  const { name, steps } = req.body;
+
+  if (!name || !steps || !steps.length) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid test case data",
+    });
+  }
+
+  const testCase = {
+    id: Date.now(),
+    name,
+    steps,
+    createdAt: new Date().toISOString(),
+  };
+
+  savedTestCases.push(testCase);
+
+  console.log("[SERVER] Test case saved:", testCase.name);
+
+  res.json({
+    success: true,
+    testCaseId: testCase.id,
+  });
+});
+app.get("/testcases", (req, res) => {
+  res.json({
+    success: true,
+    testcases: savedTestCases,
+  });
+});
+
 
 /* =====================================================
    DEVICE MIRROR (SCRCPY)
@@ -334,6 +368,6 @@ app.post("/appium/inspector", (_, res) => {
 
 app.listen(PORT, () => {
   console.log(
-    `✅ Mobile Automation Helper running at http://localhost:${PORT}`
+    `Mobile Automation Helper running at http://localhost:${PORT}`
   );
 });
