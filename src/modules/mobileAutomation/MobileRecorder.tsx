@@ -75,7 +75,7 @@ export default function MobileRecorder({
   const [mirrorError, setMirrorError] = useState<string | null>(null);
   const [mirrorLoading, setMirrorLoading] = useState(false);
   const [captureMode, setCaptureMode] = useState(false);
-  const [deviceSize, setDeviceSize] = useState<{w:number;h:number} | null>(null);
+  const [deviceSize, setDeviceSize] = useState<{ w: number; h: number } | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveDescription, setSaveDescription] = useState("");
@@ -84,7 +84,7 @@ export default function MobileRecorder({
   // Input capture modal state
   const [inputModalOpen, setInputModalOpen] = useState(false);
   const [inputModalText, setInputModalText] = useState("");
-  const [inputModalCoords, setInputModalCoords] = useState<{x:number;y:number} | null>(null);
+  const [inputModalCoords, setInputModalCoords] = useState<{ x: number; y: number } | null>(null);
   const [inputModalPending, setInputModalPending] = useState(false);
 
   // Inline edit state for input actions
@@ -93,14 +93,14 @@ export default function MobileRecorder({
   const [previewPendingId, setPreviewPendingId] = useState<string | null>(null);
   const [replaying, setReplaying] = useState<boolean>(false);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
-  
+
   // Locator editing state
   const [editingLocatorId, setEditingLocatorId] = useState<string | null>(null);
   const [editingLocatorValue, setEditingLocatorValue] = useState<string>("");
-  
+
   // Drag reorder state
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
-  
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const screenshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -243,7 +243,35 @@ export default function MobileRecorder({
       clearTimeout(id);
     }
   };
+  const [agentStatus, setAgentStatus] = useState<
+    "checking" | "ready" | "nodevice" | "offline"
+  >("checking");
+  const checkAgentStatus = useCallback(async () => {
+    try {
+      const health = await fetch(`${AGENT_URL}/health`).then(r => r.json());
+      const device = await fetch(`${AGENT_URL}/device/check`).then(r => r.json());
 
+      if (health?.status && device?.connected) {
+        setAgentStatus("ready");
+        return;
+      }
+
+      if (health?.status) {
+        setAgentStatus("nodevice");
+        return;
+      }
+
+      setAgentStatus("offline");
+    } catch {
+      setAgentStatus("offline");
+    }
+  }, []);
+  useEffect(() => {
+    checkAgentStatus();
+
+    const id = setInterval(checkAgentStatus, 5000);
+    return () => clearInterval(id);
+  }, [checkAgentStatus]);
   const verifySetup = async () => {
     try {
       const [health, appium, device, emulator] = await Promise.all([
@@ -376,10 +404,10 @@ export default function MobileRecorder({
 
     try {
       // First check if local helper is running
-      const healthRes = await fetch(`${AGENT_URL}/health`, { 
-        signal: AbortSignal.timeout(3000) 
+      const healthRes = await fetch(`${AGENT_URL}/health`, {
+        signal: AbortSignal.timeout(3000)
       }).catch(() => null);
-      
+
       if (!healthRes?.ok) {
         setMirrorLoading(false);
         setMirrorError("Local helper not running. Run: cd tools/mobile-automation-helper && npm start");
@@ -413,7 +441,7 @@ export default function MobileRecorder({
         const sizeRes = await fetch(`${AGENT_URL}/device/size`);
         const sizeJson = await sizeRes.json();
         if (sizeJson.success && sizeJson.size) setDeviceSize(sizeJson.size);
-      } catch {}
+      } catch { }
 
       // Start embedded screenshot streaming
       setMirrorActive(true);
@@ -631,37 +659,37 @@ export default function MobileRecorder({
 describe("Recorded Mobile Test", () => {
   it("should replay recorded steps", async () => {
 ${enabledActions
-  .map((a, index) => {
-    const comment = `    // Step ${index + 1}: ${a.description}`;
-    switch (a.type) {
-      case "tap":
-        if (a.coordinates) {
-          return `${comment}\n    await driver.touchAction({ action: 'tap', x: ${a.coordinates.x}, y: ${a.coordinates.y} });`;
-        }
-        return `${comment}\n    await driver.$("${a.locator}").click();`;
-      case "input":
-        if (a.value && String(a.value).trim()) {
-          return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value}");`;
-        }
-        return `${comment}\n    // TODO: Replace INPUT_${index + 1} value or provide via env var\n    const input${index + 1} = process.env.INPUT_${index + 1} || "";\n    await driver.$("${a.locator}").setValue(input${index + 1});`;
-      case "scroll":
-        if (a.coordinates) {
-          return `${comment}\n    await driver.touchAction([
+        .map((a, index) => {
+          const comment = `    // Step ${index + 1}: ${a.description}`;
+          switch (a.type) {
+            case "tap":
+              if (a.coordinates) {
+                return `${comment}\n    await driver.touchAction({ action: 'tap', x: ${a.coordinates.x}, y: ${a.coordinates.y} });`;
+              }
+              return `${comment}\n    await driver.$("${a.locator}").click();`;
+            case "input":
+              if (a.value && String(a.value).trim()) {
+                return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value}");`;
+              }
+              return `${comment}\n    // TODO: Replace INPUT_${index + 1} value or provide via env var\n    const input${index + 1} = process.env.INPUT_${index + 1} || "";\n    await driver.$("${a.locator}").setValue(input${index + 1});`;
+            case "scroll":
+              if (a.coordinates) {
+                return `${comment}\n    await driver.touchAction([
       { action: 'press', x: ${a.coordinates.x}, y: ${a.coordinates.y} },
       { action: 'moveTo', x: ${a.coordinates.endX || a.coordinates.x}, y: ${a.coordinates.endY || a.coordinates.y} },
       { action: 'release' }
     ]);`;
-        }
-        return `${comment}\n    // scroll action (coordinates not captured)`;
-      case "wait":
-        return `${comment}\n    await driver.pause(1000);`;
-      case "assert":
-        return `${comment}\n    await expect(driver.$("${a.locator}")).toBeDisplayed();`;
-      default:
-        return "";
-    }
-  })
-  .join("\n\n")}
+              }
+              return `${comment}\n    // scroll action (coordinates not captured)`;
+            case "wait":
+              return `${comment}\n    await driver.pause(1000);`;
+            case "assert":
+              return `${comment}\n    await expect(driver.$("${a.locator}")).toBeDisplayed();`;
+            default:
+              return "";
+          }
+        })
+        .join("\n\n")}
   });
 });`;
   }, [actions]);
@@ -687,8 +715,8 @@ ${enabledActions
     a.download = `recorded-test-${Date.now()}.spec.js`;
     a.click();
     URL.revokeObjectURL(url);
-  toast.success("Script downloaded");
-};
+    toast.success("Script downloaded");
+  };
 
   const saveTestCase = async () => {
     if (actions.length === 0) {
@@ -791,7 +819,7 @@ ${enabledActions
       toast.error("No actions to save");
       return;
     }
-    setSaveName(`Recording ${new Date().toISOString().slice(0,19).replace('T',' ')}`);
+    setSaveName(`Recording ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`);
     setSaveDescription("");
     setShowSaveDialog(true);
   };
@@ -895,7 +923,26 @@ ${enabledActions
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold">Mobile Recorder</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold">Mobile Recorder</h2>
+
+            {agentStatus === "ready" && (
+              <Badge className="bg-green-600 text-white">Agent Ready</Badge>
+            )}
+
+            {agentStatus === "nodevice" && (
+              <Badge variant="secondary">Device Missing</Badge>
+            )}
+
+            {agentStatus === "offline" && (
+              <Badge variant="destructive">Agent Offline</Badge>
+            )}
+
+            {agentStatus === "checking" && (
+              <Badge variant="outline">Checking Agent…</Badge>
+            )}
+          </div>
+
           <p className="text-sm text-muted-foreground">
             Record actions on local emulator or device
           </p>
@@ -951,8 +998,8 @@ ${enabledActions
               </DialogHeader>
 
               <div className="space-y-4 mt-2">
-                <Input value={saveName} onChange={(e:any) => setSaveName(e.target.value)} placeholder="Recording name" />
-                <Textarea value={saveDescription} onChange={(e:any) => setSaveDescription(e.target.value)} placeholder="Short description (optional)" />
+                <Input value={saveName} onChange={(e: any) => setSaveName(e.target.value)} placeholder="Recording name" />
+                <Textarea value={saveDescription} onChange={(e: any) => setSaveDescription(e.target.value)} placeholder="Short description (optional)" />
               </div>
 
               <DialogFooter>
@@ -974,7 +1021,7 @@ ${enabledActions
               </DialogHeader>
 
               <div className="space-y-4 mt-2">
-                <Input value={inputModalText} onChange={(e:any) => setInputModalText(e.target.value)} placeholder="Type text to send to device" />
+                <Input value={inputModalText} onChange={(e: any) => setInputModalText(e.target.value)} placeholder="Type text to send to device" />
                 <div className="text-xs text-muted-foreground">Leave empty to skip</div>
               </div>
 
@@ -1036,7 +1083,7 @@ ${enabledActions
             >
               {/* Notch */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-b-xl z-10" />
-              
+
               {/* Screen Content */}
               <div className="w-full h-full flex flex-col items-center justify-center bg-muted/10 overflow-hidden">
                 {mirrorLoading ? (
@@ -1065,9 +1112,9 @@ ${enabledActions
                   </div>
                 ) : mirrorImage ? (
                   <>
-                    <img 
-                      src={mirrorImage} 
-                      alt="Device screen" 
+                    <img
+                      src={mirrorImage}
+                      alt="Device screen"
                       className={`w-full h-full object-contain ${captureMode ? 'cursor-pointer ring-2 ring-offset-2 ring-primary/40' : ''}`}
                       onClick={async (e) => {
                         if (!captureMode) return;
@@ -1086,7 +1133,7 @@ ${enabledActions
                             const sizeJson = await sizeRes.json();
                             if (sizeJson.success && sizeJson.size) setDeviceSize(sizeJson.size);
                           }
-                        } catch {}
+                        } catch { }
 
                         const finalDev = deviceSize || { w: 1344, h: 2400 };
 
@@ -1200,9 +1247,8 @@ ${enabledActions
                         setDraggedIdx(null);
                       }}
                       onDragEnd={() => setDraggedIdx(null)}
-                      className={`flex items-start gap-2 p-2 border rounded mb-2 hover:bg-muted/50 transition-colors ${
-                        replayIndex === i ? 'bg-yellow-50 border-yellow-200' : ''
-                      } ${!a.enabled ? 'opacity-50 bg-muted/30' : ''} ${draggedIdx === i ? 'border-primary' : ''}`}
+                      className={`flex items-start gap-2 p-2 border rounded mb-2 hover:bg-muted/50 transition-colors ${replayIndex === i ? 'bg-yellow-50 border-yellow-200' : ''
+                        } ${!a.enabled ? 'opacity-50 bg-muted/30' : ''} ${draggedIdx === i ? 'border-primary' : ''}`}
                     >
                       {/* Drag handle */}
                       <div className="cursor-grab pt-1">
@@ -1231,14 +1277,14 @@ ${enabledActions
                             ({a.coordinates.x}, {a.coordinates.y})
                           </span>
                         )}
-                        
+
                         {/* Locator with inline edit */}
                         {editingLocatorId === a.id ? (
                           <div className="flex items-center gap-1 mt-1">
                             <Input
                               value={editingLocatorValue}
-                              onChange={(e:any) => setEditingLocatorValue(e.target.value)}
-                              onKeyDown={(e:any) => {
+                              onChange={(e: any) => setEditingLocatorValue(e.target.value)}
+                              onKeyDown={(e: any) => {
                                 if (e.key === "Enter") {
                                   setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, locator: editingLocatorValue } : p));
                                   setEditingLocatorId(null);
@@ -1285,8 +1331,8 @@ ${enabledActions
                               <div className="flex items-center gap-2">
                                 <Input
                                   value={editingValue}
-                                  onChange={(e:any) => setEditingValue(e.target.value)}
-                                  onKeyDown={(e:any) => {
+                                  onChange={(e: any) => setEditingValue(e.target.value)}
+                                  onKeyDown={(e: any) => {
                                     if (e.key === "Enter") {
                                       setActions((prev) =>
                                         prev.map((p) =>

@@ -100,7 +100,12 @@ app.get("/agent/status", (_, res) => {
 // NOTE: A web page cannot start Node processes on your machine.
 // This endpoint exists so the UI can "ping" the helper and confirm it's running.
 app.post("/agent/start", (_, res) => {
-  res.json({ success: true, alreadyRunning: true });
+ // res.json({ success: true, alreadyRunning: true });
+ res.json({
+    success: true,
+    alreadyRunning: true,
+    message: "Agent is already running in background"
+  });
 });
 
 /* =====================================================
