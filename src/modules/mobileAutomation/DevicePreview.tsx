@@ -204,7 +204,7 @@ export default function DevicePreview({
 
       {/* Controls moved outside the emulator preview */}
       <div className="flex items-center justify-between gap-2 mt-4 p-2">
-        <Button variant={captureMode ? "destructive" : "default"} size="sm" onClick={() => setCaptureMode((s) => !s)} className="gap-2">
+        <Button variant={captureMode ? "destructive" : "default"} size="sm" onClick={() => setCaptureMode(!captureMode)} className="gap-2">
           <Monitor className="h-3 w-3 mr-1" />
           {captureMode ? "Capture Mode: ON" : "Capture Mode: OFF"}
         </Button>
