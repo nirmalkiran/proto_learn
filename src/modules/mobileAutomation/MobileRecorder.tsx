@@ -92,6 +92,7 @@ export default function MobileRecorder({
           const data = JSON.parse(event.data);
           if (data.type === "action") {
             const newAction: RecordedAction = {
+              id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               type: data.action?.type || "tap",
               description: data.action?.description || `Action at (${data.action?.x}, ${data.action?.y})`,
               locator: data.action?.locator,
@@ -156,6 +157,7 @@ export default function MobileRecorder({
   // Handle action captured from DevicePreview
   const handleActionCaptured = (action: any) => {
     const newAction: RecordedAction = {
+      id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       type: action.type || "tap",
       description: action.description || `Tap at (${action.x}, ${action.y})`,
       locator: action.locator,
