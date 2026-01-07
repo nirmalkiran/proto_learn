@@ -655,7 +655,7 @@ app.post("/setup/auto", async (req, res) => {
       `${process.env.USERPROFILE}\\AppData\\Local\\Android\\Sdk\\emulator\\emulator.exe`,
       `${process.env.USERPROFILE}\\android-sdk\\emulator\\emulator.exe`,
       `${process.env.USERPROFILE}\\Android\\Sdk\\emulator\\emulator.exe`,
-      'C:\\Android\\Sdk\\emulator\\emulator.exe`,
+      'C:\\Android\\Sdk\\emulator\\emulator.exe',
       `${process.env.HOME}\\Android\\Sdk\\emulator\\emulator.exe`,
       `${process.env.HOME}\\Library\\Android\\sdk\\emulator\\emulator`,
       '/usr/local/share/android-sdk/emulator/emulator',
