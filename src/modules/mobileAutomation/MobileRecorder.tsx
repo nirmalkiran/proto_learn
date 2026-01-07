@@ -59,15 +59,26 @@ interface MobileRecorderProps {
     device: boolean;
   };
   setSetupState?: (updater: any) => void;
+  // Lifted state props
+  actions: RecordedAction[];
+  setActions: React.Dispatch<React.SetStateAction<RecordedAction[]>>;
+  selectedDevice: any;
+  setSelectedDevice: React.Dispatch<React.SetStateAction<any>>;
+  isRecording: boolean;
+  setIsRecording: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export default function MobileRecorder({
   setupState,
   setSetupState,
+  actions,
+  setActions,
+  selectedDevice,
+  setSelectedDevice,
+  isRecording: recording,
+  setIsRecording: setRecording,
 }: MobileRecorderProps) {
-  const [recording, setRecording] = useState(false);
-  const [actions, setActions] = useState<RecordedAction[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<any>(null);
+  // Local UI state that doesn't need to persist
   const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
   const [mirrorActive, setMirrorActive] = useState(false);
   const [mirrorImage, setMirrorImage] = useState<string | null>(null);
@@ -75,7 +86,6 @@ export default function MobileRecorder({
   const [mirrorLoading, setMirrorLoading] = useState(false);
   const [captureMode, setCaptureMode] = useState(false);
   const [deviceSize, setDeviceSize] = useState<{w:number;h:number} | null>(null);
-
 
   // Input capture modal state
   const [inputModalOpen, setInputModalOpen] = useState(false);
