@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Tabs,
-  TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
@@ -25,7 +24,7 @@ import {
   History,
 } from "lucide-react";
 
-import MobileRecorder from "./MobileRecorder";
+import MobileRecorder, { RecordedAction } from "./MobileRecorder";
 import MobileInspector from "./MobileInspector";
 import MobileTerminal from "./MobileTerminal";
 import MobileTestGenerator from "./MobileTestGenerator";
@@ -48,6 +47,14 @@ export default function MobileAutomation() {
     emulator: false,
     device: false,
   });
+
+  /**
+   * ✅ SHARED RECORDER STATE
+   * Lifted from MobileRecorder to persist across tab switches
+   */
+  const [recorderActions, setRecorderActions] = useState<RecordedAction[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<any>(null);
+  const [isRecording, setIsRecording] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -105,65 +112,77 @@ export default function MobileAutomation() {
           </TabsTrigger>
         </TabsList>
 
-        {/* ================= OVERVIEW ================= */}
-        <TabsContent value="overview" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-blue-500" />
-                How this works
-              </CardTitle>
-              <CardDescription>
-                Record once, reuse many times — no coding required
-              </CardDescription>
-            </CardHeader>
+        {/* ================= TAB PANELS ================= */}
+        {/* Using CSS display instead of conditional unmounting to preserve state */}
+        
+        {/* OVERVIEW */}
+        <div className={activeTab === "overview" ? "block mt-2" : "hidden"}>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-blue-500" />
+                  How this works
+                </CardTitle>
+                <CardDescription>
+                  Record once, reuse many times — no coding required
+                </CardDescription>
+              </CardHeader>
 
-            <CardContent>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                <li>Complete local setup (Appium + Emulator)</li>
-                <li>Select device</li>
-                <li>Record actions visually</li>
-                <li>Replay or generate automation</li>
-                <li>Track execution history</li>
-              </ol>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              <CardContent>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                  <li>Complete local setup (Appium + Emulator)</li>
+                  <li>Select device</li>
+                  <li>Record actions visually</li>
+                  <li>Replay or generate automation</li>
+                  <li>Track execution history</li>
+                </ol>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
-        {/* ================= SETUP ================= */}
-        <TabsContent value="setup">
+        {/* SETUP */}
+        <div className={activeTab === "setup" ? "block mt-2" : "hidden"}>
           <MobileSetupWizard
             setupState={setupState}
             setSetupState={setSetupState}
           />
-        </TabsContent>
+        </div>
 
-        <TabsContent value="recorder" >
+        {/* RECORDER */}
+        <div className={activeTab === "recorder" ? "block mt-2" : "hidden"}>
           <MobileRecorder
             setupState={setupState}
             setSetupState={setSetupState}
+            actions={recorderActions}
+            setActions={setRecorderActions}
+            selectedDevice={selectedDevice}
+            setSelectedDevice={setSelectedDevice}
+            isRecording={isRecording}
+            setIsRecording={setIsRecording}
           />
-        </TabsContent>
+        </div>
 
-        {/* ================= INSPECTOR ================= */}
-        <TabsContent value="inspector" >
+        {/* INSPECTOR */}
+        <div className={activeTab === "inspector" ? "block mt-2" : "hidden"}>
           <MobileInspector />
-        </TabsContent>
+        </div>
 
-        {/* ================= TERMINAL ================= */}
-        <TabsContent value="terminal">
+        {/* TERMINAL */}
+        <div className={activeTab === "terminal" ? "block mt-2" : "hidden"}>
           <MobileTerminal projectId={projectId} />
-        </TabsContent>
+        </div>
 
-        {/* ================= GENERATOR ================= */}
-        <TabsContent value="generator">
+        {/* GENERATOR */}
+        <div className={activeTab === "generator" ? "block mt-2" : "hidden"}>
           <MobileTestGenerator />
-        </TabsContent>
+        </div>
 
-        {/* ================= HISTORY ================= */}
-        <TabsContent value="history">
+        {/* HISTORY */}
+        <div className={activeTab === "history" ? "block mt-2" : "hidden"}>
           <MobileExecutionHistory />
-        </TabsContent>
+        </div>
       </Tabs>
     </div>
   );
