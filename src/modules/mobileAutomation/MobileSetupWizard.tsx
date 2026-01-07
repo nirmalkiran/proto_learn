@@ -142,30 +142,40 @@ interface MobileSetupWizardProps {
     device: boolean;
   };
   setSetupState: (state: any) => void;
+  checks: Record<string, CheckResult>;
+  setChecks: (checks: Record<string, CheckResult>) => void;
+  agentDetails: any;
+  setAgentDetails: (details: any) => void;
+  availableDevices: string[];
+  setAvailableDevices: (devices: string[]) => void;
+  selectedDevice: string;
+  setSelectedDevice: (device: string) => void;
+  wizardOpen: boolean;
+  setWizardOpen: (open: boolean) => void;
+  wizardTab: "usb" | "wireless";
+  setWizardTab: (tab: "usb" | "wireless") => void;
+  wizardStep: number;
+  setWizardStep: (step: number) => void;
 }
 
 export default function MobileSetupWizard({
   setupState,
   setSetupState,
+  checks,
+  setChecks,
+  agentDetails,
+  setAgentDetails,
+  availableDevices,
+  setAvailableDevices,
+  selectedDevice,
+  setSelectedDevice,
+  wizardOpen,
+  setWizardOpen,
+  wizardTab,
+  setWizardTab,
+  wizardStep,
+  setWizardStep,
 }: MobileSetupWizardProps) {
-  const [checks, setChecks] = useState<Record<string, CheckResult>>({
-    backend: { status: "pending", message: "Not checked" },
-    agent: { status: "pending", message: "Not checked" },
-    appium: { status: "pending", message: "Not checked" },
-    emulator: { status: "pending", message: "Not checked" },
-    device: { status: "pending", message: "Not checked" },
-  });
-
-  // Agent details state
-  const [agentDetails, setAgentDetails] = useState<any>(null);
-
-  // Available devices state
-  const [availableDevices, setAvailableDevices] = useState<string[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<string>("");
-
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardTab, setWizardTab] = useState<"usb" | "wireless">("usb");
-  const [wizardStep, setWizardStep] = useState(1);
 
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));

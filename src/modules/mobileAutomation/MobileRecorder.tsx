@@ -11,9 +11,6 @@ import DeviceSelector from "./DeviceSelector";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-/* =====================================================
- * TYPES
- * ===================================================== */
 
 export type ActionType =
   | "tap"
@@ -38,19 +35,12 @@ export interface RecordedAction {
   timestamp?: number;
 }
 
-/* =====================================================
- * CONSTANTS
- * ===================================================== */
 
 const AGENT_URL = "http://localhost:3001";
 
 // Standard phone dimensions (portrait) - matches typical Android emulator
 const DEVICE_WIDTH = 320;
 const DEVICE_HEIGHT = 568;
-
-/* =====================================================
- * COMPONENT
- * ===================================================== */
 
 interface MobileRecorderProps {
   setupState: {
@@ -59,36 +49,88 @@ interface MobileRecorderProps {
     device: boolean;
   };
   setSetupState?: (updater: any) => void;
+  recording: boolean;
+  setRecording: (recording: boolean) => void;
+  actions: RecordedAction[];
+  setActions: (actions: RecordedAction[]) => void;
+  selectedDevice: any;
+  setSelectedDevice: (device: any) => void;
+  connectionStatus: "disconnected" | "connecting" | "connected";
+  setConnectionStatus: (status: "disconnected" | "connecting" | "connected") => void;
+  mirrorActive: boolean;
+  setMirrorActive: (active: boolean) => void;
+  mirrorImage: string | null;
+  setMirrorImage: (image: string | null) => void;
+  mirrorError: string | null;
+  setMirrorError: (error: string | null) => void;
+  mirrorLoading: boolean;
+  setMirrorLoading: (loading: boolean) => void;
+  captureMode: boolean;
+  setCaptureMode: (mode: boolean) => void;
+  deviceSize: {w:number;h:number} | null;
+  setDeviceSize: (size: {w:number;h:number} | null) => void;
+  inputModalOpen: boolean;
+  setInputModalOpen: (open: boolean) => void;
+  inputModalText: string;
+  setInputModalText: (text: string) => void;
+  inputModalCoords: {x:number;y:number} | null;
+  setInputModalCoords: (coords: {x:number;y:number} | null) => void;
+  inputModalPending: boolean;
+  setInputModalPending: (pending: boolean) => void;
+  editingStepId: string | null;
+  setEditingStepId: (id: string | null) => void;
+  editingValue: string;
+  setEditingValue: (value: string) => void;
+  previewPendingId: string | null;
+  setPreviewPendingId: (id: string | null) => void;
+  replaying: boolean;
+  setReplaying: (replaying: boolean) => void;
+  replayIndex: number | null;
+  setReplayIndex: (index: number | null) => void;
 }
 
 export default function MobileRecorder({
   setupState,
   setSetupState,
+  recording,
+  setRecording,
+  actions,
+  setActions,
+  selectedDevice,
+  setSelectedDevice,
+  connectionStatus,
+  setConnectionStatus,
+  mirrorActive,
+  setMirrorActive,
+  mirrorImage,
+  setMirrorImage,
+  mirrorError,
+  setMirrorError,
+  mirrorLoading,
+  setMirrorLoading,
+  captureMode,
+  setCaptureMode,
+  deviceSize,
+  setDeviceSize,
+  inputModalOpen,
+  setInputModalOpen,
+  inputModalText,
+  setInputModalText,
+  inputModalCoords,
+  setInputModalCoords,
+  inputModalPending,
+  setInputModalPending,
+  editingStepId,
+  setEditingStepId,
+  editingValue,
+  setEditingValue,
+  previewPendingId,
+  setPreviewPendingId,
+  replaying,
+  setReplaying,
+  replayIndex,
+  setReplayIndex,
 }: MobileRecorderProps) {
-  const [recording, setRecording] = useState(false);
-  const [actions, setActions] = useState<RecordedAction[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<any>(null);
-  const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
-  const [mirrorActive, setMirrorActive] = useState(false);
-  const [mirrorImage, setMirrorImage] = useState<string | null>(null);
-  const [mirrorError, setMirrorError] = useState<string | null>(null);
-  const [mirrorLoading, setMirrorLoading] = useState(false);
-  const [captureMode, setCaptureMode] = useState(false);
-  const [deviceSize, setDeviceSize] = useState<{w:number;h:number} | null>(null);
-
-
-  // Input capture modal state
-  const [inputModalOpen, setInputModalOpen] = useState(false);
-  const [inputModalText, setInputModalText] = useState("");
-  const [inputModalCoords, setInputModalCoords] = useState<{x:number;y:number} | null>(null);
-  const [inputModalPending, setInputModalPending] = useState(false);
-
-  // Inline edit state for input actions
-  const [editingStepId, setEditingStepId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState<string>("");
-  const [previewPendingId, setPreviewPendingId] = useState<string | null>(null);
-  const [replaying, setReplaying] = useState<boolean>(false);
-  const [replayIndex, setReplayIndex] = useState<number | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const screenshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
