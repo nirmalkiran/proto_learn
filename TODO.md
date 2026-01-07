@@ -1,12 +1,14 @@
-# Mobile Recorder Implementation Plan
+# Fix State Reset Issues in Mobile Automation Tabs
 
-## Tasks
-- [x] Update MobileRecorder.tsx with full recording functionality
-- [x] Fix import paths in the component
-- [x] Test the component integration
-- [x] Verify setup state handling
+## Plan Overview
+Lift all component state to index.tsx parent component and change from TabsContent to conditional rendering to prevent state loss when switching tabs.
 
-## Current Status
-- Setup state analysis complete
-- Component code provided for update
-- Ready to implement recording features
+## Steps
+- [ ] Lift state from MobileSetupWizard to index.tsx
+- [ ] Lift state from MobileRecorder to index.tsx
+- [ ] Lift state from MobileInspector to index.tsx
+- [ ] Update index.tsx to use conditional rendering instead of TabsContent
+- [ ] Update MobileSetupWizard to accept props instead of local state
+- [ ] Update MobileRecorder to accept props instead of local state
+- [ ] Update MobileInspector to accept props instead of local state
+- [ ] Test tab switching to ensure state persists
