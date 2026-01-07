@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+// UI Components
 import {
   Card,
   CardContent,
@@ -9,6 +11,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+// Icons
 import {
   CheckCircle2,
   XCircle,
@@ -25,13 +42,15 @@ import {
   AlertCircle,
   Cable,
 } from "lucide-react";
+
+// Utils
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
+/* =====================================================
+ * CONSTANTS & CONFIGURATION
+ * ===================================================== */
+
+const AGENT_URL = "http://localhost:3001";
 
 /* =====================================================
  * TYPES
@@ -42,10 +61,8 @@ interface CheckResult {
   message: string;
 }
 
-const AGENT_URL = "http://localhost:3001";
-
 /* =====================================================
- * USB WIZARD STEPS
+ * WIZARD STEP CONFIGURATIONS
  * ===================================================== */
 
 const USB_STEPS = [
@@ -115,20 +132,22 @@ const WIRELESS_STEPS = [
 ];
 
 /* =====================================================
- * COMPONENT
+ * MAIN COMPONENT
  * ===================================================== */
 
-export default function MobileSetupWizard({
-  setupState,
-  setSetupState,
-}: {
+interface MobileSetupWizardProps {
   setupState: {
     appium: boolean;
     emulator: boolean;
     device: boolean;
   };
-  setSetupState: (v: any) => void;
-}) {
+  setSetupState: (state: any) => void;
+}
+
+export default function MobileSetupWizard({
+  setupState,
+  setSetupState,
+}: MobileSetupWizardProps) {
   const [checks, setChecks] = useState<Record<string, CheckResult>>({
     backend: { status: "pending", message: "Not checked" },
     agent: { status: "pending", message: "Not checked" },
@@ -137,6 +156,13 @@ export default function MobileSetupWizard({
     device: { status: "pending", message: "Not checked" },
   });
 
+  // Agent details state
+  const [agentDetails, setAgentDetails] = useState<any>(null);
+
+  // Available devices state
+  const [availableDevices, setAvailableDevices] = useState<string[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>("");
+
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardTab, setWizardTab] = useState<"usb" | "wireless">("usb");
   const [wizardStep, setWizardStep] = useState(1);
@@ -144,9 +170,16 @@ export default function MobileSetupWizard({
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));
 
+  // Fetch available devices on component mount
+  useEffect(() => {
+    fetchAvailableDevices();
+  }, []);
+
   /* =====================================================
-   * CHECK: BACKEND SERVER
+   * SERVICE STATUS CHECK FUNCTIONS
    * ===================================================== */
+
+  // Check Backend Server Status
   const checkBackend = async () => {
     update("backend", { status: "checking", message: "Checking backend..." });
 
@@ -170,9 +203,7 @@ export default function MobileSetupWizard({
     }
   };
 
-  /* =====================================================
-   * CHECK: LOCAL AGENT
-   * ===================================================== */
+  // Check Local Agent Status
   const checkAgent = async () => {
     update("agent", { status: "checking", message: "Checking agent..." });
 
@@ -196,9 +227,7 @@ export default function MobileSetupWizard({
     }
   };
 
-  /* =====================================================
-   * CHECK: APPIUM
-   * ===================================================== */
+  // Check Appium Server Status
   const checkAppium = async () => {
     update("appium", { status: "checking", message: "Checking Appium..." });
 
@@ -223,9 +252,7 @@ export default function MobileSetupWizard({
     }
   };
 
-  /* =====================================================
-   * CHECK: EMULATOR
-   * ===================================================== */
+  // Check Android Emulator Status
   const checkEmulator = async () => {
     update("emulator", {
       status: "checking",
@@ -253,9 +280,7 @@ export default function MobileSetupWizard({
     }
   };
 
-  /* =====================================================
-   * CHECK: DEVICE
-   * ===================================================== */
+  // Check ADB Device Connection Status
   const checkDevice = async () => {
     update("device", {
       status: "checking",
@@ -283,10 +308,7 @@ export default function MobileSetupWizard({
     }
   };
 
-  /* =====================================================
-   * START SERVICES
-   * ===================================================== */
-
+  // Start Appium Server
   const startAppium = async () => {
     toast.info("Starting Appium...");
     try {
@@ -307,6 +329,7 @@ export default function MobileSetupWizard({
     }
   };
 
+  // Start Android Emulator
   const startEmulator = async () => {
     toast.info("Starting emulator...");
     try {
@@ -327,6 +350,7 @@ export default function MobileSetupWizard({
     }
   };
 
+  // Start Local Agent
   const startAgent = async () => {
     toast.info("Starting local agent...");
     try {
@@ -345,6 +369,7 @@ export default function MobileSetupWizard({
     }
   };
 
+  // Start Backend Service
   const startBackend = async () => {
     toast.info("Starting backend...");
     update("backend", {
@@ -353,6 +378,87 @@ export default function MobileSetupWizard({
     });
   };
 
+  // Fetch Available Devices
+  const fetchAvailableDevices = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/emulator/available`);
+      const data = await res.json();
+
+      if (data.success) {
+        setAvailableDevices(data.devices || []);
+        if (data.devices && data.devices.length > 0 && !selectedDevice) {
+          setSelectedDevice(data.devices[0]); // Auto-select first device if none selected
+        }
+      } else {
+        setAvailableDevices([]);
+        toast.error("Failed to fetch available devices", {
+          description: data.error || "Unknown error occurred"
+        });
+      }
+    } catch (error) {
+      setAvailableDevices([]);
+      toast.error("Failed to fetch available devices", {
+        description: "Local helper not reachable at http://localhost:3001"
+      });
+    }
+  };
+
+  // One-Tap Start All Services
+  const startAllServices = async () => {
+    toast.info("Starting all services...");
+
+    try {
+      // First check if server is running
+      const healthCheck = await fetch(`${AGENT_URL}/health`, {
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (!healthCheck.ok) throw new Error("Server not running");
+
+      // Server is running, start all services via API
+      const res = await fetch(`${AGENT_URL}/setup/auto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avd: selectedDevice || undefined }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        // Store agent details and available devices
+        setAgentDetails(data.agentDetails);
+        setAvailableDevices(data.availableDevices || []);
+
+        toast.success("All services started successfully!");
+        setTimeout(runAllChecks, 25000); // Refresh all checks after a delay (increased for emulator boot time)
+      } else {
+        throw new Error("Service startup failed");
+      }
+    } catch (error) {
+      // Server not running - provide clear instructions
+      console.log("Server not running, providing manual instructions...");
+      toast.error("Mobile Automation Helper Server Not Running", {
+        description: "Please start the server first, then click the button again.",
+        duration: 10000,
+      });
+
+      // Show instructions in a dialog
+      setTimeout(() => {
+        alert(`To start all services automatically:
+
+1. Open Command Prompt/Terminal
+2. Navigate to: tools/mobile-automation-helper
+3. Run: start-everything.bat
+4. Wait for "setup complete" message
+5. Return to this app and click "One-Tap Start All Services" again
+
+Alternatively:
+- Run: npm start (then click the button again)`);
+      }, 1000);
+    }
+  };
+
+  // Run All Service Status Checks
   const runAllChecks = async () => {
     await Promise.all([
       checkBackend(),
@@ -363,6 +469,51 @@ export default function MobileSetupWizard({
     ]);
   };
 
+  // Check All Services Status via Aggregated API
+  const checkAllServicesStatus = async () => {
+    toast.info("Checking all services status...");
+
+    try {
+      const res = await fetch(`${AGENT_URL}/setup/status`);
+      const data = await res.json();
+
+      if (!res.ok) throw new Error("Failed to get status");
+
+      // Update individual checks based on aggregated status
+      update("backend", {
+        status: data.backend ? "success" : "error",
+        message: data.backend ? "Backend running" : "Backend not running",
+      });
+
+      update("agent", {
+        status: data.agent ? "success" : "error",
+        message: data.agent ? "Agent running" : "Agent not running",
+      });
+
+      update("appium", {
+        status: data.appium ? "success" : "error",
+        message: data.appium ? "Appium running" : "Appium not running",
+      });
+
+      update("emulator", {
+        status: data.emulator ? "success" : "error",
+        message: data.emulator ? "Emulator running" : "Emulator not running",
+      });
+
+      update("device", {
+        status: data.device ? "success" : "error",
+        message: data.device ? "Device connected" : "No device connected",
+      });
+
+      toast.success("Status check complete!");
+    } catch (error) {
+      toast.error("Failed to check services status", {
+        description: "Local helper not reachable at http://localhost:3001",
+      });
+    }
+  };
+
+   // Status icon renderer
   const icon = (status: CheckResult["status"]) =>
     status === "success" ? (
       <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -374,6 +525,7 @@ export default function MobileSetupWizard({
       <div className="h-5 w-5 rounded-full border border-muted-foreground/30" />
     );
 
+  // System status items configuration
   const items = [
     { key: "backend", label: "Backend Server", icon: Server },
     { key: "agent", label: "Local Agent", icon: Server },
@@ -382,12 +534,9 @@ export default function MobileSetupWizard({
     { key: "device", label: "ADB Device", icon: Smartphone },
   ];
 
+  // Current wizard steps based on selected tab
   const currentSteps = wizardTab === "usb" ? USB_STEPS : WIRELESS_STEPS;
-
-  /* =====================================================
-   * WIZARD STEP CONTENT
-   * ===================================================== */
-
+  // Render wizard step content based on current step and tab
   const renderWizardStepContent = () => {
     if (wizardTab === "usb") {
       switch (wizardStep) {
@@ -624,42 +773,125 @@ export default function MobileSetupWizard({
 
   return (
     <div className="space-y-6">
+      {/* Header Section */}
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Local Setup Wizard</h2>
+        <h2 className="text-xl font-bold">Local Setup</h2>
+         <p className="text-sm text-muted-foreground">Automatically starts emulator, Appium background services, and connects device</p>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setWizardOpen(true)}>
+          {/* <Button variant="outline" onClick={() => setWizardOpen(true)}>
             <Smartphone className="mr-2 h-4 w-4" />
             Device Connection Wizard
           </Button>
           <Button onClick={runAllChecks}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Run All Checks
+          </Button> */}
+          <Button onClick={checkAllServicesStatus}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Check All Services Status
+          </Button>
+          <Button onClick={startAllServices} className="bg-primary hover:bg-primary/90">
+            <Power className="mr-2 h-4 w-4" />
+            One-Tap Start All Services
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Button variant="outline" onClick={startEmulator}>
-          <Power className="mr-2 h-4 w-4" />
-          Start Emulator
-        </Button>
+      {/* Device Selection Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5" />
+            Device Selection
+          </CardTitle>
+          <CardDescription>
+            Choose the Android Virtual Device (AVD) to use for recording and automation
+          </CardDescription>
+        </CardHeader>
 
-        <Button variant="outline" onClick={startAppium}>
-          <Power className="mr-2 h-4 w-4" />
-          Start Appium
-        </Button>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a device..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDevices.map((device) => (
+                    <SelectItem key={device} value={device}>
+                      {device}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <Button variant="outline" onClick={startBackend}>
-          <Power className="mr-2 h-4 w-4" />
-          Start Backend
-        </Button>
+            <Button variant="outline" onClick={fetchAvailableDevices}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh Devices
+            </Button>
+          </div>
 
-        <Button variant="outline" onClick={startAgent}>
-          <Power className="mr-2 h-4 w-4" />
-          Start Agent
-        </Button>
+          {availableDevices.length === 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5" />
+                <div className="text-sm">
+                  <span className="font-medium text-amber-500">No devices found</span>
+                  <p className="mt-1 text-muted-foreground">
+                    Make sure Android SDK is installed and AVDs are created. Click "Refresh Devices" to try again.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedDevice && (
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                <div className="text-sm">
+                  <span className="font-medium text-green-500">Selected Device:</span>
+                  <p className="mt-1 font-mono text-muted-foreground">{selectedDevice}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Service Control Section */}
+      <div className="space-y-4">
+        {/* One-Tap Start Button 
+        <div className="flex items-center gap-4"> </div>*/}
+          
+         
+       
+        {/* Individual Service Buttons */}
+        <div className="flex flex-wrap gap-3">
+          {/* <Button variant="outline" onClick={startEmulator}>
+            <Power className="mr-2 h-4 w-4" />
+            Start Emulator
+          </Button>
+
+          <Button variant="outline" onClick={startAppium}>
+            <Power className="mr-2 h-4 w-4" />
+            Start Appium
+          </Button>
+
+          <Button variant="outline" onClick={startBackend}>
+            <Power className="mr-2 h-4 w-4" />
+            Start Backend
+          </Button> */}
+
+          {/* <Button variant="outline" onClick={startAgent}>
+            <Power className="mr-2 h-4 w-4" />
+            Start Agent
+          </Button> */}
+        </div>
       </div>
 
+      {/* System Status Card */}
       <Card>
         <CardHeader>
           <CardTitle>System Status</CardTitle>
@@ -687,6 +919,86 @@ export default function MobileSetupWizard({
         </CardContent>
       </Card>
 
+      {/* Agent Details Card */}
+      {agentDetails && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5" />
+              Local Agent Details
+            </CardTitle>
+            <CardDescription>
+              Agent configuration and status information
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Status:</span>
+                  <Badge variant={agentDetails.running ? "default" : "destructive"}>
+                    {agentDetails.running ? "Running" : "Stopped"}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Recording:</span>
+                  <Badge variant={agentDetails.recording ? "default" : "secondary"}>
+                    {agentDetails.recording ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Port:</span>
+                  <code className="text-sm bg-muted px-2 py-1 rounded">
+                    {agentDetails.port}
+                  </code>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <span className="text-sm font-medium">WebSocket URL:</span>
+                  <div className="mt-1">
+                    <code className="text-xs bg-muted px-2 py-1 rounded break-all">
+                      {agentDetails.websocketUrl}
+                    </code>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-sm font-medium">Recorded Steps:</span>
+                  <div className="mt-1">
+                    <Badge variant="outline">{agentDetails.steps || 0}</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-medium mb-2">Appium Capabilities</h4>
+              <div className="bg-muted rounded-lg p-3">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="font-medium">Platform:</span> {agentDetails.capabilities.platformName}
+                  </div>
+                  <div>
+                    <span className="font-medium">Version:</span> {agentDetails.capabilities.platformVersion}
+                  </div>
+                  <div>
+                    <span className="font-medium">Device:</span> {agentDetails.selectedDevice || agentDetails.capabilities.deviceName}
+                  </div>
+                  <div>
+                    <span className="font-medium">Automation:</span> {agentDetails.capabilities.automationName}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Device Connection Wizard Dialog */}
       <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
         <DialogContent className="max-w-2xl">
@@ -700,6 +1012,7 @@ export default function MobileSetupWizard({
             </p>
           </DialogHeader>
 
+          {/* Wizard Tabs */}
           <Tabs value={wizardTab} onValueChange={(v) => { setWizardTab(v as "usb" | "wireless"); setWizardStep(1); }}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="usb" className="flex items-center gap-2">
@@ -713,7 +1026,7 @@ export default function MobileSetupWizard({
             </TabsList>
 
             <TabsContent value={wizardTab} className="mt-4">
-              {/* Step Indicators */}
+              {/* Step Progress Indicators */}
               <div className="flex items-center justify-between mb-6">
                 {currentSteps.map((step, idx) => (
                   <div key={step.id} className="flex items-center">
@@ -744,7 +1057,7 @@ export default function MobileSetupWizard({
                 ))}
               </div>
 
-              {/* Step Content */}
+              {/* Current Step Content */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">{currentSteps[wizardStep - 1].title}</CardTitle>
@@ -753,7 +1066,7 @@ export default function MobileSetupWizard({
                 <CardContent>{renderWizardStepContent()}</CardContent>
               </Card>
 
-              {/* Navigation */}
+              {/* Navigation Controls */}
               <div className="flex items-center justify-between mt-6">
                 <Button
                   variant="outline"

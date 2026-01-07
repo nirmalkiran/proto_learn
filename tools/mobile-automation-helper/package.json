@@ -5,11 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "agent": "node agent.js",
+    "agent": "node agent/start-agent.js",
     "tray": "electron tray.cjs"
   },
   "keywords": [],
-  "author": "",
+  "author": "Nirmal Patel",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { exec, spawn } from "child_process";
+import { createServer } from 'net';
 
 import {
   startRecording,
@@ -14,9 +15,10 @@ import {
   captureInput,
 } from "./agent/mobile-agent.js";
 
-/* =====================================================
-   APP INIT
-===================================================== */
+let agentStarted = false;
+let appiumStarted = false;
+let emulatorStarted = false;
+
 
 const app = express();
 const PORT = 3001;
@@ -25,9 +27,7 @@ const savedTestCases = [];
 app.use(cors());
 app.use(express.json());
 
-/* =====================================================
-   HELPER: Safe exec with JSON error response
-===================================================== */
+
 
 function safeExec(command, timeout = 5000) {
   return new Promise((resolve, reject) => {
@@ -38,9 +38,160 @@ function safeExec(command, timeout = 5000) {
   });
 }
 
-/* =====================================================
-   HELPER: Check if ADB is available
-===================================================== */
+
+function isPortOpen(port) {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.listen(port, '127.0.0.1', () => {
+      server.close(() => resolve(false));
+    });
+    server.on('error', () => resolve(true));
+  });
+}
+
+
+
+function commandExists(command) {
+  return new Promise((resolve) => {
+    exec(`where ${command}`, (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+
+
+async function startAgentIfNeeded() {
+  if (agentStarted) return false;
+  try {
+    const child = spawn('node', ['agent/start-agent.js'], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: process.cwd()
+    });
+    child.on('error', (err) => {
+      console.error('Failed to start agent:', err.message);
+    });
+    child.unref();
+    agentStarted = true;
+    return true;
+  } catch (err) {
+    console.error('Failed to start agent:', err.message);
+    return false;
+  }
+}
+
+
+
+async function startAppiumIfNeeded() {
+  if (appiumStarted) return false;
+  try {
+    const child = spawn('appium', ['--address', '127.0.0.1', '--port', '4723', '--base-path', '/wd/hub'], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.on('error', (err) => {
+      console.error('Failed to start appium:', err.message);
+    });
+    child.unref();
+    appiumStarted = true;
+    return true;
+  } catch (err) {
+    console.error('Failed to start appium:', err.message);
+    return false;
+  }
+}
+
+
+
+async function getAvailableAvds(emulatorPath) {
+  try {
+    const out = await safeExec(`"${emulatorPath}" -list-avds`, 5000);
+    const avds = out.split('\n').filter(line => line.trim());
+    return avds;
+  } catch {
+    return [];
+  }
+}
+
+
+async function startEmulatorIfNeeded(avd) {
+  if (emulatorStarted) return false;
+  try {
+    // Try multiple paths for emulator executable (dynamic detection)
+    const emulatorPaths = [
+      'emulator', // If in PATH
+      process.env.ANDROID_SDK_ROOT ? `${process.env.ANDROID_SDK_ROOT}\\emulator\\emulator.exe` : null,
+      process.env.ANDROID_HOME ? `${process.env.ANDROID_HOME}\\emulator\\emulator.exe` : null,
+      // Common Android SDK locations
+      `${process.env.USERPROFILE}\\AppData\\Local\\Android\\Sdk\\emulator\\emulator.exe`,
+      `${process.env.USERPROFILE}\\android-sdk\\emulator\\emulator.exe`,
+      `${process.env.USERPROFILE}\\Android\\Sdk\\emulator\\emulator.exe`,
+      'C:\\Android\\Sdk\\emulator\\emulator.exe',
+      `${process.env.HOME}\\Android\\Sdk\\emulator\\emulator.exe`,
+      `${process.env.HOME}\\Library\\Android\\sdk\\emulator\\emulator`,
+      '/usr/local/share/android-sdk/emulator/emulator',
+      '/opt/android-sdk/emulator/emulator',
+    ].filter(Boolean);
+
+    let emulatorPath = null;
+    for (const path of emulatorPaths) {
+      if (await commandExists(path)) {
+        emulatorPath = path;
+        break;
+      }
+    }
+
+    if (!emulatorPath) {
+      console.error('Emulator executable not found in any expected location');
+      return false;
+    }
+
+    // Determine AVD to use
+    let avdName = avd;
+    if (!avdName) {
+      const availableAvds = await getAvailableAvds(emulatorPath);
+      if (availableAvds.length > 0) {
+        avdName = availableAvds[0]; 
+        console.log(`Using available AVD: ${avdName}`);
+      } else {
+        // Fallback to common AVD names
+        const fallbackAvds = ['Pixel_3a_API_30', 'Pixel_4_API_30', 'Nexus_5X_API_30'];
+        for (const fallback of fallbackAvds) {
+          const testAvds = await getAvailableAvds(emulatorPath);
+          if (testAvds.includes(fallback)) {
+            avdName = fallback;
+            break;
+          }
+        }
+        if (!avdName) {
+          console.error('No suitable AVD found. Please create an AVD first.');
+          return false;
+        }
+      }
+    }
+
+    console.log(`Starting emulator with path: ${emulatorPath} and AVD: ${avdName}`);
+
+    const child = spawn(emulatorPath, ['-avd', avdName], {
+      detached: true,
+      stdio: 'ignore'
+    });
+
+    child.on('error', (err) => {
+      console.error('Failed to start emulator:', err.message);
+    });
+
+    child.unref();
+    emulatorStarted = true;
+    return true;
+  } catch (err) {
+    console.error('Failed to start emulator:', err.message);
+    return false;
+  }
+}
+
+
 
 async function isAdbAvailable() {
   try {
@@ -51,9 +202,7 @@ async function isAdbAvailable() {
   }
 }
 
-/* =====================================================
-   HELPER: Check if device is connected
-===================================================== */
+
 
 async function getConnectedDevices() {
   try {
@@ -74,18 +223,13 @@ async function getConnectedDevices() {
   }
 }
 
-/* =====================================================
-   HEALTH
-===================================================== */
 
 app.get("/health", async (_, res) => {
   const adbOk = await isAdbAvailable();
   res.json({ ok: true, status: true, adb: adbOk });
 });
 
-/* =====================================================
-   AGENT STATUS
-===================================================== */
+
 
 app.get("/agent/status", (_, res) => {
   const status = getRecordingStatus();
@@ -97,8 +241,7 @@ app.get("/agent/status", (_, res) => {
   });
 });
 
-// NOTE: A web page cannot start Node processes on your machine.
-// This endpoint exists so the UI can "ping" the helper and confirm it's running.
+
 app.post("/agent/start", (_, res) => {
  // res.json({ success: true, alreadyRunning: true });
  res.json({
@@ -108,9 +251,7 @@ app.post("/agent/start", (_, res) => {
   });
 });
 
-/* =====================================================
-   APPIUM STATUS (with defensive check)
-===================================================== */
+
 
 app.get("/appium/status", (_, res) => {
   exec("appium --version", { timeout: 5000 }, (err, stdout) => {
@@ -121,9 +262,7 @@ app.get("/appium/status", (_, res) => {
   });
 });
 
-/* =====================================================
-   DEVICE / ADB STATUS (enhanced with device type)
-===================================================== */
+
 
 app.get("/device/check", async (_, res) => {
   try {
@@ -146,28 +285,38 @@ app.get("/device/check", async (_, res) => {
   }
 });
 
-/* =====================================================
-   EMULATOR STATUS
-===================================================== */
 
-app.get("/emulator/status", (_, res) => {
-  exec("adb devices", (_, out) => {
-    const emulators = out
-      .split("\n")
-      .filter(
-        (l) => l.startsWith("emulator-") && l.includes("\tdevice")
-      );
+app.get("/emulator/status", async (_, res) => {
+  try {
+    const devices = await getConnectedDevices();
+    const emulators = devices.filter(d => d.type === 'emulator');
+
+    // Check if any emulator is online (not just present)
+    let onlineEmulators = [];
+    for (const emulator of emulators) {
+      try {
+        await safeExec(`adb -s ${emulator.id} shell echo "test"`, 3000);
+        onlineEmulators.push(emulator.id);
+      } catch {
+        // Emulator present but not online yet
+      }
+    }
 
     res.json({
-      running: emulators.length > 0,
-      emulators,
+      running: onlineEmulators.length > 0,
+      emulators: onlineEmulators,
+      totalEmulators: emulators.length,
     });
-  });
+  } catch (err) {
+    res.json({
+      running: false,
+      emulators: [],
+      error: String(err)
+    });
+  }
 });
 
-/* =====================================================
-   START EMULATOR
-===================================================== */
+
 
 app.post("/emulator/start", (req, res) => {
   const { avd } = req.body;
@@ -192,9 +341,7 @@ app.post("/emulator/start", (req, res) => {
   res.json({ success: true, message: "Emulator starting in background" });
 });
 
-/* =====================================================
-   TERMINAL (ONLY FOR APPIUM)
-===================================================== */
+
 
 app.post("/terminal", (req, res) => {
   const { command } = req.body;
@@ -212,15 +359,49 @@ app.post("/terminal", (req, res) => {
     return;
   }
 
+  if (command === "start-all-services") {
+    // Execute the direct batch file to start all services
+    const batchProcess = spawn("cmd.exe", ["/c", "start-services-direct.bat"], {
+      detached: true,
+      stdio: "ignore",
+      cwd: process.cwd()
+    });
+
+    batchProcess.on('error', (err) => {
+      console.error('Failed to start services batch file:', err.message);
+    });
+
+    batchProcess.unref();
+
+    res.json({ success: true, message: "Services starting in background" });
+    return;
+  }
+
+  if (command === "start-services-standalone") {
+    // Execute the standalone batch file to start all services
+    const standaloneProcess = spawn("cmd.exe", ["/c", "start-services-standalone.bat"], {
+      detached: true,
+      stdio: "ignore",
+      cwd: process.cwd()
+    });
+
+    standaloneProcess.on('error', (err) => {
+      console.error('Failed to start standalone services batch file:', err.message);
+    });
+
+    standaloneProcess.unref();
+
+    res.json({ success: true, message: "Services starting in background" });
+    return;
+  }
+
   res.status(400).json({
     success: false,
     error: "Unsupported command",
   });
 });
 
-/* =====================================================
-   RECORDING API
-===================================================== */
+
 
 app.post("/recording/start", (_, res) => {
   startRecording();
@@ -302,9 +483,6 @@ app.get("/testcases", (req, res) => {
 });
 
 
-/* =====================================================
-   DEVICE MIRROR (SCRCPY)
-===================================================== */
 
 app.post("/device/mirror", (_, res) => {
   // Validate scrcpy exists so we can return a clear error immediately.
@@ -328,9 +506,6 @@ app.post("/device/mirror", (_, res) => {
   });
 });
 
-/* =====================================================
-   DEVICE HELPERS (SIZE / TAP)
-===================================================== */
 
 app.get("/device/size", async (_, res) => {
   try {
@@ -381,9 +556,6 @@ app.get('/device/size-raw', (_, res) => {
   });
 });
 
-/* =====================================================
-   DEVICE SCREENSHOT (FOR EMBEDDED PREVIEW)
-===================================================== */
 
 app.get("/device/screenshot", (req, res) => {
   // First check if device is connected
@@ -415,9 +587,6 @@ app.get("/device/screenshot", (req, res) => {
   });
 });
 
-/* =====================================================
-   APPIUM INSPECTOR (LOCAL) - Non-blocking & Safe
-===================================================== */
 
 app.post("/appium/inspector", (_, res) => {
   // Try multiple paths for cross-platform support
@@ -454,8 +623,144 @@ app.post("/appium/inspector", (_, res) => {
 });
 
 /* =====================================================
-   START SERVER
+   START BACKEND SERVER
 ===================================================== */
+
+app.post("/backend/start", (req, res) => {
+  // Start the backend server using npm start
+  const child = spawn("npm", ["start"], {
+    detached: true,
+    stdio: "ignore",
+    cwd: process.cwd()
+  });
+
+  child.on('error', (err) => {
+    console.error('Failed to start backend server:', err.message);
+  });
+
+  child.unref();
+
+  res.json({ success: true, message: "Backend server starting..." });
+});
+
+
+app.post("/setup/auto", async (req, res) => {
+  try {
+    // Get available AVDs first
+    const emulatorPaths = [
+      'emulator', // If in PATH
+      process.env.ANDROID_SDK_ROOT ? `${process.env.ANDROID_SDK_ROOT}\\emulator\\emulator.exe` : null,
+      process.env.ANDROID_HOME ? `${process.env.ANDROID_HOME}\\emulator\\emulator.exe` : null,
+      // Common Android SDK locations
+      `${process.env.USERPROFILE}\\AppData\\Local\\Android\\Sdk\\emulator\\emulator.exe`,
+      `${process.env.USERPROFILE}\\android-sdk\\emulator\\emulator.exe`,
+      `${process.env.USERPROFILE}\\Android\\Sdk\\emulator\\emulator.exe`,
+      'C:\\Android\\Sdk\\emulator\\emulator.exe`,
+      `${process.env.HOME}\\Android\\Sdk\\emulator\\emulator.exe`,
+      `${process.env.HOME}\\Library\\Android\\sdk\\emulator\\emulator`,
+      '/usr/local/share/android-sdk/emulator/emulator',
+      '/opt/android-sdk/emulator/emulator',
+    ].filter(Boolean);
+
+    let emulatorPath = null;
+    for (const path of emulatorPaths) {
+      if (await commandExists(path)) {
+        emulatorPath = path;
+        break;
+      }
+    }
+
+    let availableAvds = [];
+    if (emulatorPath) {
+      availableAvds = await getAvailableAvds(emulatorPath);
+    }
+
+    const results = {
+      agent: await startAgentIfNeeded(),
+      appium: await startAppiumIfNeeded(),
+      emulator: await startEmulatorIfNeeded(req.body.avd)
+    };
+
+    // If emulator failed to start, try the existing endpoint as fallback
+    if (!results.emulator) {
+      try {
+        const avdName = req.body.avd || (availableAvds.length > 0 ? availableAvds[0] : 'Pixel_nirmal');
+        console.log(`Trying fallback emulator start for AVD: ${avdName}`);
+
+        const emulatorProcess = spawn("emulator", ["-avd", avdName], {
+          detached: true,
+          stdio: "ignore",
+        });
+
+        emulatorProcess.unref();
+        results.emulator = true;
+        emulatorStarted = true;
+      } catch (fallbackErr) {
+        console.error('Fallback emulator start also failed:', fallbackErr.message);
+      }
+    }
+
+    // Get detailed agent information
+    const agentStatus = getRecordingStatus();
+    const selectedAvd = req.body.avd || (availableAvds.length > 0 ? availableAvds[0] : 'Pixel_nirmal');
+    const agentDetails = {
+      running: agentStarted,
+      recording: agentStatus.recording,
+      steps: agentStatus.steps,
+      port: 4724, // Agent port
+      websocketUrl: 'ws://localhost:4724',
+      selectedDevice: selectedAvd,
+      capabilities: {
+        platformName: 'Android',
+        platformVersion: '11.0',
+        deviceName: selectedAvd,
+        automationName: 'UiAutomator2',
+        appPackage: '',
+        appActivity: ''
+      }
+    };
+
+    res.json({
+      success: true,
+      started: results,
+      agentDetails: agentDetails,
+      availableDevices: availableAvds
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: String(err) });
+  }
+});
+
+app.get("/setup/status", async (req, res) => {
+  try {
+    // Backend is always true since server is running
+    const backend = true;
+
+    // Agent status
+    const agent = agentStarted;
+
+    // Appium status: check if port 4723 is open
+    const appium = await isPortOpen(4723);
+
+    // Emulator status: check for running emulators
+    const emulator = await new Promise((resolve) => {
+      exec("adb devices", (_, out) => {
+        const emulators = out
+          .split("\n")
+          .filter((l) => l.startsWith("emulator-") && l.includes("\tdevice"));
+        resolve(emulators.length > 0);
+      });
+    });
+
+    // Device status: check if any device connected
+    const devices = await getConnectedDevices();
+    const device = devices.length > 0;
+
+    res.json({ backend, agent, appium, emulator, device });
+  } catch (err) {
+    res.status(500).json({ success: false, error: String(err) });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(
