@@ -20,7 +20,6 @@ import { SwaggerTestGenerator } from "@/components/SwaggerTestGenerator";
 import { EnhancedPerformanceTestGenerator } from "@/components/EnhancedPerformanceTestGenerator";
 import { MenuConfigPanel } from "@/components/MenuConfigPanel";
 
-
 const Index = () => {
   const [currentView, setCurrentView] = useState('projects');
   const [selectedProject, setSelectedProject] = useState<{ id: string; name: string } | null>(null);
@@ -58,6 +57,10 @@ const Index = () => {
 
     if (currentView === 'menu-config') {
       return <MenuConfigPanel />;
+    }
+
+    if (currentView === 'self-hosting') {
+      return <SelfHosting />;
     }
 
     if (!selectedProject) {

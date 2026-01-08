@@ -27,8 +27,6 @@ import {
 
 import MobileRecorder from "./MobileRecorder";
 import MobileInspector from "./MobileInspector";
-import MobileTerminal from "./MobileTerminal";
-import MobileTestGenerator from "./MobileTestGenerator";
 import MobileSetupWizard from "./MobileSetupWizard";
 import MobileExecutionHistory from "./MobileExecutionHistory";
 
@@ -152,7 +150,7 @@ export default function MobileAutomation() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
 
           <TabsTrigger value="setup">
@@ -168,16 +166,6 @@ export default function MobileAutomation() {
           <TabsTrigger value="inspector">
             <Search className="mr-2 h-4 w-4" />
             Inspector
-          </TabsTrigger>
-
-          <TabsTrigger value="terminal">
-            <Terminal className="mr-2 h-4 w-4" />
-            Terminal
-          </TabsTrigger>
-
-          <TabsTrigger value="generator">
-            <Wand2 className="mr-2 h-4 w-4" />
-            Generator
           </TabsTrigger>
 
           <TabsTrigger value="history">
@@ -245,8 +233,18 @@ export default function MobileAutomation() {
               setRecording={setRecording}
               actions={actions}
               setActions={setActions}
-              selectedDevice={recorderSelectedDevice}
-              setSelectedDevice={setRecorderSelectedDevice}
+              selectedDevice={selectedDevice ? {
+                device: selectedDevice,
+                os_version: "13",
+                real_mobile: false
+              } : recorderSelectedDevice}
+              setSelectedDevice={(device) => {
+                setRecorderSelectedDevice(device);
+                // Also update the setup wizard's selected device
+                if (device) {
+                  setSelectedDevice(device.device);
+                }
+              }}
               connectionStatus={connectionStatus}
               setConnectionStatus={setConnectionStatus}
               mirrorActive={mirrorActive}
@@ -279,6 +277,7 @@ export default function MobileAutomation() {
               setReplaying={setReplaying}
               replayIndex={replayIndex}
               setReplayIndex={setReplayIndex}
+              selectedDeviceFromSetup={selectedDevice}
             />
           </div>
         )}
@@ -294,20 +293,6 @@ export default function MobileAutomation() {
               config={config}
               setConfig={setConfig}
             />
-          </div>
-        )}
-
-        {/* ================= TERMINAL ================= */}
-        {activeTab === "terminal" && (
-          <div className="mt-6">
-            <MobileTerminal projectId={projectId} />
-          </div>
-        )}
-
-        {/* ================= GENERATOR ================= */}
-        {activeTab === "generator" && (
-          <div className="mt-6">
-            <MobileTestGenerator />
           </div>
         )}
 

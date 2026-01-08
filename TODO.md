@@ -1,14 +1,27 @@
-# Fix State Reset Issues in Mobile Automation Tabs
-
-## Plan Overview
-Lift all component state to index.tsx parent component and change from TabsContent to conditional rendering to prevent state loss when switching tabs.
-
-## Steps
-- [ ] Lift state from MobileSetupWizard to index.tsx
-- [ ] Lift state from MobileRecorder to index.tsx
-- [ ] Lift state from MobileInspector to index.tsx
-- [ ] Update index.tsx to use conditional rendering instead of TabsContent
-- [ ] Update MobileSetupWizard to accept props instead of local state
-- [ ] Update MobileRecorder to accept props instead of local state
-- [ ] Update MobileInspector to accept props instead of local state
-- [ ] Test tab switching to ensure state persists
+- [ ] Add AgentManagement.tsx to src/components/
+- [ ] Add AIAuditDashboard.tsx to src/components/
+- [ ] Add AIContentApprovalDialog.tsx to src/components/
+- [ ] Add AIGovernance.tsx to src/components/
+- [ ] Add QAPatternsManager.tsx to src/components/
+- [ ] Add QASemanticSearch.tsx to src/components/
+- [ ] Add QAStandardsManager.tsx to src/components/
+- [ ] Add SafetyControlsConfig.tsx to src/components/
+- [ ] Add TestCaseApprovalDialog.tsx to src/components/
+- [ ] Add TestRunComparison.tsx to src/components/
+- [ ] Add TestCasesWithTabs.tsx to src/components/
+- [ ] Add api-design/ directory to src/components/
+=======
+## Components to Add
+- [x] Add AgentManagement.tsx to src/components/
+- [x] Add AIAuditDashboard.tsx to src/components/
+- [x] Add AIContentApprovalDialog.tsx to src/components/
+- [x] Add AIGovernance.tsx to src/components/
+- [x] Add QAPatternsManager.tsx to src/components/
+- [x] Add QASemanticSearch.tsx to src/components/
+- [x] Add QAStandardsManager.tsx to src/components/
+- [x] Add SafetyControlsConfig.tsx to src/components/
+- [x] Add TestCaseApprovalDialog.tsx to src/components/
+- [x] Add TestRunComparison.tsx to src/components/
+- [x] Add TestCasesWithTabs.tsx to src/components/
+- [x] Add api-design/ directory to src/components/
+- [x] Create src/components/index.ts to export all components

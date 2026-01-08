@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Play, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff } from "lucide-react";
+import { Play, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Upload, Package, CheckCircle, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ export interface RecordedAction {
   description: string;
   locator: string;
   value?: string;
-  enabled?: boolean; 
+  enabled?: boolean;
   coordinates?: {
     x: number;
     y: number;
@@ -67,14 +67,14 @@ interface MobileRecorderProps {
   setMirrorLoading: (loading: boolean) => void;
   captureMode: boolean;
   setCaptureMode: (mode: boolean) => void;
-  deviceSize: {w:number;h:number} | null;
-  setDeviceSize: (size: {w:number;h:number} | null) => void;
+  deviceSize: { w: number; h: number } | null;
+  setDeviceSize: (size: { w: number; h: number } | null) => void;
   inputModalOpen: boolean;
   setInputModalOpen: (open: boolean) => void;
   inputModalText: string;
   setInputModalText: (text: string) => void;
-  inputModalCoords: {x:number;y:number} | null;
-  setInputModalCoords: (coords: {x:number;y:number} | null) => void;
+  inputModalCoords: { x: number; y: number } | null;
+  setInputModalCoords: (coords: { x: number; y: number } | null) => void;
   inputModalPending: boolean;
   setInputModalPending: (pending: boolean) => void;
   editingStepId: string | null;
@@ -87,6 +87,7 @@ interface MobileRecorderProps {
   setReplaying: (replaying: boolean) => void;
   replayIndex: number | null;
   setReplayIndex: (index: number | null) => void;
+  selectedDeviceFromSetup?: string;
 }
 
 export default function MobileRecorder({
@@ -130,10 +131,17 @@ export default function MobileRecorder({
   setReplaying,
   replayIndex,
   setReplayIndex,
+  selectedDeviceFromSetup,
 }: MobileRecorderProps) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const screenshotIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [uiXml, setUiXml] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [apkUploading, setApkUploading] = useState(false);
+  const [apkInstalling, setApkInstalling] = useState(false);
+  const [uploadedApk, setUploadedApk] = useState<{ path: string; name: string } | null>(null);
 
   /* =====================================================
    * 🔴 CONNECT TO SSE STREAM
@@ -182,6 +190,14 @@ export default function MobileRecorder({
             setReplaying(false);
             setReplayIndex(null);
             toast.error(event.description);
+          } else if (event.type === "assertion-result") {
+            // Handle assertion results from replay engine
+            const { locator, expectedValue, success, error } = event;
+            if (success) {
+              toast.success(`Assertion passed: ${locator}`);
+            } else {
+              toast.error(`Assertion failed: ${locator} - ${error || 'Unknown error'}`);
+            }
           }
 
           return;
@@ -194,7 +210,7 @@ export default function MobileRecorder({
             description: event.description,
             locator: event.locator || "//android.view.View",
             value: event.value,
-            enabled: true, 
+            enabled: true,
             coordinates: event.coordinates,
             timestamp: event.timestamp || Date.now(),
           };
@@ -406,10 +422,10 @@ export default function MobileRecorder({
 
     try {
       // First check if local helper is running
-      const healthRes = await fetch(`${AGENT_URL}/health`, { 
-        signal: AbortSignal.timeout(3000) 
+      const healthRes = await fetch(`${AGENT_URL}/health`, {
+        signal: AbortSignal.timeout(3000)
       }).catch(() => null);
-      
+
       if (!healthRes?.ok) {
         setMirrorLoading(false);
         setMirrorError("Local helper not running. Run: cd tools/mobile-automation-helper && npm start");
@@ -443,7 +459,7 @@ export default function MobileRecorder({
         const sizeRes = await fetch(`${AGENT_URL}/device/size`);
         const sizeJson = await sizeRes.json();
         if (sizeJson.success && sizeJson.size) setDeviceSize(sizeJson.size);
-      } catch {}
+      } catch { }
 
       // Start embedded screenshot streaming
       setMirrorActive(true);
@@ -656,38 +672,38 @@ export default function MobileRecorder({
 describe("Recorded Mobile Test", () => {
   it("should replay recorded steps", async () => {
 ${actions
-  .map((a, index) => {
-    const comment = `    // Step ${index + 1}: ${a.description}`;
-    switch (a.type) {
-      case "tap":
-        if (a.coordinates) {
-          return `${comment}\n    await driver.touchAction({ action: 'tap', x: ${a.coordinates.x}, y: ${a.coordinates.y} });`;
-        }
-        return `${comment}\n    await driver.$("${a.locator}").click();`;
-      case "input":
-        if (a.value && String(a.value).trim()) {
-          return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value}");`;
-        }
-        // If value is not recorded, add a placeholder that can be supplied via environment variable at runtime
-        return `${comment}\n    // TODO: Replace INPUT_${index + 1} value or provide via env var\n    const input${index + 1} = process.env.INPUT_${index + 1} || "";\n    await driver.$("${a.locator}").setValue(input${index + 1});`;
-      case "scroll":
-        if (a.coordinates) {
-          return `${comment}\n    await driver.touchAction([
+        .map((a, index) => {
+          const comment = `    // Step ${index + 1}: ${a.description}`;
+          switch (a.type) {
+            case "tap":
+              if (a.coordinates) {
+                return `${comment}\n    await driver.touchAction({ action: 'tap', x: ${a.coordinates.x}, y: ${a.coordinates.y} });`;
+              }
+              return `${comment}\n    await driver.$("${a.locator}").click();`;
+            case "input":
+              if (a.value && String(a.value).trim()) {
+                return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value}");`;
+              }
+              // If value is not recorded, add a placeholder that can be supplied via environment variable at runtime
+              return `${comment}\n    // TODO: Replace INPUT_${index + 1} value or provide via env var\n    const input${index + 1} = process.env.INPUT_${index + 1} || "";\n    await driver.$("${a.locator}").setValue(input${index + 1});`;
+            case "scroll":
+              if (a.coordinates) {
+                return `${comment}\n    await driver.touchAction([
       { action: 'press', x: ${a.coordinates.x}, y: ${a.coordinates.y} },
       { action: 'moveTo', x: ${a.coordinates.endX || a.coordinates.x}, y: ${a.coordinates.endY || a.coordinates.y} },
       { action: 'release' }
     ]);`;
-        }
-        return `${comment}\n    // scroll action (coordinates not captured)`;
-      case "wait":
-        return `${comment}\n    await driver.pause(1000);`;
-      case "assert":
-        return `${comment}\n    await expect(driver.$("${a.locator}")).toBeDisplayed();`;
-      default:
-        return "";
-    }
-  })
-  .join("\n\n")}
+              }
+              return `${comment}\n    // scroll action (coordinates not captured)`;
+            case "wait":
+              return `${comment}\n    await driver.pause(1000);`;
+            case "assert":
+              return `${comment}\n    await expect(driver.$("${a.locator}")).toBeDisplayed();`;
+            default:
+              return "";
+          }
+        })
+        .join("\n\n")}
   });
 });`;
   }, [actions]);
@@ -786,13 +802,111 @@ ${actions
   };
 
   /* =====================================================
+   * LOAD UI HIERARCHY
+   * ===================================================== */
+
+  const loadUiHierarchy = async () => {
+    try {
+      const response = await fetch(`${AGENT_URL}/device/ui`);
+      const data = await response.json();
+
+      if (data.success && data.xml) {
+        setUiXml(data.xml);
+        toast.success("UI hierarchy loaded");
+      } else {
+        toast.error("Failed to load UI hierarchy");
+      }
+    } catch (err) {
+      console.error("[loadUiHierarchy] Error:", err);
+      toast.error("Failed to load UI hierarchy");
+    }
+  };
+
+  /* =====================================================
+   * APK UPLOAD
+   * ===================================================== */
+
+  const uploadApk = async (file: File) => {
+    if (!file) {
+      toast.error("Please select an APK file");
+      return;
+    }
+
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.apk')) {
+      toast.error("Please select a valid APK file");
+      return;
+    }
+
+    setApkUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('apk', file);
+
+      const response = await fetch(`${AGENT_URL}/app/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUploadedApk({ path: data.apkPath, name: data.originalName });
+        toast.success("APK uploaded successfully");
+      } else {
+        toast.error(data.error || "Failed to upload APK");
+      }
+    } catch (err) {
+      console.error("[uploadApk] Error:", err);
+      toast.error("Failed to upload APK");
+    } finally {
+      setApkUploading(false);
+    }
+  };
+
+  /* =====================================================
+   * APK INSTALL
+   * ===================================================== */
+
+  const installApk = async () => {
+    if (!uploadedApk) {
+      toast.error("No APK uploaded");
+      return;
+    }
+
+    setApkInstalling(true);
+
+    try {
+      const response = await fetch(`${AGENT_URL}/app/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apkPath: uploadedApk.path }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("APK installed successfully");
+      } else {
+        toast.error(data.message || data.error || "Failed to install APK");
+      }
+    } catch (err) {
+      console.error("[installApk] Error:", err);
+      toast.error("Failed to install APK");
+    } finally {
+      setApkInstalling(false);
+    }
+  };
+
+  /* =====================================================
    * UI
    * ===================================================== */
 
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-xl font-bold">Mobile Recorder</h2>
           <p className="text-sm text-muted-foreground">
@@ -801,6 +915,20 @@ ${actions
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+            <span className="text-sm font-medium whitespace-nowrap">Selected Device:</span>
+            <div className="flex items-center gap-2">
+              <DeviceSelector
+                onSelect={setSelectedDevice}
+                selectedDeviceFromSetup={selectedDeviceFromSetup}
+              />
+              {selectedDevice && (
+                <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                  {selectedDevice.name || selectedDevice.device}
+                </Badge>
+              )}
+            </div>
+          </div>
           {recording && (
             <Badge
               variant={connectionStatus === "connected" ? "default" : "secondary"}
@@ -808,29 +936,6 @@ ${actions
             >
               {connectionStatus === "connected" ? "Recording" : "Connecting..."}
             </Badge>
-          )}
-
-          {!recording ? (
-            <>
-              <Button onClick={startRecording} disabled={!mirrorActive}>
-                <Play className="mr-2 h-4 w-4" />
-                Start Recording
-              </Button>
-
-              <Button
-                variant="outline"
-                onClick={replay}
-                disabled={actions.length === 0 || replaying}
-              >
-                <Play className="mr-2 h-4 w-4" />
-                {replaying ? "Replaying..." : "Replay"}
-              </Button>
-            </>
-          ) : (
-            <Button variant="destructive" onClick={stopRecording}>
-              <Square className="mr-2 h-4 w-4" />
-              Stop Recording
-            </Button>
           )}
 
           {/* Input capture dialog (replaces blocking prompt) */}
@@ -841,7 +946,7 @@ ${actions
               </DialogHeader>
 
               <div className="space-y-4 mt-2">
-                <Input value={inputModalText} onChange={(e:any) => setInputModalText(e.target.value)} placeholder="Type text to send to device" />
+                <Input value={inputModalText} onChange={(e: any) => setInputModalText(e.target.value)} placeholder="Type text to send to device" />
                 <div className="text-xs text-muted-foreground">Leave empty to skip</div>
               </div>
 
@@ -858,39 +963,25 @@ ${actions
         </div>
       </div>
 
-      {/* DEVICE SELECTOR */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Select Device</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DeviceSelector onSelect={setSelectedDevice} />
-          {selectedDevice && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Selected:{" "}
-              <strong>
-                {selectedDevice.name || selectedDevice.device}
-              </strong>
-            </p>
-          )}
-        </CardContent>
-      </Card>
+
 
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* DEVICE PREVIEW */}
         <Card className="lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              Device Preview
-            </CardTitle>
-            {mirrorActive && (
-              <Badge variant="default" className="animate-pulse">
-                <Monitor className="h-3 w-3 mr-1" />
-                Mirror Active
-              </Badge>
-            )}
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Smartphone className="h-5 w-5" />
+                Device Preview
+              </CardTitle>
+              {mirrorActive && (
+                <Badge variant="default" className="animate-pulse">
+                  <Monitor className="h-3 w-3 mr-1" />
+                  Mirror Active
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <div
@@ -903,7 +994,7 @@ ${actions
             >
               {/* Notch */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-b-xl z-10" />
-              
+
               {/* Screen Content */}
               <div className="w-full h-full flex flex-col items-center justify-center bg-muted/10 overflow-hidden">
                 {mirrorLoading ? (
@@ -932,9 +1023,9 @@ ${actions
                   </div>
                 ) : mirrorImage ? (
                   <>
-                    <img 
-                      src={mirrorImage} 
-                      alt="Device screen" 
+                    <img
+                      src={mirrorImage}
+                      alt="Device screen"
                       className={`w-full h-full object-contain ${captureMode ? 'cursor-pointer ring-2 ring-offset-2 ring-primary/40' : ''}`}
                       onClick={async (e) => {
                         if (!captureMode) return;
@@ -953,7 +1044,7 @@ ${actions
                             const sizeJson = await sizeRes.json();
                             if (sizeJson.success && sizeJson.size) setDeviceSize(sizeJson.size);
                           }
-                        } catch {}
+                        } catch { }
 
                         const finalDev = deviceSize || { w: 1344, h: 2400 };
 
@@ -990,17 +1081,7 @@ ${actions
                         }
                       }}
                     />
-                    {/* Capture Mode Toggle */}
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between bg-black/60 rounded-lg p-2">
-                      <Button
-                        size="sm"
-                        variant={captureMode ? "default" : "outline"}
-                        onClick={() => setCaptureMode(!captureMode)}
-                        className="text-xs"
-                      >
-                        {captureMode ? "Capture ON" : "Capture OFF"}
-                      </Button>
-                    </div>
+
                   </>
                 ) : (
                   <div className="text-center p-4 text-muted-foreground">
@@ -1010,11 +1091,46 @@ ${actions
               </div>
             </div>
 
+            {/* Control buttons */}
+            <div className="mt-4 flex flex-col gap-2">
+              {mirrorActive && (
+                <Button
+                  variant={captureMode ? "default" : "outline"}
+                  onClick={() => setCaptureMode(!captureMode)}
+                >
+                  {captureMode ? "Capture ON" : "Capture OFF"}
+                </Button>
+              )}
+
+              {!recording ? (
+                <>
+                  <Button onClick={startRecording} disabled={!mirrorActive}>
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Recording
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={replay}
+                    disabled={actions.length === 0 || replaying}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    {replaying ? "Replaying..." : "Replay"}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="destructive" onClick={stopRecording}>
+                  <Square className="mr-2 h-4 w-4" />
+                  Stop Recording
+                </Button>
+              )}
+            </div>
+
             {/* Connection controls */}
             {mirrorActive && (
               <div className="mt-4 flex items-center justify-between">
-                <Button variant="destructive" size="sm" onClick={disconnectDevice}>
-                  <WifiOff className="h-3 w-3 mr-1" />
+                <Button variant="destructive" onClick={disconnectDevice}>
+                  <WifiOff className="h-4 w-4 mr-2" />
                   Disconnect
                 </Button>
               </div>
@@ -1070,8 +1186,8 @@ ${actions
                               <div className="flex items-center gap-2">
                                 <Input
                                   value={editingValue}
-                                  onChange={(e:any) => setEditingValue(e.target.value)}
-                                  onKeyDown={(e:any) => {
+                                  onChange={(e: any) => setEditingValue(e.target.value)}
+                                  onKeyDown={(e: any) => {
                                     if (e.key === "Enter") {
                                       // save
                                       setActions((prev) =>
@@ -1116,19 +1232,19 @@ ${actions
                                 <Button size="sm" onClick={() => { setEditingStepId(a.id); setEditingValue(a.value || ""); }}>
                                   Edit
                                 </Button>
-                                  <Button
-                                    size="sm"
-                                    variant={a.enabled === false ? "outline" : "secondary"}
-                                    onClick={() =>
-                                      setActions(prev =>
-                                        prev.map(p =>
-                                          p.id === a.id ? { ...p, enabled: !p.enabled } : p
-                                        )
+                                <Button
+                                  size="sm"
+                                  variant={a.enabled === false ? "outline" : "secondary"}
+                                  onClick={() =>
+                                    setActions(prev =>
+                                      prev.map(p =>
+                                        p.id === a.id ? { ...p, enabled: !p.enabled } : p
                                       )
-                                    }
-                                  >
-                                    {a.enabled === false ? "Disabled" : "Enabled"}
-                                  </Button>
+                                    )
+                                  }
+                                >
+                                  {a.enabled === false ? "Disabled" : "Enabled"}
+                                </Button>
 
                               </div>
                             )}
@@ -1185,6 +1301,75 @@ ${actions
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* UI HIERARCHY AND LOCATORS */}
+      <div className="grid grid-cols-2 gap-6 mt-6">
+        {/* LEFT – UI TREE */}
+        <Card>
+          <CardHeader className="flex flex-row justify-between items-center">
+            <CardTitle>UI Hierarchy</CardTitle>
+            <Button size="sm" onClick={loadUiHierarchy}>
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent className="text-sm font-mono">
+            {!uiXml ? (
+              <p className="text-muted-foreground">Load hierarchy</p>
+            ) : (
+              <ScrollArea className="h-[400px]">
+                {/* Parse XML → tree (simple recursive render) */}
+                <pre className="text-xs">{uiXml}</pre>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* RIGHT – LOCATORS */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Element Locators</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!selectedNode ? (
+              <p className="text-muted-foreground">Select an element</p>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <div><b>Class:</b> {selectedNode.class}</div>
+                <div><b>Resource ID:</b> {selectedNode.resourceId}</div>
+                <div><b>Bounds:</b> {selectedNode.bounds}</div>
+                <div><b>Text:</b> {selectedNode.text || 'N/A'}</div>
+                <div><b>Content Desc:</b> {selectedNode.contentDesc || 'N/A'}</div>
+                <div><b>Clickable:</b> {selectedNode.clickable ? <CheckCircle className="inline h-4 w-4 text-green-500" /> : <XCircle className="inline h-4 w-4 text-red-500" />}</div>
+                <div><b>Enabled:</b> {selectedNode.enabled ? <CheckCircle className="inline h-4 w-4 text-green-500" /> : <XCircle className="inline h-4 w-4 text-red-500" />}</div>
+
+                <pre className="bg-black text-green-400 p-2 rounded text-xs">
+                  {`driver.findElement(By.id("${selectedNode.resourceId}"))`}
+                </pre>
+
+                <pre className="bg-black text-green-400 p-2 rounded text-xs">
+                  {`//*[@resource-id='${selectedNode.resourceId}']`}
+                </pre>
+
+                <pre className="bg-black text-green-400 p-2 rounded text-xs">
+                  {`//${selectedNode.class}`}
+                </pre>
+
+                {selectedNode.text && (
+                  <pre className="bg-black text-green-400 p-2 rounded text-xs">
+                    {`//*[@text='${selectedNode.text}']`}
+                  </pre>
+                )}
+
+                {selectedNode.contentDesc && (
+                  <pre className="bg-black text-green-400 p-2 rounded text-xs">
+                    {`//*[@content-desc='${selectedNode.contentDesc}']`}
+                  </pre>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

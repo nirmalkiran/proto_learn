@@ -10,6 +10,7 @@ import Auth from "./pages/Auth";
 import SalesDeck from "./pages/SalesDeck";
 import Project from "./pages/Project";
 import NotFound from "./pages/NotFound";
+import SelfHosting from "./pages/SelfHosting";
 import { MenuConfigPanel } from "./components/MenuConfigPanel";
 
 import MobileAutomation from "@/modules/mobileAutomation";

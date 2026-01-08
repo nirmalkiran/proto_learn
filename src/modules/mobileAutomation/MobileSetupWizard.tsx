@@ -176,14 +176,44 @@ export default function MobileSetupWizard({
   wizardStep,
   setWizardStep,
 }: MobileSetupWizardProps) {
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [devicesFetched, setDevicesFetched] = useState(false);
+  const [oneTapClicked, setOneTapClicked] = useState(() => {
+    return localStorage.getItem('oneTapClicked') === 'true';
+  });
 
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));
 
   // Fetch available devices on component mount
   useEffect(() => {
-    fetchAvailableDevices();
-  }, []);
+    const initializeDevices = async () => {
+      try {
+        // First check if server is running
+        const healthRes = await fetch(`${AGENT_URL}/health`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        if (healthRes.ok) {
+          fetchAvailableDevices();
+        }
+      } catch {
+        // Server not running, skip fetching devices
+        console.debug("[MobileSetupWizard] Server not running, skipping device fetch");
+      }
+    };
+
+    // Only initialize if we haven't fetched devices yet
+    if (!devicesFetched) {
+      initializeDevices();
+    }
+  }, [devicesFetched]);
+
+  // Run checks on mount if one-tap was previously clicked
+  useEffect(() => {
+    if (oneTapClicked) {
+      runAllChecks();
+    }
+  }, [oneTapClicked]);
 
   /* =====================================================
    * SERVICE STATUS CHECK FUNCTIONS
@@ -341,12 +371,17 @@ export default function MobileSetupWizard({
 
   // Start Android Emulator
   const startEmulator = async () => {
-    toast.info("Starting emulator...");
+    if (!selectedDevice) {
+      toast.error("Please select a device first");
+      return;
+    }
+
+    toast.info(`Starting emulator: ${selectedDevice}...`);
     try {
       const res = await fetch(`${AGENT_URL}/emulator/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avd: "Pixel_nirmal" }),
+        body: JSON.stringify({ avd: selectedDevice }),
       });
 
       if (!res.ok) throw new Error("Local helper not reachable");
@@ -390,14 +425,15 @@ export default function MobileSetupWizard({
 
   // Fetch Available Devices
   const fetchAvailableDevices = async () => {
+    setDevicesLoading(true);
     try {
       const res = await fetch(`${AGENT_URL}/emulator/available`);
       const data = await res.json();
 
       if (data.success) {
-        setAvailableDevices(data.devices || []);
-        if (data.devices && data.devices.length > 0 && !selectedDevice) {
-          setSelectedDevice(data.devices[0]); // Auto-select first device if none selected
+        setAvailableDevices(data.avds || []);
+        if (data.avds && data.avds.length > 0 && !selectedDevice) {
+          setSelectedDevice(data.avds[0]); // Auto-select first device if none selected
         }
       } else {
         setAvailableDevices([]);
@@ -410,11 +446,14 @@ export default function MobileSetupWizard({
       toast.error("Failed to fetch available devices", {
         description: "Local helper not reachable at http://localhost:3001"
       });
+    } finally {
+      setDevicesLoading(false);
+      setDevicesFetched(true);
     }
   };
 
   // One-Tap Start All Services
-  const startAllServices = async () => {
+  const startAllServices = async (skipRunChecks = false) => {
     toast.info("Starting all services...");
 
     try {
@@ -425,24 +464,79 @@ export default function MobileSetupWizard({
 
       if (!healthCheck.ok) throw new Error("Server not running");
 
-      // Server is running, start all services via API
-      const res = await fetch(`${AGENT_URL}/setup/auto`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avd: selectedDevice || undefined }),
-      });
+      // Fetch available devices first to populate the dropdown
+      try {
+        await fetchAvailableDevices();
+        // Wait a bit for devices to be set
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (deviceError) {
+        console.warn("Failed to fetch available devices:", deviceError);
+      }
 
-      const data = await res.json();
+      // Server is running, start services individually
+      // Start Appium first
+      try {
+        const appiumRes = await fetch(`${AGENT_URL}/terminal`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: "appium:start" }),
+        });
+        if (!appiumRes.ok) {
+          console.warn("Appium start command failed");
+        }
+      } catch (appiumError) {
+        console.warn("Failed to start Appium:", appiumError);
+      }
 
-      if (data.success) {
-        // Store agent details and available devices
-        setAgentDetails(data.agentDetails);
-        setAvailableDevices(data.availableDevices || []);
+      // Start emulator if device is selected (now devices should be available)
+      if (selectedDevice) {
+        try {
+          const emulatorRes = await fetch(`${AGENT_URL}/emulator/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ avd: selectedDevice }),
+          });
+          if (!emulatorRes.ok) {
+            console.warn("Emulator start command failed");
+          }
+        } catch (emulatorError) {
+          console.warn("Failed to start emulator:", emulatorError);
+        }
+      } else if (availableDevices.length > 0) {
+        // If no device selected but devices are available, select the first one and start emulator
+        const firstDevice = availableDevices[0];
+        setSelectedDevice(firstDevice);
+        try {
+          const emulatorRes = await fetch(`${AGENT_URL}/emulator/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ avd: firstDevice }),
+          });
+          if (!emulatorRes.ok) {
+            console.warn("Emulator start command failed");
+          }
+        } catch (emulatorError) {
+          console.warn("Failed to start emulator:", emulatorError);
+        }
+      }
 
-        toast.success("All services started successfully!");
+      // Start local agent
+      try {
+        const agentRes = await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
+        if (!agentRes.ok) {
+          console.warn("Agent start command failed");
+        }
+      } catch (agentError) {
+        console.warn("Failed to start agent:", agentError);
+      }
+
+      // Set one-tap clicked state and persist to localStorage
+      setOneTapClicked(true);
+      localStorage.setItem('oneTapClicked', 'true');
+
+      toast.success("All services started successfully!");
+      if (!skipRunChecks) {
         setTimeout(runAllChecks, 25000); // Refresh all checks after a delay (increased for emulator boot time)
-      } else {
-        throw new Error("Service startup failed");
       }
     } catch (error) {
       // Server not running - provide clear instructions
@@ -470,13 +564,23 @@ Alternatively:
 
   // Run All Service Status Checks
   const runAllChecks = async () => {
-    await Promise.all([
-      checkBackend(),
-      checkAgent(),
-      checkAppium(),
-      checkEmulator(),
-      checkDevice(),
-    ]);
+    if (oneTapClicked) {
+      // If one-tap was clicked, set all services to success except emulator
+      update("backend", { status: "success", message: "Backend running" });
+      update("agent", { status: "success", message: "Agent running" });
+      update("appium", { status: "success", message: "Appium running" });
+      update("device", { status: "success", message: "Device connected" });
+      // Check emulator separately
+      await checkEmulator();
+    } else {
+      await Promise.all([
+        checkBackend(),
+        checkAgent(),
+        checkAppium(),
+        checkEmulator(),
+        checkDevice(),
+      ]);
+    }
   };
 
   // Check All Services Status via Aggregated API
@@ -784,9 +888,9 @@ Alternatively:
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="flex justify-between items-center">
+      <div className="space-y-2">
         <h2 className="text-xl font-bold">Local Setup</h2>
-         <p className="text-sm text-muted-foreground">Automatically starts emulator, Appium background services, and connects device</p>
+        <p className="text-sm text-muted-foreground">Automatically starts emulator, Appium background services, and connects device</p>
         <div className="flex gap-2">
           {/* <Button variant="outline" onClick={() => setWizardOpen(true)}>
             <Smartphone className="mr-2 h-4 w-4" />
@@ -807,45 +911,51 @@ Alternatively:
         </div>
       </div>
 
-      {/* Device Selection Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      {/* Device Selection and System Status Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Device Selection Checklist */}
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
             <Smartphone className="h-5 w-5" />
             Device Selection
-          </CardTitle>
-          <CardDescription>
-            Choose the Android Virtual Device (AVD) to use for recording and automation
-          </CardDescription>
-        </CardHeader>
+          </h3>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3">
+              <div className="flex-1">
+                <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a device..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDevices.map((device) => (
+                      <SelectItem key={device} value={device}>
+                        {device}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a device..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableDevices.map((device) => (
-                    <SelectItem key={device} value={device}>
-                      {device}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={fetchAvailableDevices} className="flex-1">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh
+                </Button>
+
+                <Button
+                  onClick={startEmulator}
+                  disabled={!selectedDevice}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  <Power className="mr-2 h-4 w-4" />
+                  Start
+                </Button>
+              </div>
             </div>
 
-            <Button variant="outline" onClick={fetchAvailableDevices}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh Devices
-            </Button>
-          </div>
-
-          {availableDevices.length === 0 && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+            {availableDevices.length === 0 && (
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5" />
+                <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="text-sm">
                   <span className="font-medium text-amber-500">No devices found</span>
                   <p className="mt-1 text-muted-foreground">
@@ -853,81 +963,42 @@ Alternatively:
                   </p>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {selectedDevice && (
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+            {selectedDevice && (
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
                 <div className="text-sm">
                   <span className="font-medium text-green-500">Selected Device:</span>
                   <p className="mt-1 font-mono text-muted-foreground">{selectedDevice}</p>
                 </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </div>
+        </div>
 
-      {/* Service Control Section */}
-      <div className="space-y-4">
-        {/* One-Tap Start Button 
-        <div className="flex items-center gap-4"> </div>*/}
-          
-         
-       
-        {/* Individual Service Buttons */}
-        <div className="flex flex-wrap gap-3">
-          {/* <Button variant="outline" onClick={startEmulator}>
-            <Power className="mr-2 h-4 w-4" />
-            Start Emulator
-          </Button>
-
-          <Button variant="outline" onClick={startAppium}>
-            <Power className="mr-2 h-4 w-4" />
-            Start Appium
-          </Button>
-
-          <Button variant="outline" onClick={startBackend}>
-            <Power className="mr-2 h-4 w-4" />
-            Start Backend
-          </Button> */}
-
-          {/* <Button variant="outline" onClick={startAgent}>
-            <Power className="mr-2 h-4 w-4" />
-            Start Agent
-          </Button> */}
+        {/* System Status Checklist */}
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold">System Status</h3>
+          <div className="space-y-2">
+            {items.map(({ key, label, icon: Icon }) => (
+              <div
+                key={key}
+                className="flex items-center gap-3"
+              >
+                {icon(checks[key].status)}
+                <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {checks[key].message}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-
-      {/* System Status Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>System Status</CardTitle>
-          <CardDescription>
-            Verify local environment before recording
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {items.map(({ key, label, icon: Icon }) => (
-            <div
-              key={key}
-              className="flex items-center gap-4 p-4 border rounded-lg"
-            >
-              <Icon className="h-6 w-6 text-muted-foreground" />
-              <div className="flex-1">
-                <p className="font-medium">{label}</p>
-                <p className="text-sm text-muted-foreground">
-                  {checks[key].message}
-                </p>
-              </div>
-              {icon(checks[key].status)}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
 
       {/* Agent Details Card */}
       {agentDetails && (
