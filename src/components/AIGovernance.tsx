@@ -124,26 +124,13 @@ export const AIGovernance = ({ projectId }: AIGovernanceProps) => {
   };
 
   const loadSafetyControls = async () => {
-    const { data, error } = await supabase
-      .from("ai_safety_controls")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    setSafetyControls(data || []);
+    // TODO: ai_safety_controls table does not exist yet - using empty array
+    setSafetyControls([]);
   };
 
   const loadAuditLogs = async () => {
-    const { data, error } = await supabase
-      .from("ai_audit_logs")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-    setAuditLogs(data || []);
+    // TODO: ai_audit_logs table does not exist yet - using empty array
+    setAuditLogs([]);
   };
 
   const handleCreateControl = async () => {
@@ -165,20 +152,21 @@ export const AIGovernance = ({ projectId }: AIGovernanceProps) => {
         config = { description: createControlConfig };
       }
 
-      const { error } = await supabase.from("ai_safety_controls").insert({
+      // TODO: ai_safety_controls table does not exist - local only
+      const newControl: SafetyControl = {
+        id: crypto.randomUUID(),
         project_id: projectId,
         control_type: createControlType,
         enabled: true,
         config,
-      });
-
-      if (error) throw error;
+        created_at: new Date().toISOString(),
+      };
+      setSafetyControls(prev => [...prev, newControl]);
 
       toast({
         title: "Safety Control Created",
         description: `Control "${createControlType}" has been added`,
       });
-      await loadSafetyControls();
       setShowCreateDialog(false);
       setCreateControlType("");
       setCreateControlConfig("");
@@ -195,15 +183,13 @@ export const AIGovernance = ({ projectId }: AIGovernanceProps) => {
 
   const handleDeleteControl = async (control: SafetyControl) => {
     try {
-      const { error } = await supabase.from("ai_safety_controls").delete().eq("id", control.id);
-
-      if (error) throw error;
+      // TODO: ai_safety_controls table does not exist - local only
+      setSafetyControls(prev => prev.filter(c => c.id !== control.id));
 
       toast({
         title: "Safety Control Deleted",
         description: `Control "${control.control_type}" has been removed`,
       });
-      await loadSafetyControls();
       setControlToDelete(null);
     } catch (error: any) {
       toast({
@@ -216,18 +202,15 @@ export const AIGovernance = ({ projectId }: AIGovernanceProps) => {
 
   const handleToggleControl = async (control: SafetyControl) => {
     try {
-      const { error } = await supabase
-        .from("ai_safety_controls")
-        .update({ enabled: !control.enabled })
-        .eq("id", control.id);
-
-      if (error) throw error;
+      // TODO: ai_safety_controls table does not exist - local only
+      setSafetyControls(prev =>
+        prev.map(c => c.id === control.id ? { ...c, enabled: !c.enabled } : c)
+      );
 
       toast({
         title: "Control Updated",
         description: `Control "${control.control_type}" ${!control.enabled ? "enabled" : "disabled"}`,
       });
-      await loadSafetyControls();
     } catch (error: any) {
       toast({
         title: "Error",
