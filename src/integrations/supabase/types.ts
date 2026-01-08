@@ -14,6 +14,209 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_job_queue: {
+        Row: {
+          agent_id: string | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_data: Json
+          job_type: string
+          result: Json | null
+          started_at: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          agent_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_data?: Json
+          job_type: string
+          result?: Json | null
+          started_at?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          agent_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_data?: Json
+          job_type?: string
+          result?: Json | null
+          started_at?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_job_queue_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "self_hosted_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_learning_data: {
+        Row: {
+          artifact_id: string
+          artifact_type: string
+          confidence_score: number | null
+          created_at: string
+          feedback_content: string | null
+          feedback_type: string
+          id: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          artifact_id: string
+          artifact_type: string
+          confidence_score?: number | null
+          created_at?: string
+          feedback_content?: string | null
+          feedback_type: string
+          id?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          artifact_id?: string
+          artifact_type?: string
+          confidence_score?: number | null
+          created_at?: string
+          feedback_content?: string | null
+          feedback_type?: string
+          id?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_learning_data_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_safety_controls: {
+        Row: {
+          confidence_threshold: number | null
+          created_at: string
+          enable_audit_logging: boolean | null
+          id: string
+          project_id: string | null
+          rate_limit_daily: number | null
+          require_approval_test_cases: boolean | null
+          require_approval_test_plans: boolean | null
+          require_approval_user_stories: boolean | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence_threshold?: number | null
+          created_at?: string
+          enable_audit_logging?: boolean | null
+          id?: string
+          project_id?: string | null
+          rate_limit_daily?: number | null
+          require_approval_test_cases?: boolean | null
+          require_approval_test_plans?: boolean | null
+          require_approval_user_stories?: boolean | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confidence_threshold?: number | null
+          created_at?: string
+          enable_audit_logging?: boolean | null
+          id?: string
+          project_id?: string | null
+          rate_limit_daily?: number | null
+          require_approval_test_cases?: boolean | null
+          require_approval_test_plans?: boolean | null
+          require_approval_user_stories?: boolean | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_safety_controls_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_usage_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          execution_time_ms: number | null
+          feature_type: string
+          id: string
+          openai_cost_usd: number | null
+          openai_model: string | null
+          openai_tokens_completion: number | null
+          openai_tokens_prompt: number | null
+          project_id: string | null
+          success: boolean | null
+          tokens_used: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          feature_type: string
+          id?: string
+          openai_cost_usd?: number | null
+          openai_model?: string | null
+          openai_tokens_completion?: number | null
+          openai_tokens_prompt?: number | null
+          project_id?: string | null
+          success?: boolean | null
+          tokens_used?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          feature_type?: string
+          id?: string
+          openai_cost_usd?: number | null
+          openai_model?: string | null
+          openai_tokens_completion?: number | null
+          openai_tokens_prompt?: number | null
+          project_id?: string | null
+          success?: boolean | null
+          tokens_used?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_results: {
         Row: {
           created_at: string
@@ -643,6 +846,201 @@ export type Database = {
         }
         Relationships: []
       }
+      qa_ai_feedback: {
+        Row: {
+          ai_output: Json | null
+          comment: string | null
+          created_at: string
+          feature_type: string
+          feedback_type: string
+          id: string
+          project_id: string | null
+          rating: number | null
+          user_id: string
+        }
+        Insert: {
+          ai_output?: Json | null
+          comment?: string | null
+          created_at?: string
+          feature_type: string
+          feedback_type: string
+          id?: string
+          project_id?: string | null
+          rating?: number | null
+          user_id: string
+        }
+        Update: {
+          ai_output?: Json | null
+          comment?: string | null
+          created_at?: string
+          feature_type?: string
+          feedback_type?: string
+          id?: string
+          project_id?: string | null
+          rating?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_ai_feedback_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qa_embeddings: {
+        Row: {
+          artifact_id: string
+          artifact_type: string
+          content: string
+          created_at: string
+          embedding_data: Json | null
+          id: string
+          is_approved: boolean | null
+          metadata: Json | null
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          artifact_id: string
+          artifact_type: string
+          content: string
+          created_at?: string
+          embedding_data?: Json | null
+          id?: string
+          is_approved?: boolean | null
+          metadata?: Json | null
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          artifact_id?: string
+          artifact_type?: string
+          content?: string
+          created_at?: string
+          embedding_data?: Json | null
+          id?: string
+          is_approved?: boolean | null
+          metadata?: Json | null
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_embeddings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qa_proven_patterns: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_public: boolean | null
+          pattern_content: Json
+          pattern_name: string
+          pattern_type: string
+          project_ids: string[] | null
+          success_rate: number | null
+          tags: string[] | null
+          updated_at: string
+          usage_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_public?: boolean | null
+          pattern_content?: Json
+          pattern_name: string
+          pattern_type: string
+          project_ids?: string[] | null
+          success_rate?: number | null
+          tags?: string[] | null
+          updated_at?: string
+          usage_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_public?: boolean | null
+          pattern_content?: Json
+          pattern_name?: string
+          pattern_type?: string
+          project_ids?: string[] | null
+          success_rate?: number | null
+          tags?: string[] | null
+          updated_at?: string
+          usage_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      qa_standards: {
+        Row: {
+          created_at: string
+          description: string | null
+          examples: Json
+          id: string
+          is_active: boolean | null
+          name: string
+          project_id: string | null
+          rules: Json
+          standard_type: string
+          updated_at: string
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          examples?: Json
+          id?: string
+          is_active?: boolean | null
+          name: string
+          project_id?: string | null
+          rules?: Json
+          standard_type: string
+          updated_at?: string
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          examples?: Json
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          project_id?: string | null
+          rules?: Json
+          standard_type?: string
+          updated_at?: string
+          user_id?: string
+          version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_standards_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_api_test_cases: {
         Row: {
           additional_prompt: string | null
@@ -796,6 +1194,59 @@ export type Database = {
           },
         ]
       }
+      self_hosted_agents: {
+        Row: {
+          agent_type: string
+          api_key: string | null
+          capabilities: Json | null
+          created_at: string
+          endpoint_url: string | null
+          id: string
+          last_heartbeat: string | null
+          name: string
+          project_id: string | null
+          status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_type: string
+          api_key?: string | null
+          capabilities?: Json | null
+          created_at?: string
+          endpoint_url?: string | null
+          id?: string
+          last_heartbeat?: string | null
+          name: string
+          project_id?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_type?: string
+          api_key?: string | null
+          capabilities?: Json | null
+          created_at?: string
+          endpoint_url?: string | null
+          id?: string
+          last_heartbeat?: string | null
+          name?: string
+          project_id?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "self_hosted_agents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_case_folders: {
         Row: {
           created_at: string
@@ -919,6 +1370,125 @@ export type Database = {
             columns: ["user_story_id"]
             isOneToOne: false
             referencedRelation: "user_stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_run_cases: {
+        Row: {
+          actual_result: string | null
+          created_at: string
+          executed_at: string | null
+          executed_by: string | null
+          id: string
+          notes: string | null
+          status: string | null
+          step_results: Json | null
+          test_case_id: string | null
+          test_run_id: string | null
+          user_id: string
+        }
+        Insert: {
+          actual_result?: string | null
+          created_at?: string
+          executed_at?: string | null
+          executed_by?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          step_results?: Json | null
+          test_case_id?: string | null
+          test_run_id?: string | null
+          user_id: string
+        }
+        Update: {
+          actual_result?: string | null
+          created_at?: string
+          executed_at?: string | null
+          executed_by?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          step_results?: Json | null
+          test_case_id?: string | null
+          test_run_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_run_cases_test_case_id_fkey"
+            columns: ["test_case_id"]
+            isOneToOne: false
+            referencedRelation: "test_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_run_cases_test_run_id_fkey"
+            columns: ["test_run_id"]
+            isOneToOne: false
+            referencedRelation: "test_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          failed_cases: number | null
+          id: string
+          name: string
+          passed_cases: number | null
+          project_id: string | null
+          run_type: string | null
+          skipped_cases: number | null
+          started_at: string | null
+          status: string | null
+          total_cases: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_cases?: number | null
+          id?: string
+          name: string
+          passed_cases?: number | null
+          project_id?: string | null
+          run_type?: string | null
+          skipped_cases?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_cases?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_cases?: number | null
+          id?: string
+          name?: string
+          passed_cases?: number | null
+          project_id?: string | null
+          run_type?: string | null
+          skipped_cases?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_cases?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]

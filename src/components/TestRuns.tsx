@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { publicProjectIds } from "@/config/features";
-import { Play, Plus, Trash2, Clock, CheckCircle, XCircle, AlertCircle, Search, MoreHorizontal, ArrowLeft, MinusCircle, GitCompare, History, Copy, Pencil, ChevronDown, ChevronRight, ListChecks, Camera, MessageSquare, Image } from "lucide-react";
+import { Play, Plus, Trash2, Clock, CheckCircle, XCircle, AlertCircle, Search, MoreHorizontal, ArrowLeft, MinusCircle, GitCompare, History, Copy, Pencil, ChevronDown, ChevronRight, ListChecks, Camera, MessageSquare, Image, SkipForward } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -293,9 +293,8 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
         .insert({
           project_id: projectId,
           name: formData.name,
-          run_type: formData.runType,
-          description: formData.description,
-          created_by: session?.user?.id,
+          status: 'not_started',
+          user_id: session?.user?.id,
         })
         .select()
         .single();
@@ -332,6 +331,7 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
         test_run_id: selectedTestRunId,
         test_case_id: tcId,
         status: "not_run",
+        user_id: session?.user?.id,
       }));
 
       const { error } = await supabase
@@ -396,10 +396,8 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
         .insert({
           project_id: projectId,
           name: `${run.name} (Copy)`,
-          run_type: run.runType,
-          description: run.description,
-          created_by: session?.user?.id,
           status: "not_started",
+          user_id: session?.user?.id,
         })
         .select()
         .single();
@@ -420,6 +418,7 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
           test_run_id: newRun.id,
           test_case_id: tc.test_case_id,
           status: "not_run",
+          user_id: session?.user?.id,
         }));
 
         const { error: insertError } = await supabase
@@ -1014,8 +1013,8 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
                   className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-mono text-muted-foreground">{tc.readableId}</span>
-                    <span className="text-sm font-medium">{tc.title}</span>
+                    <span className="text-sm font-mono text-muted-foreground">{tc.testCaseReadableId}</span>
+                    <span className="text-sm font-medium">{tc.testCaseTitle}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {getCaseStatusBadge(tc.status)}
@@ -1065,7 +1064,7 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
             <div
               key={run.id}
               className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer"
-              onClick={() => handleOpenTestRun(run)}
+              onClick={() => openExecuteView(run)}
             >
               <div>
                 <div className="font-medium">{run.name}</div>
@@ -1093,16 +1092,16 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
             <div className="space-y-2">
               <Label>Name</Label>
               <Input
-                value={newRunName}
-                onChange={(e) => setNewRunName(e.target.value)}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Sprint 1 Regression"
               />
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
               <Textarea
-                value={newRunDescription}
-                onChange={(e) => setNewRunDescription(e.target.value)}
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Test run for Sprint 1 features"
               />
             </div>
@@ -1111,7 +1110,7 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateTestRun} disabled={!newRunName}>
+            <Button onClick={createTestRun} disabled={!formData.name}>
               Create
             </Button>
           </DialogFooter>
@@ -1129,16 +1128,18 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
           </DialogHeader>
           <ScrollArea className="max-h-96">
             <div className="space-y-2 p-2">
-              {availableTestCases.map((tc) => (
+              {testCases.map((tc) => (
                 <div key={tc.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50">
                   <Checkbox
-                    checked={selectedTestCaseIds.includes(tc.id)}
+                    checked={selectedTestCaseIds.has(tc.id)}
                     onCheckedChange={(checked) => {
+                      const newSet = new Set(selectedTestCaseIds);
                       if (checked) {
-                        setSelectedTestCaseIds([...selectedTestCaseIds, tc.id]);
+                        newSet.add(tc.id);
                       } else {
-                        setSelectedTestCaseIds(selectedTestCaseIds.filter(id => id !== tc.id));
+                        newSet.delete(tc.id);
                       }
+                      setSelectedTestCaseIds(newSet);
                     }}
                   />
                   <span className="text-sm font-mono text-muted-foreground">{tc.readableId}</span>
@@ -1151,8 +1152,8 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
             <Button variant="outline" onClick={() => setSelectTestCasesDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddTestCasesToRun} disabled={selectedTestCaseIds.length === 0}>
-              Add {selectedTestCaseIds.length} Cases
+            <Button onClick={addTestCasesToRun} disabled={selectedTestCaseIds.size === 0}>
+              Add {selectedTestCaseIds.size} Cases
             </Button>
           </DialogFooter>
         </DialogContent>
