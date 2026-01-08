@@ -24,7 +24,9 @@ interface QAStandard {
   examples: any[] | null;
   is_active: boolean | null;
   project_id: string | null;
-  created_by: string;
+  description?: string | null;
+  version?: string | null;
+  user_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -338,7 +340,7 @@ export const QAStandardsManager = ({ projectId, isEmbedded = false }: QAStandard
         examples: parsedExamples,
         is_active: formIsActive,
         project_id: projectId,
-        created_by: user.id,
+        user_id: user.id,
       });
 
       if (error) throw error;
@@ -505,7 +507,7 @@ export const QAStandardsManager = ({ projectId, isEmbedded = false }: QAStandard
         examples: template.examples,
         is_active: true,
         project_id: projectId,
-        created_by: user.id,
+        user_id: user.id,
       });
 
       if (error) throw error;
@@ -916,7 +918,7 @@ export const QAStandardsManager = ({ projectId, isEmbedded = false }: QAStandard
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreate} disabled={!formName || !formRules}>
+              <Button onClick={handleCreateStandard} disabled={!formName || !formRules}>
                 Create Standard
               </Button>
             </DialogFooter>

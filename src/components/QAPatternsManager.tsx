@@ -273,12 +273,12 @@ export const QAPatternsManager = ({ projectId, isEmbedded = false }: QAPatternsM
           pattern_name: preset.pattern_name,
           pattern_type: preset.pattern_type,
           pattern_content: preset.pattern_content,
-          description: preset.description,
-          is_global: false,
+          is_public: false,
           project_ids: [projectId],
           tags: preset.tags,
-          confidence_score: preset.confidence_score,
+          success_rate: preset.confidence_score,
           created_by: user.id,
+          user_id: user.id,
         };
       });
 
@@ -361,11 +361,11 @@ export const QAPatternsManager = ({ projectId, isEmbedded = false }: QAPatternsM
         pattern_name: formName,
         pattern_type: formType,
         pattern_content: parsedContent,
-        description: formDescription || null,
-        is_global: formIsGlobal,
+        is_public: formIsGlobal,
         project_ids: [projectId],
         tags: tagsArray,
         created_by: user.id,
+        user_id: user.id,
       });
 
       if (error) throw error;

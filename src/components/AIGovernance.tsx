@@ -73,7 +73,7 @@ interface SafetyControl {
   enabled: boolean;
   config: any;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 interface AuditLog {
@@ -155,7 +155,6 @@ export const AIGovernance = ({ projectId }: AIGovernanceProps) => {
       // TODO: ai_safety_controls table does not exist - local only
       const newControl: SafetyControl = {
         id: crypto.randomUUID(),
-        project_id: projectId,
         control_type: createControlType,
         enabled: true,
         config,
