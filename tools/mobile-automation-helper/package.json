@@ -2,10 +2,10 @@
   "name": "mobile-automation-helper",
   "version": "1.0.0",
   "type": "module",
-  "main": "server.js",
+  "main": "agent.js",
   "scripts": {
-    "start": "node server.js",
-    "agent": "node agent/start-agent.js",
+    "start": "node agent.js",
+    "agent": "node agent.js",
     "tray": "electron tray.cjs"
   },
   "keywords": [],

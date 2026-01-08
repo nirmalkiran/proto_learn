@@ -17,6 +17,7 @@ import { Defects } from "@/components/Defects";
 import { SwaggerTestGenerator } from "@/components/SwaggerTestGenerator";
 import { EnhancedPerformanceTestGenerator } from "@/components/EnhancedPerformanceTestGenerator";
 import { NoCodeAutomation } from "@/components/NoCodeAutomation";
+import { AgentManagement } from "@/components/AgentManagement";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -120,6 +121,12 @@ const Project = () => {
         return <NoCodeAutomation projectId={selectedProject.id} />;
       case "mobile-no-code-automation":
          return <MobileAutomation />;
+      case "performance-testing":
+         return <EnhancedPerformanceTestGenerator projectId={selectedProject.id} />;
+      case "agents":
+         return <AgentManagement projectId={selectedProject.id} />;
+      case "ai-governance":
+         return <AIGovernance projectId={selectedProject.id} />;
       default:
         return <Dashboard onViewChange={setCurrentView} projectId={selectedProject.id} />;
     }

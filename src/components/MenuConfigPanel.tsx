@@ -26,6 +26,7 @@ const DEFAULT_MENU_ITEMS: MenuConfigItem[] = [
   { id: "8", menu_id: "mobile-no-code-automation", label: "Mobile Automation", is_visible: true, display_order: 8 },
   { id: "9", menu_id: "test-report", label: "Test Report", is_visible: true, display_order: 9 },
   { id: "10", menu_id: "integrations", label: "Integrations", is_visible: true, display_order: 10 },
+  { id: "11", menu_id: "self-hosting", label: "Self Hosting", is_visible: true, display_order: 11 },
 ];
 
 export const MenuConfigPanel = () => {

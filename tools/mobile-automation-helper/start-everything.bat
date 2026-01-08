@@ -5,6 +5,7 @@ echo ============================================
 echo.
 
 echo Starting backend server...
+cd /d "%~dp0"
 start /B npm start
 
 echo Waiting for backend server to be ready...

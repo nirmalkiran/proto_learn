@@ -82,15 +82,19 @@ const AppSidebar = ({
     setVisibleMenuIds(
       new Set([
         "dashboard",
-        "test-plan",
         "user-stories",
+        "test-plan",
         "test-cases",
         "repository",
         "api",
         "nocode-automation",
         "mobile-no-code-automation",
+        "performance-testing",
+        "agents",
+        "defects",
         "test-report",
         "integrations",
+        "ai-governance",
       ]),
     );
   };
@@ -140,13 +144,16 @@ const AppSidebar = ({
   { id: "user-stories", label: "User Stories", count: userStoriesCount || undefined },
   { id: "test-plan", label: "Test Plans", count: testPlansCount || undefined },
   { id: "test-cases", label: "Test Case Design", count: testCasesCount || undefined },
-  { id: "repository", label: "Repository" },
+  { id: "repository", label: "Automation Testing (Selenium)" },
   { id: "api", label: "API Testing" },
-  { id: "nocode-automation", label: "No-Code Automation" },
-  { id: "mobile-no-code-automation", label: "Mobile No-Code Automation" }, // ✅
+  { id: "nocode-automation", label: "Automation Testing (No-code)" },
+  { id: "mobile-no-code-automation", label: "Mobile No-Code Automation" },
+  { id: "performance-testing", label: "Performance Testing" },
+  { id: "agents", label: "Self-Hosted Agents" },
   { id: "defects", label: "Defects", count: defectsCount || undefined },
   { id: "test-report", label: "Test Report" },
   { id: "integrations", label: "Integrations" },
+  { id: "ai-governance", label: "AI Governance" },
 ].filter((item) => visibleMenuIds.size === 0 || visibleMenuIds.has(item.id)),
     },
     {
