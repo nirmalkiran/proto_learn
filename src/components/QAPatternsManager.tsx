@@ -194,13 +194,8 @@ export const QAPatternsManager = ({ projectId, isEmbedded = false }: QAPatternsM
   const loadPatterns = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("qa_proven_patterns")
-        .select("*")
-        .order("confidence_score", { ascending: false });
-
-      if (error) throw error;
-      setPatterns(data || []);
+      // TODO: qa_proven_patterns table does not exist yet - using empty array
+      setPatterns([]);
     } catch (error) {
       console.error("Error loading patterns:", error);
       toast({

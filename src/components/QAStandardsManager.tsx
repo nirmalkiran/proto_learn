@@ -890,4 +890,58 @@ export const QAStandardsManager = ({ projectId, isEmbedded = false }: QAStandard
                 <Textarea
                   value={formRules}
                   onChange={(e) => setFormRules(e.target.value)}
-                  placeholder={'Test case titles must start with a verb\nEach step must have
+                  placeholder="Test case titles must start with a verb\nEach step must have expected result"
+                  rows={5}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Examples (JSON array, optional)</Label>
+                <Textarea
+                  value={formExamples}
+                  onChange={(e) => setFormExamples(e.target.value)}
+                  placeholder='[{"input": "example", "output": "result"}]'
+                  rows={3}
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="active"
+                  checked={formIsActive}
+                  onCheckedChange={setFormIsActive}
+                />
+                <Label htmlFor="active">Active</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={!formName || !formRules}>
+                Create Standard
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+
+  if (isEmbedded) {
+    return content;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BookOpen className="h-5 w-5" />
+          QA Standards Manager
+        </CardTitle>
+        <CardDescription>
+          Define and manage QA standards for AI-assisted test generation
+        </CardDescription>
+      </CardHeader>
+      <CardContent>{content}</CardContent>
+    </Card>
+  );
+}

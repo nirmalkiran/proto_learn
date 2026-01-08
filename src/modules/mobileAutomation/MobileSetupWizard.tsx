@@ -454,15 +454,21 @@ export default function MobileSetupWizard({
 
   // One-Tap Start All Services
   const startAllServices = async (skipRunChecks = false) => {
-    toast.info("Starting all services...");
+    toast.info("Connecting to Mobile Automation Helper...");
 
     try {
-      // First check if server is running
-      const healthCheck = await fetch(`${AGENT_URL}/health`, {
-        signal: AbortSignal.timeout(3000),
-      });
+      // First check if server is running with better error handling
+      let healthCheck;
+      try {
+        healthCheck = await fetch(`${AGENT_URL}/health`, {
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (fetchError) {
+        // Network error - server not reachable
+        throw new Error("AGENT_NOT_RUNNING");
+      }
 
-      if (!healthCheck.ok) throw new Error("Server not running");
+      if (!healthCheck.ok) throw new Error("AGENT_NOT_RUNNING");
 
       // Fetch available devices first to populate the dropdown
       try {
@@ -538,27 +544,27 @@ export default function MobileSetupWizard({
       if (!skipRunChecks) {
         setTimeout(runAllChecks, 25000); // Refresh all checks after a delay (increased for emulator boot time)
       }
-    } catch (error) {
-      // Server not running - provide clear instructions
-      console.log("Server not running, providing manual instructions...");
-      toast.error("Mobile Automation Helper Server Not Running", {
-        description: "Please start the server first, then click the button again.",
-        duration: 10000,
+    } catch (error: any) {
+      // Server not running - provide clear instructions without blocking alert
+      console.log("Server not running:", error?.message);
+      
+      toast.error("Mobile Automation Helper Not Running", {
+        description: "Start the helper server first, then try again.",
+        duration: 8000,
       });
 
-      // Show instructions in a dialog
-      setTimeout(() => {
-        alert(`To start all services automatically:
+      // Update checks to show error state
+      update("backend", { status: "error", message: "Server not running" });
+      update("agent", { status: "error", message: "Start helper first" });
+      update("appium", { status: "pending", message: "Waiting for helper" });
+      update("emulator", { status: "pending", message: "Waiting for helper" });
+      update("device", { status: "pending", message: "Waiting for helper" });
 
-1. Open Command Prompt/Terminal
-2. Navigate to: tools/mobile-automation-helper
-3. Run: start-everything.bat
-4. Wait for "setup complete" message
-5. Return to this app and click "One-Tap Start All Services" again
-
-Alternatively:
-- Run: npm start (then click the button again)`);
-      }, 1000);
+      // Show non-blocking toast with instructions
+      toast.info("How to start the helper:", {
+        description: "Run: cd tools/mobile-automation-helper && npm start",
+        duration: 15000,
+      });
     }
   };
 

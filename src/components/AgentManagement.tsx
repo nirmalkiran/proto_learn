@@ -149,38 +149,18 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   };
 
   const loadAgents = async () => {
-    const { data, error } = await supabase
-      .from("self_hosted_agents")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    setAgents(data || []);
+    // TODO: self_hosted_agents table does not exist yet - using empty array
+    setAgents([]);
   };
 
   const loadJobs = async () => {
-    const { data, error } = await supabase
-      .from("agent_job_queue")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-    setJobs(data || []);
+    // TODO: agent_job_queue table does not exist yet - using empty array
+    setJobs([]);
   };
 
   const loadExecutionResults = async () => {
-    const { data, error } = await supabase
-      .from("agent_execution_results")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-    setExecutionResults(data || []);
+    // TODO: agent_execution_results table does not exist yet - using empty array
+    setExecutionResults([]);
   };
 
   const handleRegisterAgent = async () => {

@@ -989,3 +989,174 @@ export const TestRuns = ({ projectId }: TestRunsProps) => {
               <CardContent className="p-3">
                 <div className="text-2xl font-bold text-destructive">{failedCount}</div>
                 <div className="text-xs text-muted-foreground">Failed</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3">
+                <div className="text-2xl font-bold text-yellow-600">{blockedCount}</div>
+                <div className="text-xs text-muted-foreground">Blocked</div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+        
+        {/* Test Cases List */}
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-2">
+            {testRunCases.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No test cases added to this run yet. Click "Add Cases" to get started.
+              </div>
+            ) : (
+              testRunCases.map((tc) => (
+                <div 
+                  key={tc.id}
+                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-mono text-muted-foreground">{tc.readableId}</span>
+                    <span className="text-sm font-medium">{tc.title}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {getCaseStatusBadge(tc.status)}
+                    <Select 
+                      value={tc.status} 
+                      onValueChange={(value) => updateTestCaseStatus(tc.id, value)}
+                    >
+                      <SelectTrigger className="w-32 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CASE_STATUS_OPTIONS.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // Default list view
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Test Runs</h2>
+        <Button onClick={() => setCreateDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Test Run
+        </Button>
+      </div>
+      
+      {testRuns.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          No test runs yet. Create your first test run to get started.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {testRuns.map((run) => (
+            <div
+              key={run.id}
+              className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer"
+              onClick={() => handleOpenTestRun(run)}
+            >
+              <div>
+                <div className="font-medium">{run.name}</div>
+                <div className="text-sm text-muted-foreground">{run.description}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                {getRunTypeBadge(run.runType)}
+                <Badge variant="outline">{run.testCaseCount} cases</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create Test Run Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Test Run</DialogTitle>
+            <DialogDescription>
+              Create a new test run to track test execution
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={newRunName}
+                onChange={(e) => setNewRunName(e.target.value)}
+                placeholder="Sprint 1 Regression"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={newRunDescription}
+                onChange={(e) => setNewRunDescription(e.target.value)}
+                placeholder="Test run for Sprint 1 features"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateTestRun} disabled={!newRunName}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Select Test Cases Dialog */}
+      <Dialog open={selectTestCasesDialogOpen} onOpenChange={setSelectTestCasesDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select Test Cases</DialogTitle>
+            <DialogDescription>
+              Choose test cases to add to this run
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-96">
+            <div className="space-y-2 p-2">
+              {availableTestCases.map((tc) => (
+                <div key={tc.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/50">
+                  <Checkbox
+                    checked={selectedTestCaseIds.includes(tc.id)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedTestCaseIds([...selectedTestCaseIds, tc.id]);
+                      } else {
+                        setSelectedTestCaseIds(selectedTestCaseIds.filter(id => id !== tc.id));
+                      }
+                    }}
+                  />
+                  <span className="text-sm font-mono text-muted-foreground">{tc.readableId}</span>
+                  <span className="text-sm">{tc.title}</span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectTestCasesDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddTestCasesToRun} disabled={selectedTestCaseIds.length === 0}>
+              Add {selectedTestCaseIds.length} Cases
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
