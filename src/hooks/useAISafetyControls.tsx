@@ -33,18 +33,29 @@ export const useAISafetyControls = (projectId: string) => {
   const loadSafetyConfig = useCallback(async (projectId: string) => {
     setIsLoading(true);
     try {
+      // Use ai_safety_controls table instead of ai_safety_config
       const { data, error } = await supabase
-        .from("ai_safety_config")
+        .from("ai_safety_controls")
         .select("*")
         .eq("project_id", projectId)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== "PGRST116") { // PGRST116 is "not found"
+      if (error) {
         throw error;
       }
 
       if (data) {
-        setSafetyConfig(data.config as SafetyConfig);
+        // Map database columns to SafetyConfig interface
+        setSafetyConfig({
+          minConfidenceThreshold: data.confidence_threshold ?? 0.5,
+          autoApproveThreshold: 0.85, // Not in DB, use default
+          maxDailyGenerations: data.rate_limit_daily ?? 100,
+          requireApprovalForTestCases: data.require_approval_test_cases ?? true,
+          requireApprovalForAPITestCases: data.require_approval_test_cases ?? true,
+          requireApprovalForAutomation: data.require_approval_user_stories ?? true,
+          requireApprovalForDefects: data.require_approval_test_plans ?? true,
+          enableAuditLogging: data.enable_audit_logging ?? true,
+        });
       } else {
         // Use defaults if no config exists
         setSafetyConfig(DEFAULT_SAFETY_CONFIG);
@@ -66,11 +77,24 @@ export const useAISafetyControls = (projectId: string) => {
 
   const saveSafetyConfig = useCallback(async (projectId: string, config: SafetyConfig) => {
     try {
+      const user = await supabase.auth.getUser();
+      const userId = user.data.user?.id;
+      
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
       const { error } = await supabase
-        .from("ai_safety_config")
+        .from("ai_safety_controls")
         .upsert({
           project_id: projectId,
-          config: config,
+          user_id: userId,
+          confidence_threshold: config.minConfidenceThreshold,
+          rate_limit_daily: config.maxDailyGenerations,
+          require_approval_test_cases: config.requireApprovalForTestCases,
+          require_approval_test_plans: config.requireApprovalForDefects,
+          require_approval_user_stories: config.requireApprovalForAutomation,
+          enable_audit_logging: config.enableAuditLogging,
           updated_at: new Date().toISOString(),
         });
 
@@ -100,7 +124,7 @@ export const useAISafetyControls = (projectId: string) => {
       tomorrow.setDate(tomorrow.getDate() + 1);
 
       const { count, error } = await supabase
-        .from("qa_ai_feedback")
+        .from("ai_usage_logs")
         .select("*", { count: "exact", head: true })
         .eq("project_id", projectId)
         .gte("created_at", today.toISOString())
@@ -162,20 +186,19 @@ export const useAISafetyControls = (projectId: string) => {
     if (!safetyConfig.enableAuditLogging) return;
 
     try {
+      const user = await supabase.auth.getUser();
+      const userId = user.data.user?.id;
+      
+      if (!userId) return;
+
       const { error } = await supabase
-        .from("qa_ai_feedback")
+        .from("ai_usage_logs")
         .insert({
           project_id: projectId,
-          user_id: (await supabase.auth.getUser()).data.user?.id || "",
-          artifact_type: artifactType,
-          artifact_id: artifactId,
-          action: "pending",
-          original_content: content,
-          feedback_notes: JSON.stringify({
-            confidence,
-            appliedStandards: appliedStandards || [],
-            actionType: "generated",
-          }),
+          user_id: userId,
+          feature_type: artifactType,
+          success: true,
+          tokens_used: Math.round(content.length / 4), // Approximate tokens
         });
 
       if (error) throw error;
@@ -195,25 +218,17 @@ export const useAISafetyControls = (projectId: string) => {
   ) => {
     if (!safetyConfig.enableAuditLogging) return;
 
-    try {
-      const { error } = await supabase
-        .from("qa_ai_feedback")
-        .update({
-          action: approved ? "approved" : "rejected",
-          feedback_notes: JSON.stringify({
-            confidence,
-            actionType: approved ? "approved" : "rejected",
-            notes,
-            updatedAt: new Date().toISOString(),
-          }),
-        })
-        .eq("id", entryId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error("Error logging approval:", error);
-    }
+    // Log approval is a no-op for now since we don't have a dedicated approvals table
+    console.log("Approval logged:", { entryId, approved, confidence, notes });
   }, [safetyConfig.enableAuditLogging]);
+
+  const checkRateLimit = useCallback(() => {
+    return {
+      allowed: dailyUsage < safetyConfig.maxDailyGenerations,
+      remaining: Math.max(0, safetyConfig.maxDailyGenerations - dailyUsage),
+      limit: safetyConfig.maxDailyGenerations,
+    };
+  }, [dailyUsage, safetyConfig.maxDailyGenerations]);
 
   return {
     safetyConfig,
@@ -224,5 +239,6 @@ export const useAISafetyControls = (projectId: string) => {
     checkContentApproval,
     logAIGeneration,
     logApproval,
+    checkRateLimit,
   };
 };

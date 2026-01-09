@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { Play, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Upload, Package, CheckCircle, XCircle } from "lucide-react";
 
@@ -52,7 +52,7 @@ interface MobileRecorderProps {
   recording: boolean;
   setRecording: (recording: boolean) => void;
   actions: RecordedAction[];
-  setActions: (actions: RecordedAction[]) => void;
+  setActions: React.Dispatch<React.SetStateAction<RecordedAction[]>>;
   selectedDevice: any;
   setSelectedDevice: (device: any) => void;
   connectionStatus: "disconnected" | "connecting" | "connected";
@@ -60,7 +60,7 @@ interface MobileRecorderProps {
   mirrorActive: boolean;
   setMirrorActive: (active: boolean) => void;
   mirrorImage: string | null;
-  setMirrorImage: (image: string | null) => void;
+  setMirrorImage: React.Dispatch<React.SetStateAction<string | null>>;
   mirrorError: string | null;
   setMirrorError: (error: string | null) => void;
   mirrorLoading: boolean;
@@ -134,8 +134,8 @@ export default function MobileRecorder({
   selectedDeviceFromSetup,
 }: MobileRecorderProps) {
   const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const screenshotIntervalRef = useRef<number | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const screenshotIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [uiXml, setUiXml] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<any>(null);
