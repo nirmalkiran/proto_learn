@@ -18,6 +18,7 @@ import { SwaggerTestGenerator } from "@/components/SwaggerTestGenerator";
 import { EnhancedPerformanceTestGenerator } from "@/components/EnhancedPerformanceTestGenerator";
 import { NoCodeAutomation } from "@/components/NoCodeAutomation";
 import { AgentManagement } from "@/components/AgentManagement";
+import { AIGovernance } from "@/components/AIGovernance";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -122,7 +123,7 @@ const Project = () => {
       case "mobile-no-code-automation":
          return <MobileAutomation />;
       case "performance-testing":
-         return <EnhancedPerformanceTestGenerator projectId={selectedProject.id} />;
+         return <EnhancedPerformanceTestGenerator />;
       case "agents":
          return <AgentManagement projectId={selectedProject.id} />;
       case "ai-governance":

@@ -271,13 +271,32 @@ async initialize() {
 
     process.on("SIGINT", async () => {
       console.log("\n[Agent] Shutting down...");
-      console.error(error);
-      setTimeout(() => process.exit(1), 5000);
+      this.isRunning = false;
+      if (this.server) {
+        this.server.close();
+      }
+      process.exit(0);
     });
+
+    // Keep process alive
+    process.on("uncaughtException", (err) => {
+      console.error("[Agent] Uncaught exception:", err.message);
+    });
+
+    process.on("unhandledRejection", (reason) => {
+      console.error("[Agent] Unhandled rejection:", reason);
+    });
+  }
+
+  setupServices() {
+    // Placeholder for additional service setup
+    console.log("[Agent] Services configured");
   }
 }
 
-
-if (process.argv[1] && process.argv[1].includes('agent.js')) {
+/* =====================================================
+ * ENTRY
+ * ===================================================== */
+if (import.meta.url === `file://${process.argv[1]}`) {
   new MobileAutomationAgent().run();
 }
