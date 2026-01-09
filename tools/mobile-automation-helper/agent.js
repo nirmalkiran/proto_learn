@@ -271,15 +271,43 @@ async initialize() {
 
     process.on("SIGINT", async () => {
       console.log("\n[Agent] Shutting down...");
-      console.error(error);
-      setTimeout(() => process.exit(1), 5000);
+      this.isRunning = false;
+      if (this.server) {
+        this.server.close();
+      }
+      process.exit(0);
     });
+
+    // Keep process alive
+    process.on("uncaughtException", (err) => {
+      console.error("[Agent] Uncaught exception:", err.message);
+    });
+
+    process.on("unhandledRejection", (reason) => {
+      console.error("[Agent] Unhandled rejection:", reason);
+    });
+  }
+
+  setupServices() {
+    // Placeholder for additional service setup
+    console.log("[Agent] Services configured");
   }
 }
 
 /* =====================================================
- * ENTRY
+ * ENTRY - Cross-platform compatible
  * ===================================================== */
-if (import.meta.url === `file://${process.argv[1]}`) {
-  new MobileAutomationAgent().run();
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] && 
+  path.resolve(process.argv[1]) === path.resolve(__filename);
+
+if (isMainModule) {
+  const agent = new MobileAutomationAgent();
+  agent.run().catch((err) => {
+    console.error("[Agent] Fatal error:", err);
+    process.exit(1);
+  });
 }

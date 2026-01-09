@@ -285,14 +285,7 @@ export default function MobileAutomation() {
         {/* ================= INSPECTOR ================= */}
         {activeTab === "inspector" && (
           <div className="mt-6">
-            <MobileInspector
-              selectedNode={selectedNode}
-              setSelectedNode={setSelectedNode}
-              opening={opening}
-              setOpening={setOpening}
-              config={config}
-              setConfig={setConfig}
-            />
+            <MobileInspector />
           </div>
         )}
 

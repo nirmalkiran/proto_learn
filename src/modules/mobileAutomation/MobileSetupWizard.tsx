@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 
 // UI Components
 import {
@@ -143,7 +143,7 @@ interface MobileSetupWizardProps {
   };
   setSetupState: (state: any) => void;
   checks: Record<string, CheckResult>;
-  setChecks: (checks: Record<string, CheckResult>) => void;
+  setChecks: React.Dispatch<React.SetStateAction<Record<string, CheckResult>>>;
   agentDetails: any;
   setAgentDetails: (details: any) => void;
   availableDevices: string[];
@@ -155,7 +155,7 @@ interface MobileSetupWizardProps {
   wizardTab: "usb" | "wireless";
   setWizardTab: (tab: "usb" | "wireless") => void;
   wizardStep: number;
-  setWizardStep: (step: number) => void;
+  setWizardStep: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export default function MobileSetupWizard({
@@ -885,7 +885,7 @@ export default function MobileSetupWizard({
             <RefreshCw className="mr-2 h-4 w-4" />
             Check All Services Status
           </Button>
-          <Button onClick={startAllServices} className="bg-primary hover:bg-primary/90">
+          <Button onClick={() => startAllServices()} className="bg-primary hover:bg-primary/90">
             <Power className="mr-2 h-4 w-4" />
             One-Tap Start All Services
           </Button>

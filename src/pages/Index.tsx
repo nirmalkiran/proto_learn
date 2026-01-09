@@ -19,6 +19,7 @@ import { AdvancedAPITestGenerator } from "@/components/AdvancedAPITestGenerator"
 import { SwaggerTestGenerator } from "@/components/SwaggerTestGenerator";
 import { EnhancedPerformanceTestGenerator } from "@/components/EnhancedPerformanceTestGenerator";
 import { MenuConfigPanel } from "@/components/MenuConfigPanel";
+import SelfHosting from "@/pages/SelfHosting";
 
 const Index = () => {
   const [currentView, setCurrentView] = useState('projects');
