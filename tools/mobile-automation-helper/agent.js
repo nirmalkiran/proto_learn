@@ -22,52 +22,52 @@ class MobileAutomationAgent {
   /* =====================================================
    * INITIALIZE (SAFE MODE – NEVER CRASH)
    * ===================================================== */
-async initialize() {
-  
-  console.log('MOBILE AUTOMATION AGENT INITIALIZING...');
-  
+  async initialize() {
 
-  try {
-    console.log('[Agent] Initializing device controller...');
+    console.log('MOBILE AUTOMATION AGENT INITIALIZING...');
+
+
     try {
-      await deviceController.initialize();
-    } catch (e) {
-      console.warn('[Agent] Device controller failed:', e.message);
-    }
-
-    console.log('[Agent] Checking Appium...');
-    try {
-      await appiumController.checkInstallation();
-    } catch (e) {
-      console.warn('[Agent] Appium check failed:', e.message);
-    }
-
-    console.log('[Agent] Initializing emulator controller...');
-    try {
-      await emulatorController.initialize();
-    } catch (e) {
-      console.warn('[Agent] Emulator init failed:', e.message);
-    }
-
-    console.log('[Agent] Setting up services...');
-    if (typeof this.setupServices === "function") {
+      console.log('[Agent] Initializing device controller...');
       try {
-        this.setupServices();
+        await deviceController.initialize();
       } catch (e) {
-        console.warn('[Agent] setupServices failed (continuing):', e?.message || e);
+        console.warn('[Agent] Device controller failed:', e.message);
       }
-    } else {
-      console.warn('[Agent] setupServices is missing (continuing)');
+
+      console.log('[Agent] Checking Appium...');
+      try {
+        await appiumController.checkInstallation();
+      } catch (e) {
+        console.warn('[Agent] Appium check failed:', e.message);
+      }
+
+      console.log('[Agent] Initializing emulator controller...');
+      try {
+        await emulatorController.initialize();
+      } catch (e) {
+        console.warn('[Agent] Emulator init failed:', e.message);
+      }
+
+      console.log('[Agent] Setting up services...');
+      if (typeof this.setupServices === "function") {
+        try {
+          this.setupServices();
+        } catch (e) {
+          console.warn('[Agent] setupServices failed (continuing):', e?.message || e);
+        }
+      } else {
+        console.warn('[Agent] setupServices is missing (continuing)');
+      }
+
+      console.log('[Agent] Setting up HTTP server...');
+      this.setupServer();
+
+      console.log('[Agent] Initialization complete (server will start)');
+    } catch (error) {
+      console.error('[Agent] Initialization failed:', error);
     }
-
-    console.log('[Agent] Setting up HTTP server...');
-    this.setupServer();
-
-    console.log('[Agent] Initialization complete (server will start)');
-  } catch (error) {
-    console.error('[Agent] Initialization failed:', error);
   }
-}
 
 
   /* =====================================================
@@ -303,16 +303,21 @@ async initialize() {
     console.log(`[Agent] Starting server on port ${CONFIG.PORT}...`);
     this.server = createServer(this.app);
     this.server.listen(CONFIG.PORT, CONFIG.HOST, () => {
-    console.log(`[Agent] Server running at http://${CONFIG.HOST}:${CONFIG.PORT}`);
+      console.log(`[Agent] Server running at http://${CONFIG.HOST}:${CONFIG.PORT}`);
     });
     await new Promise((resolve) => {
       this.server.listen(CONFIG.PORT, CONFIG.HOST, resolve);
     });
-    this.keepAlive = setInterval(() => {}, 60 * 60 * 1000);
+    this.keepAlive = setInterval(() => { }, 60 * 60 * 1000);
     this.isRunning = true;
-    this.startTime = Date.now();    
+    this.startTime = Date.now();
+
     console.log(`AGENT RUNNING → http://${CONFIG.HOST}:${CONFIG.PORT}`);
-   
+    this.server.on('close', () => {
+      console.log('[Agent] HTTP server closed');
+    });
+
+
   }
 
   async run() {
@@ -344,9 +349,6 @@ async initialize() {
   }
 }
 
-/* =====================================================
- * ENTRY
- * ===================================================== */
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && process.argv[1].includes('agent.js')) {
   new MobileAutomationAgent().run();
 }
