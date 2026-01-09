@@ -222,11 +222,11 @@ export const APIFlowEditor = ({
       if (!projectId) return;
 
       try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("integration_configs")
           .select("config")
           .eq("project_id", projectId)
-          .eq("integration_id", "openai")
+          .eq("integration_type", "openai")
           .eq("enabled", true)
           .maybeSingle();
 
@@ -479,20 +479,23 @@ export const APIFlowEditor = ({
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase.from("saved_test_reports").insert({
-        project_id: projectId,
-        user_id: user.id,
-        report_name: `E2E Flow: ${result.flowName}`,
-        report_type: "api_flow",
-        report_content: JSON.stringify(result, null, 2),
-        statistics: {
-          total_steps: result.totalSteps,
-          passed_steps: result.passedSteps,
-          failed_steps: result.failedSteps,
-          total_duration: result.totalDuration,
-          status: result.status,
+      const { error } = await (supabase as any).from("saved_test_reports").insert([
+        {
+          project_id: projectId,
+          user_id: user.id,
+          name: `E2E Flow: ${result.flowName}`,
+          report_name: `E2E Flow: ${result.flowName}`,
+          report_type: "api_flow",
+          report_content: JSON.stringify(result, null, 2),
+          statistics: {
+            total_steps: result.totalSteps,
+            passed_steps: result.passedSteps,
+            failed_steps: result.failedSteps,
+            total_duration: result.totalDuration,
+            status: result.status,
+          },
         },
-      });
+      ]);
 
       if (error) throw error;
 

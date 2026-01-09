@@ -198,22 +198,25 @@ export const ExecutionResultsPanel = ({
         }))
       };
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('saved_test_reports')
-        .insert({
-          project_id: projectId,
-          user_id: user.id,
-          report_name: reportName.trim(),
-          report_type: 'api_execution',
-          report_content: JSON.stringify(reportContent, null, 2),
-          statistics: {
-            total: executionRecords.length,
-            passed: passedCount,
-            failed: failedCount,
-            errors: errorCount,
-            endpoint: `${endpointMethod} ${endpointPath}`
-          }
-        });
+        .insert([
+          {
+            project_id: projectId,
+            user_id: user.id,
+            name: reportName.trim(),
+            report_name: reportName.trim(),
+            report_type: 'api_execution',
+            report_content: JSON.stringify(reportContent, null, 2),
+            statistics: {
+              total: executionRecords.length,
+              passed: passedCount,
+              failed: failedCount,
+              errors: errorCount,
+              endpoint: `${endpointMethod} ${endpointPath}`,
+            },
+          },
+        ]);
 
       if (error) throw error;
 

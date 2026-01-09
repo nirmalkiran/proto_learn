@@ -491,12 +491,13 @@ export const APIDesigner = ({ projectId }: APIDesignerProps) => {
 
     // Check rate limit before proceeding
     if (projectId) {
-      const canProceed = await safetyControls.checkRateLimit(projectId);
+      const rate = safetyControls.checkRateLimit();
+      const canProceed = rate.allowed;
       if (!canProceed) {
         toast({
           title: "Rate limit reached",
           description: "Daily AI generation limit reached. Try again tomorrow.",
-          variant: "destructive"
+          variant: "destructive",
         });
         return;
       }
@@ -511,11 +512,11 @@ export const APIDesigner = ({ projectId }: APIDesignerProps) => {
         throw new Error('Project ID is required for test case generation');
       }
 
-      const { data: configData, error: configError } = await supabase
+      const { data: configData, error: configError } = await (supabase as any)
         .from('integration_configs')
         .select('config')
         .eq('project_id', projectId)
-        .eq('integration_id', 'openai')
+        .eq('integration_type', 'openai')
         .single();
 
       if (configError || !configData) {
@@ -1190,28 +1191,36 @@ export const APIDesigner = ({ projectId }: APIDesignerProps) => {
     if (!projectId) return;
 
     try {
-      const { data: existing } = await supabase
+      const { data: existing } = await (supabase as any)
         .from('integration_configs')
         .select('id')
         .eq('project_id', projectId)
-        .eq('integration_id', 'api_test_auth')
+        .eq('integration_type', 'api_test_auth')
         .maybeSingle();
 
       const config = { auth_token: apiAuthToken, base_url: apiBaseUrl };
 
       if (existing) {
-        await supabase
+        await (supabase as any)
           .from('integration_configs')
           .update({ config, updated_at: new Date().toISOString() })
           .eq('id', existing.id);
       } else {
-        await supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
+
+        await (supabase as any)
           .from('integration_configs')
-          .insert({
-            project_id: projectId,
-            integration_id: 'api_test_auth',
-            config
-          });
+          .insert([
+            {
+              project_id: projectId,
+              user_id: user.id,
+              integration_type: 'api_test_auth',
+              enabled: true,
+              config,
+              updated_at: new Date().toISOString(),
+            },
+          ]);
       }
 
       toast({ title: "Configuration Saved" });
@@ -1247,21 +1256,25 @@ export const APIDesigner = ({ projectId }: APIDesignerProps) => {
         testCases: approvedTestCases[ep.id] || ep.testCases
       })));
 
-      // Log approval to audit
-      if (user && projectId) {
-        const totalApproved = approvedItems.length;
-        const originalContent = JSON.stringify(pendingTestCases);
-        
-        await supabase.from('qa_ai_feedback').insert({
-          user_id: user.id,
-          project_id: projectId,
-          artifact_type: 'api_test_case',
-          action: 'approved',
-          original_content: originalContent,
-          edited_content: JSON.stringify(approvedTestCases),
-          feedback_notes: `Approved ${totalApproved} API test cases`
-        });
-      }
+       // Log approval to audit
+       if (user && projectId) {
+         const totalApproved = approvedItems.length;
+         const originalContent = JSON.stringify(pendingTestCases);
+
+         await (supabase as any).from('qa_ai_feedback').insert([
+           {
+             user_id: user.id,
+             project_id: projectId,
+             feature_type: 'api_test_case',
+             feedback_type: 'approved',
+             comment: `Approved ${totalApproved} API test cases`,
+             ai_output: {
+               original_content: originalContent,
+               edited_content: JSON.stringify(approvedTestCases),
+             },
+           },
+         ]);
+       }
 
       toast({
         title: "API Test Cases Approved",
@@ -1288,17 +1301,21 @@ export const APIDesigner = ({ projectId }: APIDesignerProps) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Log rejection to audit
-      if (user && projectId) {
-        await supabase.from('qa_ai_feedback').insert({
-          user_id: user.id,
-          project_id: projectId,
-          artifact_type: 'api_test_case',
-          action: 'rejected',
-          original_content: JSON.stringify(pendingTestCases),
-          feedback_notes: reason || 'Rejected API test cases'
-        });
-      }
+       // Log rejection to audit
+       if (user && projectId) {
+         await (supabase as any).from('qa_ai_feedback').insert([
+           {
+             user_id: user.id,
+             project_id: projectId,
+             feature_type: 'api_test_case',
+             feedback_type: 'rejected',
+             comment: reason || 'Rejected API test cases',
+             ai_output: {
+               original_content: JSON.stringify(pendingTestCases),
+             },
+           },
+         ]);
+       }
 
       toast({
         title: "API Test Cases Rejected",
