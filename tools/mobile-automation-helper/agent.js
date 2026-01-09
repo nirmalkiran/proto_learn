@@ -50,7 +50,15 @@ async initialize() {
     }
 
     console.log('[Agent] Setting up services...');
-    this.setupServices();
+    if (typeof this.setupServices === "function") {
+      try {
+        this.setupServices();
+      } catch (e) {
+        console.warn('[Agent] setupServices failed (continuing):', e?.message || e);
+      }
+    } else {
+      console.warn('[Agent] setupServices is missing (continuing)');
+    }
 
     console.log('[Agent] Setting up HTTP server...');
     this.setupServer();
@@ -68,7 +76,33 @@ async initialize() {
   setupServer() {
     this.app = express();
 
-    this.app.use(cors());
+    // CORS + Private Network Access (PNA) support (Chrome)
+    // When the UI is served over HTTPS, browsers may block requests to http://localhost
+    // unless the server opts in with Access-Control-Allow-Private-Network.
+    this.app.use((req, res, next) => {
+      res.setHeader("Access-Control-Allow-Private-Network", "true");
+      next();
+    });
+
+    this.app.use(
+      cors({
+        origin: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: [
+          "Content-Type",
+          "Authorization",
+          "X-Requested-With",
+          "Access-Control-Request-Private-Network",
+        ],
+      })
+    );
+
+    // Ensure OPTIONS requests succeed (used by PNA/CORS preflights)
+    this.app.options("*", (req, res) => {
+      res.setHeader("Access-Control-Allow-Private-Network", "true");
+      res.sendStatus(204);
+    });
+
     this.app.use(express.json({ limit: "50mb" }));
 
     /* ---------------- HEALTH ---------------- */
@@ -176,6 +210,16 @@ async initialize() {
       }
     });
 
+    // List available AVDs (used by the UI device dropdown)
+    this.app.get("/emulator/available", async (req, res) => {
+      try {
+        const avds = await emulatorController.getAvailableAvds();
+        res.json({ success: true, avds });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
     this.app.post("/emulator/start", async (req, res) => {
       try {
         await emulatorController.start(req.body.avd);
@@ -242,6 +286,12 @@ async initialize() {
     this.app.get("/agent/status", (req, res) => {
       const s = recordingService.getStatus();
       res.json({ running: true, recording: s.recording });
+    });
+
+    // UI expects an agent start endpoint in some flows; this helper is the agent process,
+    // so we simply acknowledge the request.
+    this.app.post("/agent/start", (req, res) => {
+      res.json({ success: true, running: true });
     });
   }
 
