@@ -1,5 +1,5 @@
 {
-  "name": "mobile-automation-helper",
+  "name": "mobile-automation-nocode-agent",
   "version": "1.0.0",
   "type": "module",
   "main": "agent.js",

@@ -23,9 +23,9 @@ class MobileAutomationAgent {
    * INITIALIZE (SAFE MODE – NEVER CRASH)
    * ===================================================== */
 async initialize() {
-  console.log('='.repeat(60));
+  
   console.log('MOBILE AUTOMATION AGENT INITIALIZING...');
-  console.log('='.repeat(60));
+  
 
   try {
     console.log('[Agent] Initializing device controller...');
@@ -250,19 +250,19 @@ async initialize() {
    * ===================================================== */
   async start() {
     if (this.isRunning) return;
-
+    console.log(`[Agent] Starting server on port ${CONFIG.PORT}...`);
     this.server = createServer(this.app);
-
+    this.server.listen(CONFIG.PORT, CONFIG.HOST, () => {
+    console.log(`[Agent] Server running at http://${CONFIG.HOST}:${CONFIG.PORT}`);
+    });
     await new Promise((resolve) => {
       this.server.listen(CONFIG.PORT, CONFIG.HOST, resolve);
     });
-
+    this.keepAlive = setInterval(() => {}, 60 * 60 * 1000);
     this.isRunning = true;
-    this.startTime = Date.now();
-
-    console.log("=".repeat(60));
+    this.startTime = Date.now();    
     console.log(`AGENT RUNNING → http://${CONFIG.HOST}:${CONFIG.PORT}`);
-    console.log("=".repeat(60));
+   
   }
 
   async run() {
@@ -277,9 +277,7 @@ async initialize() {
   }
 }
 
-/* =====================================================
- * ENTRY
- * ===================================================== */
-if (import.meta.url === `file://${process.argv[1]}`) {
+
+if (process.argv[1] && process.argv[1].includes('agent.js')) {
   new MobileAutomationAgent().run();
 }
