@@ -28,12 +28,21 @@ class DeviceController {
   async initialize() {
     console.log('[DeviceController] Initializing...');
 
-    if (!(await isAdbAvailable())) {
-      throw new Error('ADB is not available. Please ensure Android SDK is installed and ADB is in PATH.');
-    }
+    try {
+      if (!(await isAdbAvailable())) {
+        console.warn('[DeviceController] ADB is not available. Please ensure Android SDK is installed and ADB is in PATH. Continuing without ADB support.');
+        this.connectedDevices = [];
+        this.primaryDevice = null;
+        return;
+      }
 
-    await this.refreshDevices();
-    console.log('[DeviceController] Initialized with', this.connectedDevices.length, 'devices');
+      await this.refreshDevices();
+      console.log('[DeviceController] Initialized with', this.connectedDevices.length, 'devices');
+    } catch (error) {
+      console.warn('[DeviceController] Failed to initialize ADB:', error.message, '. Continuing without ADB support.');
+      this.connectedDevices = [];
+      this.primaryDevice = null;
+    }
   }
 
   /**

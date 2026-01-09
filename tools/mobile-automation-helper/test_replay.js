@@ -2,7 +2,7 @@ import http from 'http';
 
 const steps = [
   { type: 'tap', description: 'Tap Test', coordinates: { x: 100, y: 200 } },
-  { type: 'input', description: 'Type hello', value: 'hello world' },
+  { type: 'input', description: 'Type hello', value: 'hello Nirmal' },
 ];
 
 const data = JSON.stringify({ steps });

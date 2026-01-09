@@ -13,9 +13,9 @@
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
+    "electron": "^39.2.7",
     "express": "^5.2.1",
-    "webdriverio": "^9.22.0",
-    "electron": "^30.0.0"
-  }
-  
+    "webdriverio": "^9.22.0"
+  },
+  "description": "A local Node.js server that provides mobile automation capabilities for Android devices/emulators."
 }

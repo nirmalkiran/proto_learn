@@ -126,6 +126,7 @@ export async function getDeviceSize(deviceId = null) {
  * Take device screenshot
  */
 export async function takeScreenshot(deviceId = null) {
+  let tempPath = null;
   try {
     // Take screenshot on device
     await adbCommand(['shell', 'screencap', '-p', '/sdcard/screenshot.png'], {
@@ -134,7 +135,7 @@ export async function takeScreenshot(deviceId = null) {
     });
 
     // Pull screenshot from device
-    const tempPath = path.join(process.cwd(), 'temp_screenshot.png');
+    tempPath = path.join(process.cwd(), `temp_screenshot_${Date.now()}.png`);
     await adbCommand(['pull', '/sdcard/screenshot.png', tempPath], {
       deviceId,
       timeout: 10000
@@ -143,16 +144,18 @@ export async function takeScreenshot(deviceId = null) {
     // Read file as buffer
     const buffer = fs.readFileSync(tempPath);
 
-    // Clean up temp file
-    try {
-      fs.unlinkSync(tempPath);
-    } catch (cleanupError) {
-      // Ignore cleanup errors
-    }
-
     return buffer;
   } catch (error) {
     throw new Error(`Failed to take screenshot: ${error.message}`);
+  } finally {
+    // Clean up temp file
+    if (tempPath) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (cleanupError) {
+        console.warn('[ADB] Failed to cleanup temp screenshot file:', cleanupError.message);
+      }
+    }
   }
 }
 
@@ -195,6 +198,7 @@ export async function inputText(text, deviceId = null) {
  * Get UI hierarchy dump
  */
 export async function getUIHierarchy(deviceId = null) {
+  let tempPath = null;
   try {
     // Dump UI hierarchy to device
     await adbCommand(['shell', 'uiautomator', 'dump', '/sdcard/view.xml'], {
@@ -203,7 +207,7 @@ export async function getUIHierarchy(deviceId = null) {
     });
 
     // Pull XML from device
-    const tempPath = path.join(process.cwd(), 'temp_view.xml');
+    tempPath = path.join(process.cwd(), `temp_view_${Date.now()}.xml`);
     await adbCommand(['pull', '/sdcard/view.xml', tempPath], {
       deviceId,
       timeout: 10000
@@ -212,16 +216,18 @@ export async function getUIHierarchy(deviceId = null) {
     // Read XML content
     const xml = fs.readFileSync(tempPath, 'utf-8');
 
-    // Clean up temp file
-    try {
-      fs.unlinkSync(tempPath);
-    } catch (cleanupError) {
-      // Ignore cleanup errors
-    }
-
     return xml;
   } catch (error) {
     throw new Error(`Failed to get UI hierarchy: ${error.message}`);
+  } finally {
+    // Clean up temp file
+    if (tempPath) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (cleanupError) {
+        console.warn('[ADB] Failed to cleanup temp XML file:', cleanupError.message);
+      }
+    }
   }
 }
 

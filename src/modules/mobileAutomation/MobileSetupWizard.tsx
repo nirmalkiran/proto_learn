@@ -178,9 +178,7 @@ export default function MobileSetupWizard({
 }: MobileSetupWizardProps) {
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [devicesFetched, setDevicesFetched] = useState(false);
-  const [oneTapClicked, setOneTapClicked] = useState(() => {
-    return localStorage.getItem('oneTapClicked') === 'true';
-  });
+
 
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));
@@ -208,12 +206,7 @@ export default function MobileSetupWizard({
     }
   }, [devicesFetched]);
 
-  // Run checks on mount if one-tap was previously clicked
-  useEffect(() => {
-    if (oneTapClicked) {
-      runAllChecks();
-    }
-  }, [oneTapClicked]);
+
 
   /* =====================================================
    * SERVICE STATUS CHECK FUNCTIONS
@@ -457,16 +450,10 @@ export default function MobileSetupWizard({
     toast.info("Connecting to Mobile Automation Helper...");
 
     try {
-      // First check if server is running with better error handling
-      let healthCheck;
-      try {
-        healthCheck = await fetch(`${AGENT_URL}/health`, {
-          signal: AbortSignal.timeout(5000),
-        });
-      } catch (fetchError) {
-        // Network error - server not reachable
-        throw new Error("AGENT_NOT_RUNNING");
-      }
+      // First check if server is running
+      const healthCheck = await fetch(`${AGENT_URL}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
 
       if (!healthCheck.ok) throw new Error("AGENT_NOT_RUNNING");
 
@@ -536,9 +523,7 @@ export default function MobileSetupWizard({
         console.warn("Failed to start agent:", agentError);
       }
 
-      // Set one-tap clicked state and persist to localStorage
-      setOneTapClicked(true);
-      localStorage.setItem('oneTapClicked', 'true');
+
 
       toast.success("All services started successfully!");
       if (!skipRunChecks) {
@@ -547,7 +532,7 @@ export default function MobileSetupWizard({
     } catch (error: any) {
       // Server not running - provide clear instructions without blocking alert
       console.log("Server not running:", error?.message);
-      
+
       toast.error("Mobile Automation Helper Not Running", {
         description: "Start the helper server first, then try again.",
         duration: 8000,
@@ -562,7 +547,7 @@ export default function MobileSetupWizard({
 
       // Show non-blocking toast with instructions
       toast.info("How to start the helper:", {
-        description: "Run: cd tools/mobile-automation-helper && npm start",
+        description: "Run: npm start",
         duration: 15000,
       });
     }
@@ -570,23 +555,13 @@ export default function MobileSetupWizard({
 
   // Run All Service Status Checks
   const runAllChecks = async () => {
-    if (oneTapClicked) {
-      // If one-tap was clicked, set all services to success except emulator
-      update("backend", { status: "success", message: "Backend running" });
-      update("agent", { status: "success", message: "Agent running" });
-      update("appium", { status: "success", message: "Appium running" });
-      update("device", { status: "success", message: "Device connected" });
-      // Check emulator separately
-      await checkEmulator();
-    } else {
-      await Promise.all([
-        checkBackend(),
-        checkAgent(),
-        checkAppium(),
-        checkEmulator(),
-        checkDevice(),
-      ]);
-    }
+    await Promise.all([
+      checkBackend(),
+      checkAgent(),
+      checkAppium(),
+      checkEmulator(),
+      checkDevice(),
+    ]);
   };
 
   // Check All Services Status via Aggregated API

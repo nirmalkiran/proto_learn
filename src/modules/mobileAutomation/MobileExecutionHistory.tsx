@@ -25,13 +25,24 @@ export default function MobileExecutionHistory() {
 
   const fetchHistory = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("mobile_execution_history")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("mobile_execution_history")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    setExecutions(data || []);
-    setLoading(false);
+      if (error) {
+        console.error("[MobileExecutionHistory] Fetch error:", error);
+        setExecutions([]);
+      } else {
+        setExecutions(data || []);
+      }
+    } catch (err) {
+      console.error("[MobileExecutionHistory] Unexpected error:", err);
+      setExecutions([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

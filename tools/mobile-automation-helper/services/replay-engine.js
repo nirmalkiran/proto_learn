@@ -75,7 +75,10 @@ export class ReplayEngine extends EventEmitter {
         throw new Error(`Invalid coordinates provided: ${JSON.stringify(coordinates)}`);
       }
       const { x, y } = coordinates;
-      await adbCommand(`-s ${this.deviceId} shell input tap ${x} ${y}`);
+      await adbCommand(['shell', 'input', 'tap', x.toString(), y.toString()], {
+        deviceId: this.deviceId,
+        timeout: 5000
+      });
     } catch (error) {
       console.error(`Error executing tap step at coordinates ${coordinates?.x},${coordinates?.y}:`, error.message);
       throw new Error(`Failed to execute tap step: ${error.message}`);
@@ -111,7 +114,10 @@ export class ReplayEngine extends EventEmitter {
         throw new Error(`Invalid scroll coordinates provided: ${JSON.stringify(coordinates)}`);
       }
       const { x, y, endX, endY } = coordinates;
-      await adbCommand(`-s ${this.deviceId} shell input swipe ${x} ${y} ${endX} ${endY} 500`);
+      await adbCommand(['shell', 'input', 'swipe', x.toString(), y.toString(), endX.toString(), endY.toString(), '500'], {
+        deviceId: this.deviceId,
+        timeout: 5000
+      });
     } catch (error) {
       console.error(`Error executing scroll step from (${coordinates?.x},${coordinates?.y}) to (${coordinates?.endX},${coordinates?.endY}):`, error.message);
       throw new Error(`Failed to execute scroll step: ${error.message}`);

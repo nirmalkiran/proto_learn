@@ -28,6 +28,7 @@ class AppiumController {
       this.version = stdout.trim();
       return { installed: true, version: this.version };
     } catch (error) {
+      console.warn('[AppiumController] Appium not installed:', error.message);
       return { installed: false, error: error.message };
     }
   }

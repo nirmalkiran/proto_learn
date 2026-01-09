@@ -4,12 +4,13 @@
 
 export const CONFIG = {
   // Server configuration
+  HOST: 'localhost',
   PORT: 3001,
-  HOST: '127.0.0.1',
+  AGENT_PORT: 3001,
 
   // Service ports
   APPIUM_PORT: 4723,
-  AGENT_PORT: 4724,
+  //AGENT_PORT: 4724,
 
   // Timeouts and intervals
   HEARTBEAT_INTERVAL: 30000,
@@ -25,7 +26,7 @@ export const CONFIG = {
   ADB_COMMAND: 'adb',
   EMULATOR_COMMAND: 'emulator',
 
-  // Android SDK paths (will be auto-detected)
+  // Android SDK paths (auto-detect)
   ANDROID_SDK_PATHS: [
     process.env.ANDROID_SDK_ROOT,
     process.env.ANDROID_HOME,

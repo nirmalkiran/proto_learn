@@ -166,9 +166,14 @@ export default function DevicePreview({
                         body: JSON.stringify({ x: deviceX, y: deviceY }),
                       });
 
-                      const json = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        const errorData = await res.json().catch(() => ({}));
+                        throw new Error(errorData.error || `HTTP ${res.status}: ${res.statusText}`);
+                      }
 
-                      if (res.ok && json.step) {
+                      const json = await res.json();
+
+                      if (json.step) {
                         toast.success("Captured step");
 
                         // If this element looks like an input, prompt user to enter text
@@ -179,11 +184,16 @@ export default function DevicePreview({
                           setInputModalOpen(true);
                         }
 
+                        // Call the callback to handle the captured action
+                        onActionCaptured(json.step);
                       } else {
-                        toast.error(json.error || "Failed to capture");
+                        toast.error("No step data received");
                       }
-                    } catch (err) {
-                      toast.error("Failed to capture");
+                    } catch (err: any) {
+                      console.error("[DevicePreview] Capture error:", err);
+                      toast.error("Failed to capture", {
+                        description: err.message || "Check device connection"
+                      });
                     }
                   }}
                 />

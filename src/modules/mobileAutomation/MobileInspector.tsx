@@ -58,11 +58,19 @@ export default function MobileInspector() {
       const res = await fetch(`${AGENT_URL}/appium/inspector`, {
         method: "POST",
       });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
       const data = await res.json();
-      if (!data.success) throw new Error();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to open inspector");
+      }
       toast.success("Local Appium Inspector opened");
-    } catch {
-      toast.error("Failed to open Local Appium Inspector");
+    } catch (err: any) {
+      console.error("[MobileInspector] Open inspector error:", err);
+      toast.error("Failed to open Local Appium Inspector", {
+        description: err.message || "Check if Appium server is running"
+      });
     } finally {
       setOpening(false);
     }
