@@ -10,9 +10,9 @@ const supabase = createClient(
 
 interface Execution {
   id: string;
-  project_id: string;
+  suite_id: string;
   status: string;
-  created_at: string;
+  started_at: string;
 }
 
 export default function MobileExecutionHistory() {
@@ -27,9 +27,10 @@ export default function MobileExecutionHistory() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("mobile_execution_history")
+        .from("nocode_suite_executions")
         .select("*")
-        .order("created_at", { ascending: false });
+        .eq("suite_id", "mobile-no-code-project")
+        .order("started_at", { ascending: false });
 
       if (error) {
         console.error("[MobileExecutionHistory] Fetch error:", error);
@@ -67,10 +68,10 @@ export default function MobileExecutionHistory() {
           >
             <div>
               <p className="font-medium">
-                {e.project_id}
+                {e.suite_id}
               </p>
               <p className="text-xs text-muted-foreground">
-                {new Date(e.created_at).toLocaleString()}
+                {new Date(e.started_at).toLocaleString()}
               </p>
             </div>
 
@@ -79,10 +80,10 @@ export default function MobileExecutionHistory() {
                 e.status === "QUEUED"
                   ? "secondary"
                   : e.status === "RUNNING"
-                  ? "default"
-                  : e.status === "FAILED"
-                  ? "destructive"
-                  : "outline"
+                    ? "default"
+                    : e.status === "FAILED"
+                      ? "destructive"
+                      : "outline"
               }
             >
               {e.status}

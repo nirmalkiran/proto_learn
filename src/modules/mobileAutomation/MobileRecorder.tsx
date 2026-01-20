@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+import { createClient } from "@supabase/supabase-js";
 import { Play, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Upload, Package, CheckCircle, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,31 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 
 
-export type ActionType =
-  | "tap"
-  | "input"
-  | "scroll"
-  | "wait"
-  | "assert";
-
-export interface RecordedAction {
-  id: string;
-  type: ActionType;
-  description: string;
-  locator: string;
-  value?: string;
-  enabled?: boolean;
-  coordinates?: {
-    x: number;
-    y: number;
-    endX?: number;
-    endY?: number;
-  };
-  timestamp?: number;
-}
-
+import { ActionType, RecordedAction, SelectedDevice } from "./types";
 
 const AGENT_URL = "http://localhost:3001";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+);
 
 // Standard phone dimensions (portrait) - matches typical Android emulator
 const DEVICE_WIDTH = 320;
@@ -49,90 +33,38 @@ interface MobileRecorderProps {
     device: boolean;
   };
   setSetupState?: (updater: any) => void;
-  recording: boolean;
-  setRecording: (recording: boolean) => void;
-  actions: RecordedAction[];
-  setActions: React.Dispatch<React.SetStateAction<RecordedAction[]>>;
-  selectedDevice: any;
-  setSelectedDevice: (device: any) => void;
-  connectionStatus: "disconnected" | "connecting" | "connected";
-  setConnectionStatus: (status: "disconnected" | "connecting" | "connected") => void;
-  mirrorActive: boolean;
-  setMirrorActive: (active: boolean) => void;
-  mirrorImage: string | null;
-  setMirrorImage: React.Dispatch<React.SetStateAction<string | null>>;
-  mirrorError: string | null;
-  setMirrorError: (error: string | null) => void;
-  mirrorLoading: boolean;
-  setMirrorLoading: (loading: boolean) => void;
-  captureMode: boolean;
-  setCaptureMode: (mode: boolean) => void;
-  deviceSize: { w: number; h: number } | null;
-  setDeviceSize: (size: { w: number; h: number } | null) => void;
-  inputModalOpen: boolean;
-  setInputModalOpen: (open: boolean) => void;
-  inputModalText: string;
-  setInputModalText: (text: string) => void;
-  inputModalCoords: { x: number; y: number } | null;
-  setInputModalCoords: (coords: { x: number; y: number } | null) => void;
-  inputModalPending: boolean;
-  setInputModalPending: (pending: boolean) => void;
-  editingStepId: string | null;
-  setEditingStepId: (id: string | null) => void;
-  editingValue: string;
-  setEditingValue: (value: string) => void;
-  previewPendingId: string | null;
-  setPreviewPendingId: (id: string | null) => void;
-  replaying: boolean;
-  setReplaying: (replaying: boolean) => void;
-  replayIndex: number | null;
-  setReplayIndex: (index: number | null) => void;
+  selectedDevice: SelectedDevice | null;
+  setSelectedDevice: (device: SelectedDevice | null) => void;
   selectedDeviceFromSetup?: string;
 }
 
 export default function MobileRecorder({
   setupState,
   setSetupState,
-  recording,
-  setRecording,
-  actions,
-  setActions,
   selectedDevice,
   setSelectedDevice,
-  connectionStatus,
-  setConnectionStatus,
-  mirrorActive,
-  setMirrorActive,
-  mirrorImage,
-  setMirrorImage,
-  mirrorError,
-  setMirrorError,
-  mirrorLoading,
-  setMirrorLoading,
-  captureMode,
-  setCaptureMode,
-  deviceSize,
-  setDeviceSize,
-  inputModalOpen,
-  setInputModalOpen,
-  inputModalText,
-  setInputModalText,
-  inputModalCoords,
-  setInputModalCoords,
-  inputModalPending,
-  setInputModalPending,
-  editingStepId,
-  setEditingStepId,
-  editingValue,
-  setEditingValue,
-  previewPendingId,
-  setPreviewPendingId,
-  replaying,
-  setReplaying,
-  replayIndex,
-  setReplayIndex,
   selectedDeviceFromSetup,
 }: MobileRecorderProps) {
+  // Recorder state moved from index.tsx
+  const [recording, setRecording] = useState(false);
+  const [actions, setActions] = useState<RecordedAction[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
+  const [mirrorActive, setMirrorActive] = useState(false);
+  const [mirrorImage, setMirrorImage] = useState<string | null>(null);
+  const [mirrorError, setMirrorError] = useState<string | null>(null);
+  const [mirrorLoading, setMirrorLoading] = useState(false);
+  const [captureMode, setCaptureMode] = useState(false);
+  const [deviceSize, setDeviceSize] = useState<{ width: number; height: number } | null>(null);
+  const [inputModalOpen, setInputModalOpen] = useState(false);
+  const [inputModalText, setInputModalText] = useState("");
+  const [inputModalCoords, setInputModalCoords] = useState<{ x: number; y: number } | null>(null);
+  const [inputModalPending, setInputModalPending] = useState(false);
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string>("");
+  const [previewPendingId, setPreviewPendingId] = useState<string | null>(null);
+  const [replaying, setReplaying] = useState<boolean>(false);
+  const [replayIndex, setReplayIndex] = useState<number | null>(null);
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenshotIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,7 +93,9 @@ export default function MobileRecorder({
     source.onopen = () => {
       console.log("[MobileRecorder] SSE connected");
       setConnectionStatus("connected");
-      toast.success("Connected to recording agent");
+      if (recording) {
+        toast.success("Connected to recording agent");
+      }
     };
 
     source.onmessage = (e) => {
@@ -213,10 +147,21 @@ export default function MobileRecorder({
             enabled: true,
             coordinates: event.coordinates,
             timestamp: event.timestamp || Date.now(),
+            // Map metadata
+            elementId: event.elementMetadata?.resourceId,
+            elementText: event.elementMetadata?.text,
+            elementClass: event.elementMetadata?.class,
+            elementContentDesc: event.elementMetadata?.contentDesc,
           };
 
+          if (event.elementMetadata) {
+            setSelectedNode(event.elementMetadata);
+          }
+
           setActions((prev) => [...prev, newAction]);
-          toast.info(`Captured: ${newAction.description}`);
+          if (recording) {
+            toast.info(`Captured: ${newAction.description}`);
+          }
         }
       } catch (err) {
         console.error("[MobileRecorder] Invalid event data:", err);
@@ -408,6 +353,24 @@ export default function MobileRecorder({
   }, []);
 
   /* =====================================================
+   * 📱 STOP EMULATOR
+   * ===================================================== */
+
+  const stopEmulator = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/emulator/stop`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to stop emulator");
+      console.log("[MobileRecorder] Emulator stopped");
+      return true;
+    } catch (err) {
+      console.error("[MobileRecorder] stopEmulator error:", err);
+      return false;
+    }
+  };
+
+  /* =====================================================
    * 📱 CONNECT DEVICE - EMBEDDED MIRROR
    * ===================================================== */
 
@@ -433,9 +396,41 @@ export default function MobileRecorder({
         return;
       }
 
-      // Verify device is connected
-      const deviceRes = await fetch(`${AGENT_URL}/device/check`);
-      const deviceData = await deviceRes.json();
+      // Verify current device status
+      const statusRes = await fetch(`${AGENT_URL}/emulator/status`);
+      const statusData = await statusRes.json();
+
+      // If a DIFFERENT emulator is running, stop it first
+      if (statusData.running && statusData.currentAvd && statusData.currentAvd !== selectedDevice.device) {
+        toast.info(`Stopping previous emulator: ${statusData.currentAvd}...`);
+        await stopEmulator();
+        // Give it a moment to release ports/resources
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // Verify device is connected (might need to start it if it's an emulator that wasn't running)
+      let deviceRes = await fetch(`${AGENT_URL}/device/check`);
+      let deviceData = await deviceRes.json();
+
+      if (!deviceData.connected) {
+        // If it's an emulator and not connected, try to start it
+        if (!selectedDevice.real_mobile) {
+          toast.info(`Starting emulator: ${selectedDevice.device}...`);
+          const startRes = await fetch(`${AGENT_URL}/emulator/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ avd: selectedDevice.device }),
+          });
+
+          if (startRes.ok) {
+            // Wait for it to show up in adb
+            toast.info("Waiting for emulator to initialize...");
+            await new Promise(resolve => setTimeout(resolve, 8000));
+            deviceRes = await fetch(`${AGENT_URL}/device/check`);
+            deviceData = await deviceRes.json();
+          }
+        }
+      }
 
       if (!deviceData.connected) {
         setMirrorError("No device connected. Start an emulator or connect a device via ADB.");
@@ -636,6 +631,7 @@ export default function MobileRecorder({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          deviceId: selectedDevice?.id,
           steps: enabledActions.map((a) => ({
             type: a.type,
             description: a.description,
@@ -656,12 +652,41 @@ export default function MobileRecorder({
         description: "All steps were replayed on the connected device",
       });
       setReplaying(false);
+
+      // Save to history
+      await saveExecutionToHistory("SUCCESS");
     } catch (err) {
       console.error("[MobileRecorder] Replay error:", err);
       setReplaying(false);
       toast.error("Failed to start replay", {
         description: "Make sure the local helper is running and a device is connected",
       });
+
+      // Save to history
+      await saveExecutionToHistory("FAILED");
+    }
+  };
+
+  /** Save execution to history */
+  const saveExecutionToHistory = async (status: "SUCCESS" | "FAILED") => {
+    try {
+      const { error } = await supabase
+        .from("nocode_suite_executions")
+        .insert({
+          suite_id: "mobile-no-code-project",
+          status: status,
+          started_at: new Date().toISOString(),
+          passed_tests: status === "SUCCESS" ? 1 : 0,
+          failed_tests: status === "FAILED" ? 1 : 0,
+          total_tests: 1,
+          user_id: (await supabase.auth.getUser()).data.user?.id || "",
+        });
+
+      if (error) {
+        console.error("[MobileRecorder] Failed to save history:", error);
+      }
+    } catch (err) {
+      console.error("[MobileRecorder] Unexpected error saving history:", err);
     }
   };
 
@@ -673,47 +698,100 @@ export default function MobileRecorder({
     const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) return "";
 
-    return `// Auto-generated by Mobile Recorder
-// Platform: Android (Appium WebDriverIO)
-// Generated: ${new Date().toISOString()}
+    return `import io.appium.java_client.AppiumBy;
+import io.appium.java_client.android.AndroidDriver;
+import io.appium.java_client.android.options.UiAutomator2Options;
+import org.openqa.selenium.WebElement;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.time.Duration;
 
-describe("Recorded Mobile Test", () => {
-  it("should replay recorded steps", async () => {
+/**
+ * Auto-generated by Mobile Recorder
+ * Platform: Android (Appium Java)
+ * Generated: ${new Date().toISOString()}
+ */
+public class RecordedMobileTest {
+    public static void main(String[] args) throws MalformedURLException, InterruptedException {
+        UiAutomator2Options options = new UiAutomator2Options();
+        options.setPlatformName("Android");
+        options.setAutomationName("UiAutomator2");
+        options.setDeviceName("${selectedDevice?.device || "your-device-id"}");
+        options.setAppPackage("com.example.app"); // Replace with your app package
+        options.setAppActivity(".MainActivity");  // Replace with your app activity
+        options.setNoReset(true);
+        options.setEnsureWebviewsHavePages(true);
+
+        AndroidDriver driver = new AndroidDriver(
+            new URL("http://127.0.0.1:4723"), options
+        );
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+        try {
 ${enabledActions
         .map((a, index) => {
-          const comment = `    // Step ${index + 1}: ${a.description}`;
+          const stepNum = index + 1;
+          const comment = `            // Step ${stepNum}: ${a.description}`;
+          let javaCode = "";
+
           switch (a.type) {
             case "tap":
-              if (a.coordinates) {
-                return `${comment}\n    await driver.touchAction({ action: 'tap', x: ${a.coordinates.x}, y: ${a.coordinates.y} });`;
+              if (a.elementId) {
+                javaCode = `driver.findElement(AppiumBy.id("${a.elementId}")).click();`;
+              } else if (a.elementText) {
+                javaCode = `driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")")).click();`;
+              } else if (a.coordinates) {
+                javaCode = `// Coordinate tap at (${a.coordinates.x}, ${a.coordinates.y})
+            // Use W3C Actions for coordinates if needed
+            driver.executeScript("mobile: clickGesture", java.util.Map.of(
+                "x", ${a.coordinates.x},
+                "y", ${a.coordinates.y}
+            ));`;
+              } else {
+                javaCode = `driver.findElement(AppiumBy.xpath("${a.locator}")).click();`;
               }
-              return `${comment}\n    await driver.$("${a.locator}").click();`;
+              break;
+
             case "input":
-              if (a.value && String(a.value).trim()) {
-                return `${comment}\n    await driver.$("${a.locator}").setValue("${a.value}");`;
-              }
-              // If value is not recorded, add a placeholder that can be supplied via environment variable at runtime
-              return `${comment}\n    // TODO: Replace INPUT_${index + 1} value or provide via env var\n    const input${index + 1} = process.env.INPUT_${index + 1} || "";\n    await driver.$("${a.locator}").setValue(input${index + 1});`;
+              const value = a.value || `System.getenv("INPUT_${stepNum}")`;
+              const valueStr = a.value ? `"${a.value}"` : value;
+              javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`;
+              break;
+
             case "scroll":
               if (a.coordinates) {
-                return `${comment}\n    await driver.touchAction([
-      { action: 'press', x: ${a.coordinates.x}, y: ${a.coordinates.y} },
-      { action: 'moveTo', x: ${a.coordinates.endX || a.coordinates.x}, y: ${a.coordinates.endY || a.coordinates.y} },
-      { action: 'release' }
-    ]);`;
+                javaCode = `// Scroll/Swipe action
+            driver.executeScript("mobile: scrollGesture", java.util.Map.of(
+                "left", ${a.coordinates.x}, "top", ${a.coordinates.y},
+                "width", 200, "height", 200,
+                "direction", "down",
+                "percent", 1.0
+            ));`;
+              } else {
+                javaCode = `// scroll action (coordinates not captured)`;
               }
-              return `${comment}\n    // scroll action (coordinates not captured)`;
+              break;
+
             case "wait":
-              return `${comment}\n    await driver.pause(1000);`;
+              javaCode = `Thread.sleep(1000);`;
+              break;
+
             case "assert":
-              return `${comment}\n    await expect(driver.$("${a.locator}")).toBeDisplayed();`;
+              javaCode = `assert driver.findElement(AppiumBy.xpath("${a.locator}")).isDisplayed();`;
+              break;
+
             default:
               return "";
           }
+
+          return `${comment}\n            ${javaCode}`;
         })
         .join("\n\n")}
-  });
-});`;
+        } finally {
+            driver.quit();
+        }
+    }
+}`;
   }, [actions]);
 
   /* =====================================================
@@ -730,14 +808,14 @@ ${enabledActions
    * ===================================================== */
 
   const downloadScript = () => {
-    const blob = new Blob([generatedScript], { type: "text/javascript" });
+    const blob = new Blob([generatedScript], { type: "text/x-java-source" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `recorded-test-${Date.now()}.spec.js`;
+    a.download = `RecordedMobileTest_${Date.now()}.java`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Script downloaded");
+    toast.success("Java script downloaded");
   };
 
   // Input modal confirm handler
@@ -929,12 +1007,8 @@ ${enabledActions
               <DeviceSelector
                 onSelect={setSelectedDevice}
                 selectedDeviceFromSetup={selectedDeviceFromSetup}
+                disabled={!!selectedDeviceFromSetup}
               />
-              {selectedDevice && (
-                <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                  {selectedDevice.name || selectedDevice.device}
-                </Badge>
-              )}
             </div>
           </div>
           {recording && (
@@ -951,6 +1025,7 @@ ${enabledActions
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Enter text to input</DialogTitle>
+                <div className="sr-only">Provide text for the recorded input step</div>
               </DialogHeader>
 
               <div className="space-y-4 mt-2">
@@ -1056,10 +1131,13 @@ ${enabledActions
                           }
                         } catch { }
 
-                        const finalDev = deviceSize || { w: 1344, h: 2400 };
+                        const finalDev = deviceSize || { width: 1080, height: 1920 }; // Default to standard 1080p
 
-                        const deviceX = Math.round((clickX / imgWidth) * finalDev.w);
-                        const deviceY = Math.round((clickY / imgHeight) * finalDev.h);
+                        const devW = finalDev.width ?? finalDev.w ?? 1080;
+                        const devH = finalDev.height ?? finalDev.h ?? 1920;
+
+                        const deviceX = Math.round((clickX / imgWidth) * devW);
+                        const deviceY = Math.round((clickY / imgHeight) * devH);
 
                         try {
                           const res = await fetch(`${AGENT_URL}/device/tap`, {
@@ -1072,6 +1150,10 @@ ${enabledActions
 
                           if (res.ok && json.step) {
                             toast.success("Captured step");
+
+                            if (json.step.elementMetadata) {
+                              setSelectedNode(json.step.elementMetadata);
+                            }
 
                             // If this element looks like an input, prompt user to enter text
                             if (json.step.isInputCandidate) {
@@ -1184,6 +1266,16 @@ ${enabledActions
                           <span className="text-xs text-muted-foreground ml-2">
                             ({a.coordinates.x}, {a.coordinates.y})
                           </span>
+                        )}
+                        {a.elementId && (
+                          <Badge variant="outline" className="text-[10px] ml-2 h-4 px-1 border-blue-500/30 text-blue-500 font-mono">
+                            ID: {a.elementId.split('/').pop()}
+                          </Badge>
+                        )}
+                        {a.elementText && (
+                          <Badge variant="outline" className="text-[10px] ml-2 h-4 px-1 border-green-500/30 text-green-500">
+                            TXT: "{a.elementText.length > 15 ? a.elementText.substring(0, 15) + '...' : a.elementText}"
+                          </Badge>
                         )}
                         <p className="text-xs text-muted-foreground truncate max-w-md">
                           {a.locator}

@@ -150,9 +150,10 @@ class EmulatorController {
       // Add additional options for better performance and compatibility
       args.push(
         '-no-audio',           // Disable audio
-        '-no-window',          // Run headless (can be changed if UI is needed)
+        // '-no-window',          // Run headless (can be changed if UI is needed)
         '-gpu', 'swiftshader_indirect', // Software rendering
-        '-qemu', '-enable-kvm' // Enable KVM on Linux for better performance
+        '-no-snapshot-load'    // Force cold boot to avoid corrupted snapshots
+        // '-qemu', '-enable-kvm' // Enable KVM on Linux (Process is Windows)
       );
 
       // Start the emulator process

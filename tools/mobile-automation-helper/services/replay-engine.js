@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { CONFIG } from '../config.js';
-import { adbCommand } from '../utils/adb-utils.js';
+import { adbCommand, tapDevice, inputText, swipeDevice } from '../utils/adb-utils.js';
 import deviceController from '../controllers/device-controller.js';
 
 export class ReplayEngine extends EventEmitter {
@@ -53,7 +53,7 @@ export class ReplayEngine extends EventEmitter {
         await this.executeTapStep(coordinates);
         break;
       case 'input':
-        await this.executeInputStep(locator, value);
+        await this.executeInputStep(locator, value, coordinates);
         break;
       case 'scroll':
         await this.executeScrollStep(coordinates);
@@ -74,33 +74,33 @@ export class ReplayEngine extends EventEmitter {
       if (!coordinates || typeof coordinates.x !== 'number' || typeof coordinates.y !== 'number') {
         throw new Error(`Invalid coordinates provided: ${JSON.stringify(coordinates)}`);
       }
-      const { x, y } = coordinates;
-      await adbCommand(['shell', 'input', 'tap', x.toString(), y.toString()], {
-        deviceId: this.deviceId,
-        timeout: 5000
-      });
+      await tapDevice(coordinates.x, coordinates.y, this.deviceId);
     } catch (error) {
       console.error(`Error executing tap step at coordinates ${coordinates?.x},${coordinates?.y}:`, error.message);
       throw new Error(`Failed to execute tap step: ${error.message}`);
     }
   }
 
-  async executeInputStep(locator, value) {
+  async executeInputStep(locator, value, coordinates) {
     try {
-      // Find the element coordinates from UI hierarchy
-      const coordinates = await this.findElementCoordinates(locator);
-      if (!coordinates) {
-        throw new Error(`Element not found for locator: ${locator}`);
+      // 1. Try to find the element coordinates if locator is provided
+      let targetCoords = coordinates;
+      if (locator && (!targetCoords || !targetCoords.x)) {
+        targetCoords = await this.findElementCoordinates(locator);
       }
 
-      // Tap the element first
-      await this.executeTapStep(coordinates);
+      if (!targetCoords) {
+        throw new Error(`Target coordinates or locator ${locator} not found for input step`);
+      }
 
-      // Wait a bit for focus
+      // 2. Tap to focus
+      await tapDevice(targetCoords.x, targetCoords.y, this.deviceId);
+
+      // 3. Wait for focus
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Input the text
-      await adbCommand(`-s ${this.deviceId} shell input text "${value.replace(/"/g, '\\"')}"`);
+      // 4. Input text using the helper
+      await inputText(value, this.deviceId);
     } catch (error) {
       console.error(`Error executing input step for locator ${locator}:`, error.message);
       throw new Error(`Failed to execute input step: ${error.message}`);
@@ -110,14 +110,11 @@ export class ReplayEngine extends EventEmitter {
   async executeScrollStep(coordinates) {
     try {
       if (!coordinates || typeof coordinates.x !== 'number' || typeof coordinates.y !== 'number' ||
-          typeof coordinates.endX !== 'number' || typeof coordinates.endY !== 'number') {
+        typeof coordinates.endX !== 'number' || typeof coordinates.endY !== 'number') {
         throw new Error(`Invalid scroll coordinates provided: ${JSON.stringify(coordinates)}`);
       }
       const { x, y, endX, endY } = coordinates;
-      await adbCommand(['shell', 'input', 'swipe', x.toString(), y.toString(), endX.toString(), endY.toString(), '500'], {
-        deviceId: this.deviceId,
-        timeout: 5000
-      });
+      await swipeDevice(x, y, endX, endY, 500, this.deviceId);
     } catch (error) {
       console.error(`Error executing scroll step from (${coordinates?.x},${coordinates?.y}) to (${coordinates?.endX},${coordinates?.endY}):`, error.message);
       throw new Error(`Failed to execute scroll step: ${error.message}`);
@@ -125,7 +122,8 @@ export class ReplayEngine extends EventEmitter {
   }
 
   async executeWaitStep(milliseconds) {
-    await new Promise(resolve => setTimeout(resolve, milliseconds));
+    const delay = parseInt(milliseconds, 10) || 1000;
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
 
   async executeAssertStep(locator, expectedValue) {

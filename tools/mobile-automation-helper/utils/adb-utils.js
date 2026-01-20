@@ -164,6 +164,9 @@ export async function takeScreenshot(deviceId = null) {
  */
 export async function tapDevice(x, y, deviceId = null) {
   try {
+    if (x == null || y == null) {
+      throw new Error("Coordinates x and y are required");
+    }
     await adbCommand(['shell', 'input', 'tap', x.toString(), y.toString()], {
       deviceId,
       timeout: 5000
@@ -191,6 +194,22 @@ export async function inputText(text, deviceId = null) {
     return { text, deviceId };
   } catch (error) {
     throw new Error(`Failed to input text: ${error.message}`);
+  }
+}
+
+/**
+ * Send swipe to device
+ */
+export async function swipeDevice(x1, y1, x2, y2, duration = 500, deviceId = null) {
+  try {
+    await adbCommand(['shell', 'input', 'swipe', x1.toString(), y1.toString(), x2.toString(), y2.toString(), duration.toString()], {
+      deviceId,
+      timeout: 10000
+    });
+
+    return { x1, y1, x2, y2, duration, deviceId };
+  } catch (error) {
+    throw new Error(`Failed to swipe device: ${error.message}`);
   }
 }
 

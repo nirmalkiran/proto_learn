@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 
+// Shared Types
+import { CheckResult } from "./types";
+
 // UI Components
 import {
   Card,
@@ -51,15 +54,6 @@ import { toast } from "sonner";
  * ===================================================== */
 
 const AGENT_URL = "http://localhost:3001";
-
-/* =====================================================
- * TYPES
- * ===================================================== */
-
-interface CheckResult {
-  status: "pending" | "checking" | "success" | "error";
-  message: string;
-}
 
 /* =====================================================
  * WIZARD STEP CONFIGURATIONS
@@ -142,40 +136,30 @@ interface MobileSetupWizardProps {
     device: boolean;
   };
   setSetupState: (state: any) => void;
-  checks: Record<string, CheckResult>;
-  setChecks: React.Dispatch<React.SetStateAction<Record<string, CheckResult>>>;
-  agentDetails: any;
-  setAgentDetails: (details: any) => void;
-  availableDevices: string[];
-  setAvailableDevices: (devices: string[]) => void;
   selectedDevice: string;
   setSelectedDevice: (device: string) => void;
-  wizardOpen: boolean;
-  setWizardOpen: (open: boolean) => void;
-  wizardTab: "usb" | "wireless";
-  setWizardTab: (tab: "usb" | "wireless") => void;
-  wizardStep: number;
-  setWizardStep: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export default function MobileSetupWizard({
   setupState,
   setSetupState,
-  checks,
-  setChecks,
-  agentDetails,
-  setAgentDetails,
-  availableDevices,
-  setAvailableDevices,
   selectedDevice,
   setSelectedDevice,
-  wizardOpen,
-  setWizardOpen,
-  wizardTab,
-  setWizardTab,
-  wizardStep,
-  setWizardStep,
 }: MobileSetupWizardProps) {
+  // Setup state moved from index.tsx
+  const [checks, setChecks] = useState<Record<string, CheckResult>>({
+    backend: { status: "pending", message: "Not checked" },
+    agent: { status: "pending", message: "Not checked" },
+    appium: { status: "pending", message: "Not checked" },
+    emulator: { status: "pending", message: "Not checked" },
+    device: { status: "pending", message: "Not checked" },
+  });
+  const [agentDetails, setAgentDetails] = useState<any>(null);
+  const [availableDevices, setAvailableDevices] = useState<string[]>([]);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardTab, setWizardTab] = useState<"usb" | "wireless">("usb");
+  const [wizardStep, setWizardStep] = useState(1);
+
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [devicesFetched, setDevicesFetched] = useState(false);
 
@@ -363,18 +347,18 @@ export default function MobileSetupWizard({
   };
 
   // Start Android Emulator
-  const startEmulator = async () => {
-    if (!selectedDevice) {
+  const startEmulator = async (avdToStart = selectedDevice) => {
+    if (!avdToStart) {
       toast.error("Please select a device first");
       return;
     }
 
-    toast.info(`Starting emulator: ${selectedDevice}...`);
+    toast.info(`Starting emulator: ${avdToStart}...`);
     try {
       const res = await fetch(`${AGENT_URL}/emulator/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avd: selectedDevice }),
+        body: JSON.stringify({ avd: avdToStart }),
       });
 
       if (!res.ok) throw new Error("Local helper not reachable");
@@ -386,6 +370,37 @@ export default function MobileSetupWizard({
       update("emulator", { status: "error", message: "Local helper offline" });
       setSetupState((p: any) => ({ ...p, emulator: false }));
     }
+  };
+
+  // Stop Android Emulator
+  const stopEmulator = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/emulator/stop`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to stop emulator");
+      return true;
+    } catch (err) {
+      console.error("[stopEmulator] Error:", err);
+      return false;
+    }
+  };
+
+  // Handle device change with sequential stop/start
+  const handleDeviceChange = async (newDevice: string) => {
+    // Update UI state immediately for responsiveness
+    setSelectedDevice(newDevice);
+
+    // If there was a previous device, stop it first
+    if (selectedDevice && selectedDevice !== newDevice) {
+      toast.info("Switching devices, stopping current emulator...");
+      await stopEmulator();
+      // Small delay for clean process teardown
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    // Start the new device
+    await startEmulator(newDevice);
   };
 
   // Start Local Agent
@@ -425,9 +440,6 @@ export default function MobileSetupWizard({
 
       if (data.success) {
         setAvailableDevices(data.avds || []);
-        if (data.avds && data.avds.length > 0 && !selectedDevice) {
-          setSelectedDevice(data.avds[0]); // Auto-select first device if none selected
-        }
       } else {
         setAvailableDevices([]);
         toast.error("Failed to fetch available devices", {
@@ -442,6 +454,7 @@ export default function MobileSetupWizard({
     } finally {
       setDevicesLoading(false);
       setDevicesFetched(true);
+      toast.success("Device list updated");
     }
   };
 
@@ -491,12 +504,10 @@ export default function MobileSetupWizard({
         hasErrors = true;
       }
 
-      // Start emulator if device is selected (now devices should be available)
-      const deviceToStart = selectedDevice || (availableDevices.length > 0 ? availableDevices[0] : null);
+      // Start emulator if device is selected
+      const deviceToStart = selectedDevice;
 
       if (deviceToStart) {
-        if (!selectedDevice) setSelectedDevice(deviceToStart); // usage update
-
         try {
           const emulatorRes = await fetch(`${AGENT_URL}/emulator/start`, {
             method: "POST",
@@ -516,7 +527,8 @@ export default function MobileSetupWizard({
           hasErrors = true;
         }
       } else {
-        toast.warning("No Android device selected or available to start.");
+        toast.error("Please select a device first to start services.");
+        return; // Don't proceed if no device is selected
       }
 
       // Start local agent (helper)
@@ -913,9 +925,9 @@ export default function MobileSetupWizard({
           <div className="space-y-3">
             <div className="flex flex-col gap-3">
               <div className="flex-1">
-                <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                <Select value={selectedDevice} onValueChange={handleDeviceChange}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a device..." />
+                    <SelectValue placeholder="Select Device" />
                   </SelectTrigger>
                   <SelectContent>
                     {availableDevices.map((device) => (
@@ -928,9 +940,23 @@ export default function MobileSetupWizard({
               </div>
 
               <div className="flex gap-2">
-                <Button variant="outline" onClick={fetchAvailableDevices} className="flex-1">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh
+                <Button
+                  variant="outline"
+                  onClick={fetchAvailableDevices}
+                  className="flex-1"
+                  disabled={devicesLoading}
+                >
+                  {devicesLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refresh
+                    </>
+                  )}
                 </Button>
 
                 <Button
@@ -1104,10 +1130,10 @@ export default function MobileSetupWizard({
                   <div key={step.id} className="flex items-center">
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${wizardStep === step.id
-                          ? "bg-primary text-primary-foreground"
-                          : wizardStep > step.id
-                            ? "bg-green-500 text-white"
-                            : "bg-muted text-muted-foreground"
+                        ? "bg-primary text-primary-foreground"
+                        : wizardStep > step.id
+                          ? "bg-green-500 text-white"
+                          : "bg-muted text-muted-foreground"
                         }`}
                     >
                       {wizardStep > step.id ? <CheckCircle2 className="h-4 w-4" /> : step.id}

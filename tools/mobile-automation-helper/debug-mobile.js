@@ -7,7 +7,7 @@ console.log(`Node Version: ${process.version}`);
 console.log(`CWD: ${process.cwd()}`);
 
 const CONFIG = {
-    HOST: '127.0.0.1',
+    APPIUM_HOST: '127.0.0.1',
     PORT: 4723
 };
 
@@ -16,8 +16,8 @@ async function testAppium() {
 
     const command = process.platform === 'win32' ? 'cmd.exe' : 'appium';
     const args = process.platform === 'win32'
-        ? ['/c', 'appium', '--address', CONFIG.HOST, '--port', CONFIG.PORT.toString(), '--log-level', 'info']
-        : ['--address', CONFIG.HOST, '--port', CONFIG.PORT.toString(), '--log-level', 'info'];
+        ? ['/c', 'appium', '--address', CONFIG.APPIUM_HOST, '--port', CONFIG.PORT.toString(), '--log-level', 'info']
+        : ['--address', CONFIG.APPIUM_HOST, '--port', CONFIG.PORT.toString(), '--log-level', 'info'];
 
     console.log(`Command: ${command} ${args.join(' ')}`);
 

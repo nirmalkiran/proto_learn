@@ -37,7 +37,7 @@ class AppiumController {
    * Check if Appium server is running
    */
   async isServerRunning() {
-    const base = `http://${CONFIG.HOST}:${CONFIG.APPIUM_PORT}`;
+    const base = `http://${CONFIG.APPIUM_HOST}:${CONFIG.APPIUM_PORT}`;
     const urls = [`${base}/wd/hub/status`, `${base}/status`];
 
     for (const url of urls) {
@@ -93,13 +93,13 @@ class AppiumController {
       if (process.platform === 'win32') {
         command = 'cmd';
         args = ['/c', CONFIG.APPIUM_COMMAND,
-          '--address', CONFIG.HOST,
+          '--address', CONFIG.APPIUM_HOST,
           '--port', CONFIG.APPIUM_PORT.toString(),
           '--base-path', '/wd/hub',
           '--log-level', 'info'];
       } else {
         command = CONFIG.APPIUM_COMMAND;
-        args = ['--address', CONFIG.HOST,
+        args = ['--address', CONFIG.APPIUM_HOST,
           '--port', CONFIG.APPIUM_PORT.toString(),
           '--base-path', '/wd/hub',
           '--log-level', 'info'];
@@ -185,7 +185,7 @@ class AppiumController {
       installed: installCheck.installed,
       version: installCheck.installed ? this.version : null,
       port: CONFIG.APPIUM_PORT,
-      host: CONFIG.HOST,
+      host: CONFIG.APPIUM_HOST,
       uptime: this.startTime ? Date.now() - this.startTime : null,
       basePath: '/wd/hub'
     };

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 const AGENT_URL = "http://localhost:3001";
 
-/* ---------------- TYPES ---------------- */
+import { ActionType, RecordedAction, SelectedDevice } from "./types";
 
 interface DeviceInfo {
   id: string;
@@ -14,28 +14,24 @@ interface DeviceInfo {
   os_version?: string;
 }
 
-interface SelectedDevice {
-  device: string;
-  os_version: string;
-  real_mobile: boolean;
-}
-
 export default function DeviceSelector({
   onSelect,
   selectedDeviceFromSetup,
+  disabled = false,
 }: {
   onSelect: (d: SelectedDevice) => void;
   selectedDeviceFromSetup?: string;
+  disabled?: boolean;
 }) {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [selectedDevice, setSelectedDevice] = useState<SelectedDevice | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   /* ---------------- FETCH DEVICES ---------------- */
 
   const fetchDevices = async () => {
+    if (disabled) return;
     setLoading(true);
     try {
       // Fetch both connected devices and available AVDs
@@ -51,10 +47,10 @@ export default function DeviceSelector({
 
       // Add connected devices
       if (connectedData.connected && connectedData.devices?.length) {
-        const connectedParsed: DeviceInfo[] = connectedData.devices.map((d: string) => ({
-          id: d.split("\t")[0],
-          type: d.includes("emulator") ? "emulator" : "real",
-          os_version: "13", // Safe default for emulator
+        const connectedParsed: DeviceInfo[] = connectedData.devices.map((d: any) => ({
+          id: d.id,
+          type: d.type === "emulator" ? "emulator" : "real",
+          os_version: "13", // Safe default
         }));
         allDevices.push(...connectedParsed);
       }
@@ -80,8 +76,10 @@ export default function DeviceSelector({
   };
 
   useEffect(() => {
-    fetchDevices();
-  }, []);
+    if (!disabled) {
+      fetchDevices();
+    }
+  }, [disabled]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -98,6 +96,7 @@ export default function DeviceSelector({
   /* ---------------- SELECT DEVICE ---------------- */
 
   const selectDevice = (d: DeviceInfo) => {
+    if (disabled) return;
     onSelect({
       device: d.id,
       os_version: d.os_version || "13",
@@ -112,75 +111,58 @@ export default function DeviceSelector({
 
   return (
     <div className="relative">
-      {loading && <p className="text-sm">Checking devices...</p>}
+      {loading && !disabled && <p className="text-sm">Checking devices...</p>}
 
       {/* Dropdown-style device selector */}
       <div className="relative" ref={dropdownRef}>
         <button
-          className="flex items-center gap-2 p-2 border rounded-md bg-background hover:bg-muted/50 min-w-[200px] text-left"
-          onClick={() => setDropdownOpen(!dropdownOpen)}
+          className={`flex items-center gap-2 p-2 border rounded-md transition-colors min-w-[200px] text-left ${disabled
+            ? 'cursor-not-allowed bg-green-50 border-green-200 text-green-700 font-medium'
+            : 'bg-background hover:bg-muted/50'
+            }`}
+          onClick={() => !disabled && setDropdownOpen(!dropdownOpen)}
+          disabled={disabled}
         >
-          <Smartphone className="h-4 w-4" />
+          <Smartphone className={`h-4 w-4 ${disabled ? 'text-green-600' : ''}`} />
           <span className="text-sm truncate">
-            {selectedDevice ? selectedDevice.device : 'Select device...'}
+            {selectedDeviceFromSetup || 'Select device...'}
           </span>
         </button>
 
         {/* Device list dropdown */}
-        {dropdownOpen && (
+        {dropdownOpen && !disabled && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
-            {/* Show selected device from setup if available */}
-            {selectedDeviceFromSetup && (
-              <div className="p-2 border-b bg-green-50/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4 text-green-600" />
-                    <div>
-                      <p className="text-sm font-medium text-green-800">{selectedDeviceFromSetup}</p>
-                      <p className="text-xs text-green-600">Android 13 (From Setup)</p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => selectDevice({
-                      id: selectedDeviceFromSetup,
-                      type: "emulator",
-                      os_version: "13"
-                    })}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    Select
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {/* Show all available devices */}
-            {devices.map((d) => (
-              <div
-                key={d.id}
-                className={`p-2 hover:bg-muted/50 cursor-pointer ${
-                  d.id === selectedDeviceFromSetup ? 'bg-blue-50/50' : ''
-                }`}
-                onClick={() => selectDevice(d)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4" />
-                    <div>
-                      <p className="text-sm font-medium">{d.id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Android {d.os_version}
-                        {d.id === selectedDeviceFromSetup && ' (From Setup)'}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {d.type === "emulator" ? "Emulator" : "Real Device"}
-                  </Badge>
-                </div>
+            {devices.length === 0 ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                No devices found
               </div>
-            ))}
+            ) : (
+              devices.map((d) => (
+                <div
+                  key={d.id}
+                  className={`p-2 hover:bg-muted/50 cursor-pointer ${d.id === selectedDeviceFromSetup ? 'bg-blue-50/50' : ''
+                    }`}
+                  onClick={() => selectDevice(d)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="h-4 w-4" />
+                      <div>
+                        <p className="text-sm font-medium">{d.id}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Android {d.os_version}
+                          {d.id === selectedDeviceFromSetup && ' (Matched)'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {d.type === "emulator" ? "Emulator" : "Real Device"}
+                    </Badge>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

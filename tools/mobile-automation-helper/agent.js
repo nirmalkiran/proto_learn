@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { createServer } from "http";
+import crypto from "crypto";
 
 import { CONFIG } from "./config.js";
 import processManager from "./utils/process-manager.js";
@@ -17,6 +18,7 @@ class MobileAutomationAgent {
     this.server = null;
     this.isRunning = false;
     this.startTime = null;
+    this.replayEngine = new replayEngine();
   }
 
 
@@ -138,6 +140,15 @@ class MobileAutomationAgent {
       }
     });
 
+    this.app.get("/device/size", async (req, res) => {
+      try {
+        const size = await deviceController.getScreenSize();
+        res.json({ success: true, size });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
     this.app.get("/device/screenshot", async (req, res) => {
       try {
         const img = await deviceController.takeScreenshot();
@@ -150,8 +161,50 @@ class MobileAutomationAgent {
 
     this.app.post("/device/tap", async (req, res) => {
       try {
-        await deviceController.tap(req.body.x, req.body.y);
-        res.json({ success: true });
+        const { x, y } = req.body;
+
+        if (x == null || y == null) {
+          throw new Error("Coordinates x and y are required");
+        }
+
+        const result = await deviceController.tap(x, y);
+        const { element } = result;
+
+        // Construct a semantic description
+        let description = `Tap at (${x}, ${y})`;
+        let locator = `//android.widget.FrameLayout`;
+
+        if (element) {
+          if (element.resourceId) {
+            description = `Tap on element: ${element.resourceId.split('/').pop()}`;
+            locator = element.resourceId;
+          } else if (element.text) {
+            description = `Tap on text: "${element.text}"`;
+            locator = `//*[@text='${element.text}']`;
+          } else if (element.contentDesc) {
+            description = `Tap on: "${element.contentDesc}"`;
+            locator = `//*[@content-desc='${element.contentDesc}']`;
+          }
+        }
+
+        // Construct a step object
+        const step = {
+          type: "tap",
+          description,
+          locator,
+          coordinates: { x, y },
+          elementMetadata: element,
+          timestamp: Date.now(),
+          isInputCandidate: element ? (element.class && (element.class.includes('EditText') || element.class.includes('TextField'))) : false
+        };
+
+        // Add to recording service explicitly
+        if (recordingService.isRecording) {
+          recordingService.addStep(step);
+        }
+
+        // Return step to client
+        res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
@@ -163,6 +216,15 @@ class MobileAutomationAgent {
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.get("/device/ui", async (req, res) => {
+      try {
+        const xml = await deviceController.getUIHierarchy();
+        res.json({ success: true, xml });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
       }
     });
 
@@ -216,6 +278,15 @@ class MobileAutomationAgent {
       }
     });
 
+    this.app.post("/emulator/stop", async (req, res) => {
+      try {
+        await emulatorController.stop();
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
     /* ---------------- RECORDING ---------------- */
     this.app.post("/recording/start", (req, res) => {
       try {
@@ -224,6 +295,19 @@ class MobileAutomationAgent {
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
+    });
+
+    this.app.get("/recording/steps", (req, res) => {
+      try {
+        const steps = recordingService.getRecordedSteps();
+        res.json({ success: true, steps });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    this.app.get("/ping", (req, res) => {
+      res.json({ pong: true, time: Date.now() });
     });
 
     this.app.post("/recording/stop", (req, res) => {
@@ -246,6 +330,38 @@ class MobileAutomationAgent {
       req.on("close", () => {
         recordingService.off("step-added", send);
       });
+    });
+
+    this.app.post("/recording/replay", async (req, res) => {
+      try {
+        const { steps, deviceId: reqDeviceId } = req.body;
+
+        if (!steps || !Array.isArray(steps)) {
+          throw new Error("Steps array is required for replay");
+        }
+
+        // Determine device ID: 1. from request, 2. from primary device
+        let deviceId = reqDeviceId;
+        if (!deviceId) {
+          const status = await deviceController.getStatus();
+          deviceId = status.primaryDevice;
+        }
+
+        if (!deviceId) {
+          throw new Error("No device ID provided and no primary device found");
+        }
+
+        console.log(`[Agent] Starting replay on device: ${deviceId} (${steps.length} steps)`);
+
+        // Start replay (don't await if we want to return immediately, but the UI expects it to complete?)
+        // Let's check the frontend. The frontend awaits the fetch.
+        await this.replayEngine.startReplay(steps, deviceId);
+
+        res.json({ success: true, message: "Replay completed" });
+      } catch (e) {
+        console.error("[Agent] Replay failed:", e.message);
+        res.status(500).json({ error: e.message });
+      }
     });
 
     /* ---------------- ONE TAP ---------------- */
@@ -291,8 +407,8 @@ class MobileAutomationAgent {
     this.server = createServer(this.app);
 
     await new Promise((resolve) => {
-      this.server.listen(CONFIG.PORT, CONFIG.HOST, () => {
-        console.log(`[Agent] Server running at http://${CONFIG.HOST}:${CONFIG.PORT}`);
+      this.server.listen(CONFIG.PORT, CONFIG.AGENT_HOST, () => {
+        console.log(`[Agent] Server running at http://${CONFIG.AGENT_HOST}:${CONFIG.PORT}`);
         resolve();
       });
     });
@@ -301,7 +417,7 @@ class MobileAutomationAgent {
     this.isRunning = true;
     this.startTime = Date.now();
 
-    console.log(`AGENT RUNNING → http://${CONFIG.HOST}:${CONFIG.PORT}`);
+    console.log(`AGENT RUNNING → http://${CONFIG.AGENT_HOST}:${CONFIG.PORT}`);
     this.server.on('close', () => {
       console.log('[Agent] HTTP server closed');
     });

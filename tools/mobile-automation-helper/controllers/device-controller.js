@@ -15,12 +15,58 @@ import {
   getDeviceProps
 } from '../utils/adb-utils.js';
 import { CONFIG } from '../config.js';
+import { parseStringPromise } from 'xml2js';
 
 class DeviceController {
   constructor() {
     this.connectedDevices = [];
     this.primaryDevice = null;
   }
+
+  /**
+   * Helper to find element at coordinates (x, y) from hierarchy object
+   */
+  _findElementAt(x, y, node) {
+    if (!node) return null;
+
+    let foundElement = null;
+
+    // Check if the current node has bounds and contains (x, y)
+    if (node.$ && node.$.bounds) {
+      const bounds = node.$.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+      if (bounds) {
+        const x1 = parseInt(bounds[1], 10);
+        const y1 = parseInt(bounds[2], 10);
+        const x2 = parseInt(bounds[3], 10);
+        const y2 = parseInt(bounds[4], 10);
+
+        if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+          foundElement = {
+            resourceId: node.$['resource-id'] || '',
+            text: node.$.text || '',
+            class: node.$.class || '',
+            contentDesc: node.$['content-desc'] || '',
+            bounds: node.$.bounds
+          };
+        }
+      }
+    }
+
+    // Recursively check children
+    if (node.node) {
+      const children = Array.isArray(node.node) ? node.node : [node.node];
+      for (const child of children) {
+        const result = this._findElementAt(x, y, child);
+        if (result) {
+          // Keep the deepest (most specific) element
+          foundElement = result;
+        }
+      }
+    }
+
+    return foundElement;
+  }
+
 
   /**
    * Initialize device controller
@@ -117,7 +163,7 @@ class DeviceController {
   }
 
   /**
-   * Send tap to device
+   * Send tap to device and return element metadata
    */
   async tap(x, y, deviceId = null) {
     const targetDevice = deviceId || this.primaryDevice?.id;
@@ -125,8 +171,31 @@ class DeviceController {
       throw new Error('No device connected');
     }
 
+    let elementMetadata = null;
+
+    try {
+      // Get UI Hierarchy to find element at coordinates
+      const xml = await getUIHierarchy(targetDevice);
+      if (xml) {
+        const result = await parseStringPromise(xml);
+        // Hierarchy object structure: hierarchy -> node (root)
+        if (result && result.hierarchy && result.hierarchy.node) {
+          elementMetadata = this._findElementAt(x, y, result.hierarchy.node[0]);
+        }
+      }
+    } catch (error) {
+      console.warn('[DeviceController] Failed to get/parse UI Hierarchy for tap:', error.message);
+    }
+
+    // Perform the actual tap
     await tapDevice(x, y, targetDevice);
-    return { x, y, deviceId: targetDevice };
+
+    return {
+      x,
+      y,
+      deviceId: targetDevice,
+      element: elementMetadata
+    };
   }
 
   /**

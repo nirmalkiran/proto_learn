@@ -4,18 +4,19 @@
 
 export const CONFIG = {
   // Server configuration
-  HOST: '127.0.0.1',
+  AGENT_HOST: 'localhost',
   PORT: 3001,
   AGENT_PORT: 3001,
 
   // Service ports
+  APPIUM_HOST: '127.0.0.1',
   APPIUM_PORT: 4723,
   //AGENT_PORT: 4724,
 
   // Timeouts and intervals
   HEARTBEAT_INTERVAL: 30000,
   POLL_INTERVAL: 5000,
-  STARTUP_TIMEOUT: 30000,
+  STARTUP_TIMEOUT: 90000,
   COMMAND_TIMEOUT: 10000,
 
   // Capacities
