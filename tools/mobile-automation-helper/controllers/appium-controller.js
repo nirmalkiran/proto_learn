@@ -37,16 +37,37 @@ class AppiumController {
    * Check if Appium server is running
    */
   async isServerRunning() {
-    try {
-      // Try to connect to Appium server
-      const response = await fetch(`http://${CONFIG.HOST}:${CONFIG.APPIUM_PORT}/wd/hub/status`, {
-        signal: AbortSignal.timeout(2000)
-      });
-      const data = await response.json();
-      return data.ready || false;
-    } catch (error) {
-      return false;
+    const base = `http://${CONFIG.HOST}:${CONFIG.APPIUM_PORT}`;
+    const urls = [`${base}/wd/hub/status`, `${base}/status`];
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(2000),
+          headers: {
+            // Helps when the call comes via a browser on https trying to reach http://localhost
+            "Access-Control-Request-Private-Network": "true",
+          },
+        });
+        if (!response.ok) continue;
+
+        const data = await response.json().catch(() => null);
+        if (!data) continue;
+
+        // Appium v1: { ready: true }
+        // Appium v2: { value: { ready: true } }
+        const ready =
+          Boolean(data.ready) ||
+          Boolean(data?.value?.ready) ||
+          data?.value?.state === "success";
+
+        if (ready) return true;
+      } catch {
+        // try next url
+      }
     }
+
+    return false;
   }
 
   /**

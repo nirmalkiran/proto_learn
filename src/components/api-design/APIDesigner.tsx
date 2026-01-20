@@ -135,11 +135,15 @@ export const APIDesigner = ({ projectId }: APIDesignerProps) => {
       if (!projectId) return;
       
       try {
-        const { data, error } = await supabase
+        // NOTE: Supabase client generics can sometimes hit TS instantiation depth limits
+        // in large apps; for this narrow query we safely fall back to an untyped client.
+        const client = supabase as any;
+
+        const { data, error } = await client
           .from('integration_configs')
           .select('config')
           .eq('project_id', projectId)
-          .eq('integration_id', 'api_test_auth')
+          .eq('integration_type', 'api_test_auth')
           .maybeSingle();
 
         if (!error && data?.config) {
