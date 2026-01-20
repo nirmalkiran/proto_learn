@@ -26,12 +26,19 @@ class ProcessManager {
     return new Promise((resolve, reject) => {
       const defaultOptions = {
         detached: true,
-        stdio: 'ignore',
+        stdio: 'pipe', // Change to pipe to capture output
         windowsHide: true,
         ...options
       };
 
       const child = spawn(command, args, defaultOptions);
+
+      if (child.stdout) {
+        child.stdout.on('data', (data) => console.log(`[${name}] ${data.toString().trim()}`));
+      }
+      if (child.stderr) {
+        child.stderr.on('data', (data) => console.error(`[${name}] ERROR: ${data.toString().trim()}`));
+      }
 
       // Store process info
       this.processes.set(name, {

@@ -466,6 +466,8 @@ export default function MobileSetupWizard({
         console.warn("Failed to fetch available devices:", deviceError);
       }
 
+      let hasErrors = false;
+
       // Server is running, start services individually
       // Start Appium first
       try {
@@ -474,60 +476,68 @@ export default function MobileSetupWizard({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ command: "appium:start" }),
         });
+
         if (!appiumRes.ok) {
-          console.warn("Appium start command failed");
+          const errData = await appiumRes.json().catch(() => ({}));
+          console.warn("Appium start command failed", errData);
+          toast.error(`Appium failed to start: ${errData.error || appiumRes.statusText}`);
+          hasErrors = true;
+          // Don't abort completely, try emulator? No, usually emulator needs Appium.
+          // But let's verify if we should continue.
         }
-      } catch (appiumError) {
+      } catch (appiumError: any) {
         console.warn("Failed to start Appium:", appiumError);
+        toast.error(`Appium connection error: ${appiumError.message}`);
+        hasErrors = true;
       }
 
       // Start emulator if device is selected (now devices should be available)
-      if (selectedDevice) {
+      const deviceToStart = selectedDevice || (availableDevices.length > 0 ? availableDevices[0] : null);
+
+      if (deviceToStart) {
+        if (!selectedDevice) setSelectedDevice(deviceToStart); // usage update
+
         try {
           const emulatorRes = await fetch(`${AGENT_URL}/emulator/start`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ avd: selectedDevice }),
+            body: JSON.stringify({ avd: deviceToStart }),
           });
+
           if (!emulatorRes.ok) {
-            console.warn("Emulator start command failed");
+            const errData = await emulatorRes.json().catch(() => ({}));
+            console.warn("Emulator start command failed", errData);
+            toast.error(`Emulator failed to start: ${errData.error || emulatorRes.statusText}`);
+            hasErrors = true;
           }
-        } catch (emulatorError) {
+        } catch (emulatorError: any) {
           console.warn("Failed to start emulator:", emulatorError);
+          toast.error(`Emulator connection error: ${emulatorError.message}`);
+          hasErrors = true;
         }
-      } else if (availableDevices.length > 0) {
-        // If no device selected but devices are available, select the first one and start emulator
-        const firstDevice = availableDevices[0];
-        setSelectedDevice(firstDevice);
-        try {
-          const emulatorRes = await fetch(`${AGENT_URL}/emulator/start`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ avd: firstDevice }),
-          });
-          if (!emulatorRes.ok) {
-            console.warn("Emulator start command failed");
-          }
-        } catch (emulatorError) {
-          console.warn("Failed to start emulator:", emulatorError);
-        }
+      } else {
+        toast.warning("No Android device selected or available to start.");
       }
 
-      // Start local agent
+      // Start local agent (helper)
       try {
         const agentRes = await fetch(`${AGENT_URL}/agent/start`, { method: "POST" });
         if (!agentRes.ok) {
           console.warn("Agent start command failed");
+          // Agent start is less critical as it returns true usually
         }
       } catch (agentError) {
         console.warn("Failed to start agent:", agentError);
       }
 
+      if (!hasErrors) {
+        toast.success("All services started successfully!");
+      } else {
+        toast.warning("Some services failed to start. Check logs.");
+      }
 
-
-      toast.success("All services started successfully!");
       if (!skipRunChecks) {
-        setTimeout(runAllChecks, 25000); // Refresh all checks after a delay (increased for emulator boot time)
+        setTimeout(runAllChecks, 15000); // Check status after delay
       }
     } catch (error: any) {
       // Server not running - provide clear instructions without blocking alert
@@ -608,7 +618,7 @@ export default function MobileSetupWizard({
     }
   };
 
-   // Status icon renderer
+  // Status icon renderer
   const icon = (status: CheckResult["status"]) =>
     status === "success" ? (
       <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -1093,13 +1103,12 @@ export default function MobileSetupWizard({
                 {currentSteps.map((step, idx) => (
                   <div key={step.id} className="flex items-center">
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                        wizardStep === step.id
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${wizardStep === step.id
                           ? "bg-primary text-primary-foreground"
                           : wizardStep > step.id
-                          ? "bg-green-500 text-white"
-                          : "bg-muted text-muted-foreground"
-                      }`}
+                            ? "bg-green-500 text-white"
+                            : "bg-muted text-muted-foreground"
+                        }`}
                     >
                       {wizardStep > step.id ? <CheckCircle2 className="h-4 w-4" /> : step.id}
                     </div>

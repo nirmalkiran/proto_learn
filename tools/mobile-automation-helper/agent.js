@@ -19,9 +19,7 @@ class MobileAutomationAgent {
     this.startTime = null;
   }
 
-  /* =====================================================
-   * INITIALIZE (SAFE MODE – NEVER CRASH)
-   * ===================================================== */
+
   async initialize() {
 
     console.log('MOBILE AUTOMATION AGENT INITIALIZING...');
@@ -70,15 +68,10 @@ class MobileAutomationAgent {
   }
 
 
-  /* =====================================================
-   * SERVER SETUP
-   * ===================================================== */
+
   setupServer() {
     this.app = express();
 
-    // CORS + Private Network Access (PNA) support (Chrome)
-    // When the UI is served over HTTPS, browsers may block requests to http://localhost
-    // unless the server opts in with Access-Control-Allow-Private-Network.
     this.app.use((req, res, next) => {
       res.setHeader("Access-Control-Allow-Private-Network", "true");
       next();
@@ -96,12 +89,6 @@ class MobileAutomationAgent {
         ],
       })
     );
-
-    // Ensure OPTIONS requests succeed (used by PNA/CORS preflights)
-    this.app.options("*", (req, res) => {
-      res.setHeader("Access-Control-Allow-Private-Network", "true");
-      res.sendStatus(204);
-    });
 
     this.app.use(express.json({ limit: "50mb" }));
 
@@ -302,12 +289,14 @@ class MobileAutomationAgent {
     if (this.isRunning) return;
     console.log(`[Agent] Starting server on port ${CONFIG.PORT}...`);
     this.server = createServer(this.app);
-    this.server.listen(CONFIG.PORT, CONFIG.HOST, () => {
-      console.log(`[Agent] Server running at http://${CONFIG.HOST}:${CONFIG.PORT}`);
-    });
+
     await new Promise((resolve) => {
-      this.server.listen(CONFIG.PORT, CONFIG.HOST, resolve);
+      this.server.listen(CONFIG.PORT, CONFIG.HOST, () => {
+        console.log(`[Agent] Server running at http://${CONFIG.HOST}:${CONFIG.PORT}`);
+        resolve();
+      });
     });
+
     this.keepAlive = setInterval(() => { }, 60 * 60 * 1000);
     this.isRunning = true;
     this.startTime = Date.now();

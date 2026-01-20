@@ -39,7 +39,7 @@ class AppiumController {
   async isServerRunning() {
     try {
       // Try to connect to Appium server
-      const response = await fetch(`http://${CONFIG.HOST}:${CONFIG.APPIUM_PORT}/status`, {
+      const response = await fetch(`http://${CONFIG.HOST}:${CONFIG.APPIUM_PORT}/wd/hub/status`, {
         signal: AbortSignal.timeout(2000)
       });
       const data = await response.json();
@@ -72,16 +72,16 @@ class AppiumController {
       if (process.platform === 'win32') {
         command = 'cmd';
         args = ['/c', CONFIG.APPIUM_COMMAND,
-                '--address', CONFIG.HOST,
-                '--port', CONFIG.APPIUM_PORT.toString(),
-                '--base-path', '/wd/hub',
-                '--log-level', 'info'];
+          '--address', CONFIG.HOST,
+          '--port', CONFIG.APPIUM_PORT.toString(),
+          '--base-path', '/wd/hub',
+          '--log-level', 'info'];
       } else {
         command = CONFIG.APPIUM_COMMAND;
         args = ['--address', CONFIG.HOST,
-                '--port', CONFIG.APPIUM_PORT.toString(),
-                '--base-path', '/wd/hub',
-                '--log-level', 'info'];
+          '--port', CONFIG.APPIUM_PORT.toString(),
+          '--base-path', '/wd/hub',
+          '--log-level', 'info'];
       }
 
       // Start the process

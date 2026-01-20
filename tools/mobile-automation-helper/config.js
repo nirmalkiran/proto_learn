@@ -4,7 +4,7 @@
 
 export const CONFIG = {
   // Server configuration
-  HOST: 'localhost',
+  HOST: '127.0.0.1',
   PORT: 3001,
   AGENT_PORT: 3001,
 
