@@ -1124,8 +1124,14 @@ ${enabledActions
    * ===================================================== */
 
   const installApk = async () => {
-    if (!uploadedApk) return;
+    if (!uploadedApk || !uploadedApk.path) {
+      toast.error("No APK uploaded or path missing");
+      return;
+    }
+    
+    console.log("[MobileRecorder] Installing APK from path:", uploadedApk.path);
     setApkInstalling(true);
+    
     try {
       const res = await fetch(`${AGENT_URL}/app/install`, {
         method: "POST",
@@ -1133,14 +1139,19 @@ ${enabledActions
         body: JSON.stringify({ apkPath: uploadedApk.path }),
       });
       const data = await res.json();
+      console.log("[MobileRecorder] APK install response:", data);
+      
       if (res.ok && data.success) {
         toast.success("APK installed successfully");
         setIsAppInstalled(true);
+        // Clear the uploaded APK state after successful install
+        setUploadedApk(null);
       } else {
         throw new Error(data.error || "Install failed");
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to install APK");
+      console.error("[MobileRecorder] APK install error:", err);
+      toast.error(`Failed to install APK: ${err.message}`);
     } finally {
       setApkInstalling(false);
     }
@@ -1151,32 +1162,46 @@ ${enabledActions
     if (!file) return;
 
     setApkUploading(true);
+    
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(",")[1];
-        const res = await fetch(`${AGENT_URL}/app/upload`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            base64,
-            fileName: file.name,
-          }),
-        });
+      // Use Promise-based FileReader for proper async handling
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64Data = result.split(",")[1];
+          resolve(base64Data);
+        };
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
 
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setUploadedApk({ path: data.path, name: data.name });
-          toast.success("APK uploaded successfully. Ready to install.");
-        } else {
-          throw new Error(data.error || "Upload failed");
-        }
-      };
-      reader.readAsDataURL(file);
+      const res = await fetch(`${AGENT_URL}/app/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64,
+          fileName: file.name,
+        }),
+      });
+
+      const data = await res.json();
+      console.log("[MobileRecorder] APK upload response:", data);
+      
+      if (res.ok && data.success && data.path) {
+        setUploadedApk({ path: data.path, name: data.name || file.name });
+        toast.success("APK uploaded successfully. Ready to install.");
+      } else {
+        throw new Error(data.error || "Upload failed - no path returned");
+      }
     } catch (err: any) {
+      console.error("[MobileRecorder] APK upload error:", err);
       toast.error(err.message || "Failed to upload APK");
+      setUploadedApk(null);
     } finally {
       setApkUploading(false);
+      // Reset file input so same file can be re-selected
+      if (e.target) e.target.value = "";
     }
   };
 
