@@ -1541,27 +1541,54 @@ ${enabledActions
                       </Button>
                     </div>
 
-                    {!appPackage ? (
+                    {/* Show install button when APK is uploaded, regardless of appPackage state */}
+                    {uploadedApk && !isAppInstalled ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-md border border-dashed">
+                          <Package className="h-4 w-4 text-blue-500" />
+                          <span className="text-xs font-mono truncate flex-1">{uploadedApk.name}</span>
+                        </div>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="w-full text-xs bg-green-600 hover:bg-green-700"
+                          onClick={installApk}
+                          disabled={apkInstalling}
+                        >
+                          {apkInstalling ? (
+                            <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Package className="mr-2 h-3 w-3" />
+                          )}
+                          {apkInstalling ? "Installing..." : "Install APK"}
+                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-xs"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            Change APK
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-muted-foreground"
+                            onClick={() => setUploadedApk(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                        <input type="file" accept=".apk" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+                      </div>
+                    ) : !appPackage ? (
                       // When blank: Show app selector + Upload APK option
                       <div className="flex flex-col gap-2">
                         <Select value={appPackage} onValueChange={setAppPackage}>
                           <SelectTrigger className="h-8 text-xs font-mono">
                             <SelectValue placeholder="Select installed app..." />
                           </SelectTrigger>
-                          {/* <SelectContent>
-                            {loadingPackages ? (
-                              <SelectItem value="" disabled>Loading apps...</SelectItem>
-                            ) : installedPackages.length > 0 ? (
-                              installedPackages.map(pkg => (
-                                <SelectItem key={pkg} value={pkg} className="font-mono text-xs">
-                                  {pkg}
-                                </SelectItem>
-                              ))
-                            ) : (
-                              <SelectItem value="" disabled>No apps found</SelectItem>
-                            )}
-                          </SelectContent> */}
-
                           <SelectContent>
                             {loadingPackages && (
                               <div className="px-2 py-1 text-xs text-muted-foreground">
@@ -1620,28 +1647,16 @@ ${enabledActions
                           variant={uploadedApk ? "outline" : "default"}
                           size="sm"
                           className={`w-full text-xs ${!uploadedApk ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
-                          onClick={() => uploadedApk ? installApk() : fileInputRef.current?.click()}
+                          onClick={() => fileInputRef.current?.click()}
                           disabled={apkInstalling || apkUploading}
                         >
                           {apkUploading ? (
                             <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
-                          ) : uploadedApk ? (
-                            <Package className="mr-2 h-3 w-3" />
                           ) : (
                             <Upload className="mr-2 h-3 w-3" />
                           )}
-                          {apkUploading ? "Uploading..." : apkInstalling ? "Installing..." : uploadedApk ? `Install ${uploadedApk.name}` : "Upload APK to Install"}
+                          {apkUploading ? "Uploading..." : "Upload APK to Install"}
                         </Button>
-                        {uploadedApk && (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="h-4 p-0 text-[10px] text-zinc-500"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            Change APK
-                          </Button>
-                        )}
                       </div>
                     ) : (
                       // When package entered and installed: Show open button
