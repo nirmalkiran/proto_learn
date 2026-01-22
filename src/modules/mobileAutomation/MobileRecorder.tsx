@@ -1548,7 +1548,7 @@ ${enabledActions
                           <SelectTrigger className="h-8 text-xs font-mono">
                             <SelectValue placeholder="Select installed app..." />
                           </SelectTrigger>
-                          <SelectContent>
+                          {/* <SelectContent>
                             {loadingPackages ? (
                               <SelectItem value="" disabled>Loading apps...</SelectItem>
                             ) : installedPackages.length > 0 ? (
@@ -1560,6 +1560,31 @@ ${enabledActions
                             ) : (
                               <SelectItem value="" disabled>No apps found</SelectItem>
                             )}
+                          </SelectContent> */}
+
+                          <SelectContent>
+                            {loadingPackages && (
+                              <div className="px-2 py-1 text-xs text-muted-foreground">
+                                Loading apps...
+                              </div>
+                            )}
+
+                            {!loadingPackages && installedPackages.length === 0 && (
+                              <div className="px-2 py-1 text-xs text-muted-foreground">
+                                No apps found
+                              </div>
+                            )}
+
+                            {!loadingPackages &&
+                              installedPackages.map((pkg) => (
+                                <SelectItem
+                                  key={pkg}
+                                  value={pkg}
+                                  className="font-mono text-xs"
+                                >
+                                  {pkg}
+                                </SelectItem>
+                              ))}
                           </SelectContent>
                         </Select>
 
