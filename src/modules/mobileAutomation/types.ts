@@ -8,7 +8,8 @@ export type ActionType =
     | "input"
     | "scroll"
     | "wait"
-    | "assert";
+    | "assert"
+    | "openApp";
 
 export interface RecordedAction {
     id: string;
@@ -32,7 +33,9 @@ export interface RecordedAction {
 }
 
 export interface SelectedDevice {
+    id?: string;
     device: string;
+    name?: string;
     os_version: string;
     real_mobile: boolean;
 }

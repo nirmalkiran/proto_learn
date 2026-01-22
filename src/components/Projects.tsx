@@ -51,11 +51,10 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
 
   const fetchProjects = async () => {
     try {
-      // First get all non-deleted projects
+      // Get all projects for current user
       const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
         .select('*')
-        .is('deleted_at', null)
         .order('updated_at', { ascending: false });
 
       if (projectsError) throw projectsError;

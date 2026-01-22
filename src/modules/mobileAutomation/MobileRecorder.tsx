@@ -674,7 +674,7 @@ export default function MobileRecorder({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              deviceId: selectedDevice?.id,
+              deviceId: selectedDevice?.id || selectedDevice?.device,
               steps: [{
                 type: currentAction.type,
                 description: currentAction.description,
@@ -699,7 +699,7 @@ export default function MobileRecorder({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            deviceId: selectedDevice?.id,
+            deviceId: selectedDevice?.id || selectedDevice?.device,
             steps: enabledActions.map((a) => ({
               type: a.type,
               description: a.description,
@@ -1427,8 +1427,8 @@ ${enabledActions
 
                         const finalDev = deviceSize || { width: 1080, height: 1920 }; // Default to standard 1080p
 
-                        const devW = finalDev.width ?? finalDev.w ?? 1080;
-                        const devH = finalDev.height ?? finalDev.h ?? 1920;
+                        const devW = finalDev.width || 1080;
+                        const devH = finalDev.height || 1920;
 
                         const deviceX = Math.round((clickX / imgWidth) * devW);
                         const deviceY = Math.round((clickY / imgHeight) * devH);
