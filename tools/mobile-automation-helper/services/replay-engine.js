@@ -50,10 +50,10 @@ export class ReplayEngine extends EventEmitter {
 
     switch (type) {
       case 'tap':
-        await this.executeTapStep(coordinates);
+        await this.executeTapStep(step);
         break;
       case 'input':
-        await this.executeInputStep(locator, value, coordinates);
+        await this.executeInputStep(step);
         break;
       case 'scroll':
         await this.executeScrollStep(coordinates);
@@ -64,27 +64,58 @@ export class ReplayEngine extends EventEmitter {
       case 'assert':
         await this.executeAssertStep(locator, value);
         break;
+      case 'openApp':
+        await this.executeOpenAppStep(step);
+        break;
       default:
         throw new Error(`Unknown step type: ${type}`);
     }
   }
 
-  async executeTapStep(coordinates) {
+  async executeTapStep(step) {
+    const { coordinates, elementId, elementText, elementClass, elementContentDesc } = step;
     try {
-      if (!coordinates || typeof coordinates.x !== 'number' || typeof coordinates.y !== 'number') {
-        throw new Error(`Invalid coordinates provided: ${JSON.stringify(coordinates)}`);
+      // 1. Try self-healing first if we have metadata
+      let targetCoords = coordinates;
+      if (elementId || elementText || elementContentDesc) {
+        const foundElement = await this.findBestMatchingElement({
+          elementId, elementText, elementClass, elementContentDesc
+        });
+
+        if (foundElement && foundElement.coordinates) {
+          console.log(`[Self-Healing] Found element with score ${foundElement.score}. Updating coordinates.`);
+          targetCoords = foundElement.coordinates;
+        }
       }
-      await tapDevice(coordinates.x, coordinates.y, this.deviceId);
+
+      if (!targetCoords || typeof targetCoords.x !== 'number' || typeof targetCoords.y !== 'number') {
+        throw new Error(`Invalid coordinates and self-healing failed: ${JSON.stringify(targetCoords)}`);
+      }
+
+      await tapDevice(targetCoords.x, targetCoords.y, this.deviceId);
     } catch (error) {
-      console.error(`Error executing tap step at coordinates ${coordinates?.x},${coordinates?.y}:`, error.message);
+      console.error(`Error executing tap step:`, error.message);
       throw new Error(`Failed to execute tap step: ${error.message}`);
     }
   }
 
-  async executeInputStep(locator, value, coordinates) {
+  async executeInputStep(step) {
+    const { locator, value, coordinates, elementId, elementText, elementClass, elementContentDesc } = step;
     try {
-      // 1. Try to find the element coordinates if locator is provided
+      // 1. Try self-healing first if we have metadata
       let targetCoords = coordinates;
+      if (elementId || elementText || elementContentDesc) {
+        const foundElement = await this.findBestMatchingElement({
+          elementId, elementText, elementClass, elementContentDesc
+        });
+
+        if (foundElement && foundElement.coordinates) {
+          console.log(`[Self-Healing] Found element for input with score ${foundElement.score}.`);
+          targetCoords = foundElement.coordinates;
+        }
+      }
+
+      // 2. Fallback to locator search if still no coords
       if (locator && (!targetCoords || !targetCoords.x)) {
         targetCoords = await this.findElementCoordinates(locator);
       }
@@ -93,13 +124,13 @@ export class ReplayEngine extends EventEmitter {
         throw new Error(`Target coordinates or locator ${locator} not found for input step`);
       }
 
-      // 2. Tap to focus
+      // 3. Tap to focus
       await tapDevice(targetCoords.x, targetCoords.y, this.deviceId);
 
-      // 3. Wait for focus
+      // 4. Wait for focus
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 4. Input text using the helper
+      // 5. Input text using the helper
       await inputText(value, this.deviceId);
     } catch (error) {
       console.error(`Error executing input step for locator ${locator}:`, error.message);
@@ -139,6 +170,19 @@ export class ReplayEngine extends EventEmitter {
     const success = element !== null;
 
     this.emit('assertion-result', { locator, expectedValue, success, element });
+  }
+
+  async executeOpenAppStep(step) {
+    const { value: packageName } = step;
+    try {
+      if (!packageName) throw new Error("Package name is required for openApp step");
+      await launchApp(packageName, this.deviceId);
+      // Wait for app to launch
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } catch (error) {
+      console.error(`Error executing openApp step for ${packageName}:`, error.message);
+      throw new Error(`Failed to open app: ${error.message}`);
+    }
   }
 
   /**
@@ -198,6 +242,54 @@ export class ReplayEngine extends EventEmitter {
       return this.parseXmlForElement(xml, locator);
     } catch (error) {
       console.error('Error finding element:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Enhanced element matching using scoring for self-healing
+   */
+  async findBestMatchingElement(metadata) {
+    try {
+      const xml = await deviceController.getUIHierarchy(this.deviceId);
+      const nodeRegex = /<node[^>]*>/g;
+      const nodes = xml.match(nodeRegex) || [];
+
+      let bestMatch = null;
+      let highestScore = 0;
+
+      for (const nodeStr of nodes) {
+        const attrs = this.parseNodeAttributes(nodeStr);
+        let score = 0;
+
+        if (metadata.elementId && attrs['resource-id'] === metadata.elementId) score += 100;
+        if (metadata.elementContentDesc && attrs['content-desc'] === metadata.elementContentDesc) score += 80;
+        if (metadata.elementText && attrs.text === metadata.elementText) score += 60;
+        if (metadata.elementClass && attrs.class === metadata.elementClass) score += 10;
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestMatch = attrs;
+        }
+      }
+
+      // Threshold for a valid match
+      if (highestScore < 50) return null;
+
+      const boundsMatch = bestMatch.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+      if (!boundsMatch) return null;
+
+      const [, x1, y1, x2, y2] = boundsMatch.map(Number);
+      return {
+        attributes: bestMatch,
+        score: highestScore,
+        coordinates: {
+          x: Math.floor((x1 + x2) / 2),
+          y: Math.floor((y1 + y2) / 2)
+        }
+      };
+    } catch (error) {
+      console.error('Error in self-healing search:', error.message);
       return null;
     }
   }

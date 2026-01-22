@@ -29,7 +29,9 @@ export async function adbCommand(args, options = {}) {
 
     return { stdout: stdout.trim(), stderr: stderr.trim() };
   } catch (error) {
-    throw new Error(`ADB command failed: ${error.message}`);
+    const message = error.stderr || error.stdout || error.message;
+    console.error(`[ADB] Command failed: ${args.join(' ')} - Error: ${message}`);
+    throw new Error(`ADB command failed: ${message}`);
   }
 }
 
@@ -414,3 +416,185 @@ export async function rebootDevice(deviceId = null) {
     throw new Error(`Failed to reboot device: ${error.message}`);
   }
 }
+
+/**
+ * Clear app data (cache and user data)
+ */
+export async function clearAppData(packageName, deviceId = null) {
+  try {
+    const result = await adbCommand(['shell', 'pm', 'clear', packageName], {
+      deviceId,
+      timeout: 10000
+    });
+
+    if (result.stdout.includes('Success')) {
+      return { packageName, deviceId };
+    } else {
+      throw new Error(result.stdout || result.stderr || 'Failed to clear app data');
+    }
+  } catch (error) {
+    throw new Error(`Failed to clear app data for ${packageName}: ${error.message}`);
+  }
+}
+
+/**
+ * Force stop app
+ */
+export async function forceStopApp(packageName, deviceId = null) {
+  try {
+    await adbCommand(['shell', 'am', 'force-stop', packageName], {
+      deviceId,
+      timeout: 10000
+    });
+    return { packageName, deviceId };
+  } catch (error) {
+    throw new Error(`Failed to force stop app ${packageName}: ${error.message}`);
+  }
+}
+
+/**
+ * Check if app is installed
+ */
+export async function isAppInstalled(packageName, deviceId = null) {
+  try {
+    const { stdout } = await adbCommand(['shell', 'pm', 'list', 'packages', packageName], {
+      deviceId,
+      timeout: 5000
+    });
+    return stdout.includes(`package:${packageName}`);
+  } catch (error) {
+    console.error(`[ADB] Error checking if app is installed: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Launch app
+ */
+export async function launchApp(packageName, deviceId = null) {
+  try {
+    console.log(`[ADB] Attempting to launch app: ${packageName}`);
+
+    // Attempt 1: Using monkey (easy, but sometimes fails)
+    try {
+      await adbCommand(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'], {
+        deviceId,
+        timeout: 10000
+      });
+      return { packageName, deviceId };
+    } catch (monkeyError) {
+      console.warn(`[ADB] Monkey launch failed for ${packageName}, trying am start...`);
+    }
+
+    // Attempt 2: Try to find the launcher activity and use am start
+    const { stdout } = await adbCommand(['shell', 'dumpsys', 'package', packageName], {
+      deviceId,
+      timeout: 5000
+    });
+
+    // Look for android.intent.action.MAIN and android.intent.category.LAUNCHER
+    // Use a regex to find the activity name
+    const mainActivityMatch = stdout.match(/android\.intent\.action\.MAIN:[^]*?([a-zA-Z0-9._/]+)/m);
+
+    if (mainActivityMatch && mainActivityMatch[1]) {
+      const activity = mainActivityMatch[1].trim();
+      console.log(`[ADB] Found main activity: ${activity}. Launching...`);
+      await adbCommand(['shell', 'am', 'start', '-n', activity], {
+        deviceId,
+        timeout: 10000
+      });
+      return { packageName, deviceId };
+    }
+
+    throw new Error(`Could not find launcher activity for ${packageName}`);
+  } catch (error) {
+    console.error(`[ADB] Failed to launch app ${packageName}: ${error.message}`);
+    throw new Error(`Failed to launch app ${packageName}: ${error.message}`);
+  }
+}
+/**
+ * Extract package name from APK using aapt (if available)
+ */
+export async function extractPackageName(apkPath) {
+  try {
+    const aaptPath = await findAapt();
+    if (!aaptPath) {
+      console.warn('[ADB] aapt not found, could not extract package name automatically.');
+      return null;
+    }
+
+    const { stdout } = await execAsync(`"${aaptPath}" dump badging "${apkPath}"`);
+    const match = stdout.match(/package: name='([^']+)'/);
+    if (match && match[1]) {
+      return match[1];
+    }
+    return null;
+  } catch (error) {
+    console.error(`[ADB] Failed to extract package name: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Helper to find aapt utility in Android SDK
+ */
+async function findAapt() {
+  try {
+    const adbPath = CONFIG.ADB_COMMAND;
+    if (!adbPath) return null;
+
+    // Usually adb is in platform-tools, aapt is in build-tools
+    const sdkPath = path.dirname(path.dirname(adbPath));
+    const buildToolsPath = path.join(sdkPath, 'build-tools');
+
+    if (fs.existsSync(buildToolsPath)) {
+      const versions = fs.readdirSync(buildToolsPath);
+      // Sort and get latest
+      versions.sort().reverse();
+      for (const ver of versions) {
+        const aapt = path.join(buildToolsPath, ver, 'aapt.exe');
+        if (fs.existsSync(aapt)) return aapt;
+        const aaptUnix = path.join(buildToolsPath, ver, 'aapt');
+        if (fs.existsSync(aaptUnix)) return aaptUnix;
+      }
+    }
+
+    // Fallback: search in PATH
+    try {
+      await execAsync('aapt version');
+      return 'aapt';
+    } catch {
+      return null;
+    }
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Get list of installed packages
+ */
+export async function getInstalledPackages(deviceId = null, excludeSystem = true) {
+  try {
+    const args = excludeSystem
+      ? ['shell', 'pm', 'list', 'packages', '-3']  // -3 = third-party only
+      : ['shell', 'pm', 'list', 'packages'];
+
+    const { stdout } = await adbCommand(args, {
+      deviceId,
+      timeout: 10000
+    });
+
+    const packages = stdout
+      .split('\n')
+      .map(line => line.replace('package:', '').trim())
+      .filter(pkg => pkg.length > 0)
+      .sort();
+
+    return packages;
+  } catch (error) {
+    console.error(`Failed to get installed packages: ${error.message}`);
+    return [];
+  }
+}
+

@@ -893,7 +893,7 @@ export default function MobileSetupWizard({
       {/* Header Section */}
       <div className="space-y-2">
         <h2 className="text-xl font-bold">Local Setup</h2>
-        <p className="text-sm text-muted-foreground">Automatically starts emulator, Appium background services, and connects device</p>
+        <p className="text-sm text-muted-foreground">When tapping the One-Tap Services button, the Appium background services start automatically, and the list of available devices appears in the Device Selection dropdown below.</p>
         <div className="flex gap-2">
           {/* <Button variant="outline" onClick={() => setWizardOpen(true)}>
             <Smartphone className="mr-2 h-4 w-4" />
@@ -903,10 +903,7 @@ export default function MobileSetupWizard({
             <RefreshCw className="mr-2 h-4 w-4" />
             Run All Checks
           </Button> */}
-          <Button onClick={checkAllServicesStatus}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Check All Services Status
-          </Button>
+
           <Button onClick={() => startAllServices()} className="bg-primary hover:bg-primary/90">
             <Power className="mr-2 h-4 w-4" />
             One-Tap Start All Services
@@ -924,7 +921,7 @@ export default function MobileSetupWizard({
           </h3>
           <div className="space-y-3">
             <div className="flex flex-col gap-3">
-              <div className="flex-1">
+              <div className="flex gap-2">
                 <Select value={selectedDevice} onValueChange={handleDeviceChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select Device" />
@@ -937,10 +934,28 @@ export default function MobileSetupWizard({
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  variant="default"
+                  onClick={fetchAvailableDevices}
+                  className="w-[50%]"
+                  disabled={devicesLoading}
+                >
+                  {devicesLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refresh
+                    </>
+                  )}
+                </Button>
               </div>
 
               <div className="flex gap-2">
-                <Button
+                {/* <Button
                   variant="outline"
                   onClick={fetchAvailableDevices}
                   className="flex-1"
@@ -957,16 +972,16 @@ export default function MobileSetupWizard({
                       Refresh
                     </>
                   )}
-                </Button>
+                </Button> */}
 
-                <Button
+                {/* <Button
                   onClick={startEmulator}
                   disabled={!selectedDevice}
                   className="flex-1 bg-green-600 hover:bg-green-700"
                 >
                   <Power className="mr-2 h-4 w-4" />
-                  Start
-                </Button>
+                  Maunually Start Emulator
+                </Button> */}
               </div>
             </div>
 
@@ -997,6 +1012,10 @@ export default function MobileSetupWizard({
         {/* System Status Checklist */}
         <div className="space-y-2">
           <h3 className="text-lg font-semibold">System Status</h3>
+          <Button onClick={checkAllServicesStatus}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Check All Services Status
+          </Button>
           <div className="space-y-2">
             {items.map(({ key, label, icon: Icon }) => (
               <div

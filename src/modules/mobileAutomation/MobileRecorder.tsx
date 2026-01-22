@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import DeviceSelector from "./DeviceSelector";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -58,12 +59,22 @@ export default function MobileRecorder({
   const [inputModalOpen, setInputModalOpen] = useState(false);
   const [inputModalText, setInputModalText] = useState("");
   const [inputModalCoords, setInputModalCoords] = useState<{ x: number; y: number } | null>(null);
+  const [appPackage, setAppPackage] = useState("");
+  const [isAppInstalled, setIsAppInstalled] = useState<boolean | null>(null);
+  const [checkingInstall, setCheckingInstall] = useState(false);
   const [inputModalPending, setInputModalPending] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string>("");
   const [previewPendingId, setPreviewPendingId] = useState<string | null>(null);
   const [replaying, setReplaying] = useState<boolean>(false);
   const [replayIndex, setReplayIndex] = useState<number | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [nextStepTrigger, setNextStepTrigger] = useState<(() => void) | null>(null);
+
+  // Script editor state
+  const [isEditingScript, setIsEditingScript] = useState(false);
+  const [editableScript, setEditableScript] = useState("");
+  const [savedManualScript, setSavedManualScript] = useState<string | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,12 +83,13 @@ export default function MobileRecorder({
   const [uiXml, setUiXml] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [apkUploading, setApkUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [apkInstalling, setApkInstalling] = useState(false);
   const [uploadedApk, setUploadedApk] = useState<{ path: string; name: string } | null>(null);
+  const [installedPackages, setInstalledPackages] = useState<string[]>([]);
+  const [loadingPackages, setLoadingPackages] = useState(false);
 
-  /* =====================================================
-   * 🔴 CONNECT TO SSE STREAM
-   * ===================================================== */
+  /* CONNECT TO SSE STREAM */
 
   const connectToEventStream = useCallback(() => {
     if (eventSourceRef.current) {
@@ -159,6 +171,7 @@ export default function MobileRecorder({
           }
 
           setActions((prev) => [...prev, newAction]);
+          setSavedManualScript(null); // Invalidate manual edit when new step arrives
           if (recording) {
             toast.info(`Captured: ${newAction.description}`);
           }
@@ -219,6 +232,22 @@ export default function MobileRecorder({
       setConnectionStatus("disconnected");
     }
   }, [recording, connectToEventStream]);
+
+  // Check app installation when package changes
+  useEffect(() => {
+    if (appPackage && mirrorActive) {
+      checkAppInstallation(appPackage);
+    } else {
+      setIsAppInstalled(false);
+    }
+  }, [appPackage, mirrorActive]);
+
+  // Fetch installed packages when mirror connects
+  useEffect(() => {
+    if (mirrorActive) {
+      fetchInstalledPackages();
+    }
+  }, [mirrorActive]);
 
   /* =====================================================
    * HELPER: fetch with timeout
@@ -618,7 +647,7 @@ export default function MobileRecorder({
    * ▶ REPLAY (ADB)
    * ===================================================== */
 
-  const replay = async () => {
+  const replay = async (isStepMode = false) => {
     const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) {
       toast.error("No enabled actions to replay");
@@ -627,42 +656,81 @@ export default function MobileRecorder({
 
     try {
       setReplaying(true);
-      const res = await fetch(`${AGENT_URL}/recording/replay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deviceId: selectedDevice?.id,
-          steps: enabledActions.map((a) => ({
-            type: a.type,
-            description: a.description,
-            locator: a.locator,
-            value: a.value,
-            coordinates: a.coordinates,
-            timestamp: a.timestamp,
-          })),
-        }),
-      });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Replay request failed");
+      if (isStepMode) {
+        setDebugMode(true);
+        for (let i = 0; i < enabledActions.length; i++) {
+          setReplayIndex(i);
+          const currentAction = enabledActions[i];
+
+          // Wait for user to click "Next"
+          await new Promise<void>((resolve) => {
+            setNextStepTrigger(() => resolve);
+          });
+
+          toast.info(`Executing step ${i + 1}: ${currentAction.description}`);
+
+          const res = await fetch(`${AGENT_URL}/recording/replay`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              deviceId: selectedDevice?.id,
+              steps: [{
+                type: currentAction.type,
+                description: currentAction.description,
+                locator: currentAction.locator,
+                value: currentAction.value,
+                coordinates: currentAction.coordinates,
+                timestamp: currentAction.timestamp,
+                elementId: currentAction.elementId,
+                elementText: currentAction.elementText,
+                elementClass: currentAction.elementClass,
+                elementContentDesc: currentAction.elementContentDesc,
+              }],
+            }),
+          });
+
+          if (!res.ok) throw new Error("Step failed");
+        }
+        setDebugMode(false);
+        setNextStepTrigger(null);
+      } else {
+        const res = await fetch(`${AGENT_URL}/recording/replay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId: selectedDevice?.id,
+            steps: enabledActions.map((a) => ({
+              type: a.type,
+              description: a.description,
+              locator: a.locator,
+              value: a.value,
+              coordinates: a.coordinates,
+              timestamp: a.timestamp,
+              elementId: a.elementId,
+              elementText: a.elementText,
+              elementClass: a.elementClass,
+              elementContentDesc: a.elementContentDesc,
+            })),
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Replay request failed");
+        }
       }
 
-      toast.success("Replay completed", {
-        description: "All steps were replayed on the connected device",
-      });
+      toast.success("Replay completed");
       setReplaying(false);
-
-      // Save to history
+      setReplayIndex(null);
       await saveExecutionToHistory("SUCCESS");
     } catch (err) {
       console.error("[MobileRecorder] Replay error:", err);
       setReplaying(false);
-      toast.error("Failed to start replay", {
-        description: "Make sure the local helper is running and a device is connected",
-      });
-
-      // Save to history
+      setReplayIndex(null);
+      setDebugMode(false);
+      toast.error("Replay failed");
       await saveExecutionToHistory("FAILED");
     }
   };
@@ -695,6 +763,9 @@ export default function MobileRecorder({
    * ===================================================== */
 
   const generatedScript = useMemo(() => {
+    // If a manual script was saved and we haven't recorded new steps since then, return it.
+    if (savedManualScript) return savedManualScript;
+
     const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) return "";
 
@@ -780,6 +851,10 @@ ${enabledActions
               javaCode = `assert driver.findElement(AppiumBy.xpath("${a.locator}")).isDisplayed();`;
               break;
 
+            case "openApp":
+              javaCode = `driver.activateApp("${a.value}");`;
+              break;
+
             default:
               return "";
           }
@@ -793,6 +868,79 @@ ${enabledActions
     }
 }`;
   }, [actions]);
+
+  /* =====================================================
+   * 💾 SAVE EDITED SCRIPT (SYNC BACK TO ACTIONS)
+   * ===================================================== */
+
+  const handleSaveScript = () => {
+    try {
+      // Split script into steps based on "// Step N:" comments
+      const steps = editableScript.split(/\/\/ Step \d+:/).slice(1);
+
+      const newActions = actions.map((action, index) => {
+        if (index >= steps.length) return action;
+
+        const stepContent = steps[index];
+        const updatedAction = { ...action };
+
+        // 1. Extract Description from comment if changed
+        const descMatch = stepContent.match(/\s*([^\r\n]+)/);
+        if (descMatch && descMatch[1]) {
+          updatedAction.description = descMatch[1].trim();
+        }
+
+        // 2. Extract locator
+        const locatorMatch = stepContent.match(/AppiumBy\.(id|xpath|androidUIAutomator)\("([^"]+)"\)/);
+        if (locatorMatch) {
+          const type = locatorMatch[1];
+          const value = locatorMatch[2];
+
+          if (type === "id") {
+            updatedAction.elementId = value;
+            updatedAction.locator = value;
+          } else if (type === "xpath") {
+            updatedAction.locator = value;
+          } else if (type === "androidUIAutomator") {
+            const textMatch = value.match(/text\("([^"]+)"\)/);
+            if (textMatch) updatedAction.elementText = textMatch[1];
+          }
+        }
+
+        // 3. Extract input value
+        const inputMatch = stepContent.match(/\.sendKeys\("([^"]+)"\)/);
+        if (inputMatch) {
+          updatedAction.value = inputMatch[1];
+        }
+
+        // 4. Extract coordinates
+        const clickMatch = stepContent.match(/"x", (\d+),[\s\S]*"y", (\d+)/);
+        if (clickMatch && updatedAction.coordinates) {
+          updatedAction.coordinates = {
+            ...updatedAction.coordinates,
+            x: parseInt(clickMatch[1]),
+            y: parseInt(clickMatch[2])
+          };
+        }
+
+        return updatedAction;
+      });
+
+      setActions(newActions);
+      setSavedManualScript(editableScript); // Persist exact string
+      setIsEditingScript(false);
+      toast.success("Script saved and synced with actions");
+    } catch (err) {
+      console.error("[handleSaveScript] Error:", err);
+      toast.error("Failed to parse and save script");
+    }
+  };
+
+  const startEditingScript = () => {
+    // If we have a saved manual script, edit that. Otherwise edit the auto-generated one.
+    setEditableScript(savedManualScript || generatedScript);
+    setIsEditingScript(true);
+  };
 
   /* =====================================================
    * COPY SCRIPT TO CLIPBOARD
@@ -840,6 +988,26 @@ ${enabledActions
         toast.error(jj.error || "Failed to input text");
       } else {
         toast.success("Text input captured");
+
+        // Update the last tap action to be an "input" action
+        setActions(prev => {
+          if (prev.length === 0) return prev;
+          const lastIndex = prev.length - 1;
+          const lastAction = prev[lastIndex];
+
+          if (lastAction.type === "tap") {
+            const updated = [...prev];
+            updated[lastIndex] = {
+              ...lastAction,
+              type: "input",
+              value: inputModalText,
+              description: `Input "${inputModalText}" at (${lastAction.coordinates?.x}, ${lastAction.coordinates?.y})`
+            };
+            return updated;
+          }
+          return prev;
+        });
+        setSavedManualScript(null); // Invalidate manual edit when state updates
       }
     } catch (err) {
       console.error("Input post failed:", err);
@@ -956,32 +1124,158 @@ ${enabledActions
    * ===================================================== */
 
   const installApk = async () => {
-    if (!uploadedApk) {
-      toast.error("No APK uploaded");
-      return;
-    }
-
+    if (!uploadedApk) return;
     setApkInstalling(true);
-
     try {
-      const response = await fetch(`${AGENT_URL}/app/install`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`${AGENT_URL}/app/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apkPath: uploadedApk.path }),
       });
-
-      const data = await response.json();
-
-      if (data.success) {
+      const data = await res.json();
+      if (res.ok && data.success) {
         toast.success("APK installed successfully");
+        setIsAppInstalled(true);
       } else {
-        toast.error(data.message || data.error || "Failed to install APK");
+        throw new Error(data.error || "Install failed");
       }
-    } catch (err) {
-      console.error("[installApk] Error:", err);
-      toast.error("Failed to install APK");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to install APK");
     } finally {
       setApkInstalling(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setApkUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(",")[1];
+        const res = await fetch(`${AGENT_URL}/app/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base64,
+            fileName: file.name,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setUploadedApk({ path: data.path, name: data.name });
+          toast.success("APK uploaded successfully. Ready to install.");
+        } else {
+          throw new Error(data.error || "Upload failed");
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload APK");
+    } finally {
+      setApkUploading(false);
+    }
+  };
+
+  const handleClearApp = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/app/clear`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageName: appPackage }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(`Cleared data for ${appPackage}`);
+      } else {
+        throw new Error(data.error || "Failed to clear app data");
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleStopApp = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/app/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageName: appPackage }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(`Stopped ${appPackage}`);
+      } else {
+        throw new Error(data.error || "Failed to stop app");
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const checkAppInstallation = async (pkg: string) => {
+    if (!pkg) return;
+    setCheckingInstall(true);
+    try {
+      const res = await fetch(`${AGENT_URL}/app/check-install/${pkg}`);
+      const data = await res.json();
+      if (data.success) {
+        setIsAppInstalled(data.installed);
+      }
+    } catch (err) {
+      console.error("Check install error:", err);
+    } finally {
+      setCheckingInstall(false);
+    }
+  };
+
+  const fetchInstalledPackages = async () => {
+    setLoadingPackages(true);
+    try {
+      const res = await fetch(`${AGENT_URL}/app/installed-packages`);
+      const data = await res.json();
+      if (data.success && data.packages) {
+        setInstalledPackages(data.packages);
+      }
+    } catch (err) {
+      console.error("Failed to fetch installed packages:", err);
+    } finally {
+      setLoadingPackages(false);
+    }
+  };
+
+  const handleOpenApp = async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/app/launch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageName: appPackage }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(`Launched ${appPackage}`);
+
+        // Record as a step if recording is ON
+        if (recording) {
+          const newAction: RecordedAction = {
+            id: crypto.randomUUID(),
+            type: "openApp" as ActionType,
+            description: `Launch app: ${appPackage}`,
+            locator: appPackage,
+            value: appPackage,
+            enabled: true,
+            timestamp: Date.now(),
+          };
+          setActions((prev) => [...prev, newAction]);
+        }
+      } else {
+        throw new Error(data.error || "Failed to launch app");
+      }
+    } catch (err: any) {
+      toast.error(err.message);
     }
   };
 
@@ -1158,8 +1452,8 @@ ${enabledActions
                             // If this element looks like an input, prompt user to enter text
                             if (json.step.isInputCandidate) {
                               // Open non-blocking modal to collect input text
+                              setInputModalText(""); // Clear first
                               setInputModalCoords({ x: deviceX, y: deviceY });
-                              setInputModalText("");
                               setInputModalPending(false);
                               setInputModalOpen(true);
                             }
@@ -1174,6 +1468,50 @@ ${enabledActions
                       }}
                     />
 
+                    {/* Debug Mode Overlay */}
+                    {debugMode && (
+                      <div className="absolute bottom-4 left-4 right-4 bg-black/80 backdrop-blur-md border border-yellow-500/50 p-4 rounded-lg z-50 text-white animate-in slide-in-from-bottom-4 duration-300">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+                            <span className="text-xs font-bold text-yellow-500 uppercase tracking-wider">Step Replay Mode</span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] border-yellow-500/30 text-yellow-200">
+                            Step {replayIndex !== null ? replayIndex + 1 : 0} of {actions.length}
+                          </Badge>
+                        </div>
+
+                        {replayIndex !== null && actions[replayIndex] && (
+                          <div className="mb-4">
+                            <p className="text-sm font-medium line-clamp-1">{actions[replayIndex].description}</p>
+                            <p className="text-[10px] text-zinc-400 font-mono mt-0.5 truncate italic">
+                              {actions[replayIndex].locator}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold h-9"
+                            onClick={() => nextStepTrigger?.()}
+                            disabled={!nextStepTrigger}
+                          >
+                            Execute Next Step
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9"
+                            onClick={() => {
+                              setDebugMode(false);
+                              setReplaying(false);
+                              setReplayIndex(null);
+                            }}
+                          >
+                            Cancel Replay
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="text-center p-4 text-muted-foreground">
@@ -1184,46 +1522,176 @@ ${enabledActions
             </div>
 
             {/* Control buttons */}
-            <div className="mt-4 flex flex-col gap-2">
+            <div className="mt-4 flex flex-col gap-4">
               {mirrorActive && (
-                <Button
-                  variant={captureMode ? "default" : "outline"}
-                  onClick={() => setCaptureMode(!captureMode)}
-                >
-                  {captureMode ? "Capture ON" : "Capture OFF"}
-                </Button>
-              )}
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase text-muted-foreground px-1">App Controls</h4>
+                      <Badge variant="outline" className="text-[10px] h-4">Production State</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="sm" onClick={handleClearApp} className="text-xs">
+                        <Trash2 className="mr-2 h-3 w-3" />
+                        Clear Data
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleStopApp} className="text-xs">
+                        <Square className="mr-2 h-3 w-3" />
+                        Force Stop
+                      </Button>
+                    </div>
 
-              {!recording ? (
-                <>
-                  <Button onClick={startRecording} disabled={!mirrorActive}>
-                    <Play className="mr-2 h-4 w-4" />
-                    Start Recording
-                  </Button>
+                    {!appPackage ? (
+                      // When blank: Show app selector + Upload APK option
+                      <div className="flex flex-col gap-2">
+                        <Select value={appPackage} onValueChange={setAppPackage}>
+                          <SelectTrigger className="h-8 text-xs font-mono">
+                            <SelectValue placeholder="Select installed app..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {loadingPackages ? (
+                              <SelectItem value="" disabled>Loading apps...</SelectItem>
+                            ) : installedPackages.length > 0 ? (
+                              installedPackages.map(pkg => (
+                                <SelectItem key={pkg} value={pkg} className="font-mono text-xs">
+                                  {pkg}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="" disabled>No apps found</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
 
-                  <Button
-                    variant="outline"
-                    onClick={replay}
-                    disabled={actions.length === 0 || replaying}
-                  >
-                    <Play className="mr-2 h-4 w-4" />
-                    {replaying ? "Replaying..." : "Replay"}
-                  </Button>
-                </>
-              ) : (
-                <Button variant="destructive" onClick={stopRecording}>
-                  <Square className="mr-2 h-4 w-4" />
-                  Stop Recording
-                </Button>
+                        <div className="text-[10px] text-center text-muted-foreground">— or —</div>
+
+                        <input type="file" accept=".apk" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={apkUploading}
+                        >
+                          {apkUploading ? (
+                            <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Upload className="mr-2 h-3 w-3" />
+                          )}
+                          {apkUploading ? "Uploading..." : "Upload External APK"}
+                        </Button>
+                      </div>
+                    ) : isAppInstalled === false ? (
+                      // When package entered but not installed: Show install flow
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="file"
+                          accept=".apk"
+                          ref={fileInputRef}
+                          className="hidden"
+                          onChange={handleFileUpload}
+                        />
+                        <Button
+                          variant={uploadedApk ? "outline" : "default"}
+                          size="sm"
+                          className={`w-full text-xs ${!uploadedApk ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                          onClick={() => uploadedApk ? installApk() : fileInputRef.current?.click()}
+                          disabled={apkInstalling || apkUploading}
+                        >
+                          {apkUploading ? (
+                            <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                          ) : uploadedApk ? (
+                            <Package className="mr-2 h-3 w-3" />
+                          ) : (
+                            <Upload className="mr-2 h-3 w-3" />
+                          )}
+                          {apkUploading ? "Uploading..." : apkInstalling ? "Installing..." : uploadedApk ? `Install ${uploadedApk.name}` : "Upload APK to Install"}
+                        </Button>
+                        {uploadedApk && (
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-4 p-0 text-[10px] text-zinc-500"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            Change APK
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      // When package entered and installed: Show open button
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={handleOpenApp}
+                        disabled={checkingInstall}
+                      >
+                        <Smartphone className="mr-2 h-3 w-3" />
+                        {checkingInstall ? "Checking..." : "Open App"}
+                      </Button>
+                    )}
+
+                    <Input
+                      placeholder="App Package (e.g. com.example.app)"
+                      value={appPackage}
+                      onChange={(e: any) => setAppPackage(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="h-[1px] bg-border my-2" />
+
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant={captureMode ? "default" : "outline"}
+                      onClick={() => setCaptureMode(!captureMode)}
+                    >
+                      {captureMode ? "Capture ON" : "Capture OFF"}
+                    </Button>
+                    {!recording ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        <Button onClick={startRecording} disabled={!mirrorActive} className="w-full">
+                          <Play className="mr-2 h-4 w-4" />
+                          Start Recording
+                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => replay(false)}
+                            disabled={actions.length === 0 || replaying}
+                          >
+                            <Play className="mr-2 h-4 w-4" />
+                            {replaying && !debugMode ? "Replaying..." : "Replay"}
+                          </Button>
+
+                          <Button
+                            variant="secondary"
+                            onClick={() => replay(true)}
+                            disabled={actions.length === 0 || replaying}
+                          >
+                            <Smartphone className="mr-2 h-4 w-4" />
+                            Step Replay
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button variant="destructive" onClick={stopRecording} className="w-full">
+                        <Square className="mr-2 h-4 w-4" />
+                        Stop Recording
+                      </Button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 
             {/* Connection controls */}
             {mirrorActive && (
-              <div className="mt-4 flex items-center justify-between">
-                <Button variant="destructive" onClick={disconnectDevice}>
+              <div className="mt-4 flex items-center justify-between w-full">
+                <Button className="w-full" variant="destructive" onClick={disconnectDevice}>
                   <WifiOff className="h-4 w-4 mr-2" />
-                  Disconnect
+                  Disconnect Device
                 </Button>
               </div>
             )}
@@ -1377,23 +1845,48 @@ ${enabledActions
               <CardTitle>Generated Script</CardTitle>
               {generatedScript && (
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={copyScript}>
-                    <Copy className="h-4 w-4 mr-1" />
-                    Copy
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={downloadScript}>
-                    <Download className="h-4 w-4 mr-1" />
-                    Download
-                  </Button>
+                  {!isEditingScript ? (
+                    <>
+                      <Button variant="outline" size="sm" onClick={startEditingScript}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={copyScript}>
+                        <Copy className="h-4 w-4 mr-1" />
+                        Copy
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={downloadScript}>
+                        <Download className="h-4 w-4 mr-1" />
+                        Download
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="default" onClick={handleSaveScript}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setIsEditingScript(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </CardHeader>
             <CardContent>
               {generatedScript ? (
                 <ScrollArea className="h-[300px]">
-                  <pre className="bg-black text-green-400 p-4 rounded text-xs overflow-x-auto font-mono">
-                    {generatedScript}
-                  </pre>
+                  {isEditingScript ? (
+                    <textarea
+                      value={editableScript}
+                      onChange={(e) => setEditableScript(e.target.value)}
+                      className="w-full h-[400px] bg-black text-green-400 p-4 rounded text-xs font-mono border-none focus:ring-1 focus:ring-primary overflow-y-auto"
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <pre className="bg-black text-green-400 p-4 rounded text-xs overflow-x-auto font-mono">
+                      {generatedScript}
+                    </pre>
+                  )}
                 </ScrollArea>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

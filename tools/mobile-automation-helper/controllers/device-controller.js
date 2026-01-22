@@ -12,7 +12,10 @@ import {
   inputText,
   getUIHierarchy,
   isDeviceOnline,
-  getDeviceProps
+  clearAppData,
+  forceStopApp,
+  isAppInstalled,
+  launchApp
 } from '../utils/adb-utils.js';
 import { CONFIG } from '../config.js';
 import { parseStringPromise } from 'xml2js';
@@ -270,6 +273,42 @@ class DeviceController {
    */
   getConnectedDevices() {
     return this.connectedDevices;
+  }
+
+  /**
+   * Clear app data
+   */
+  async clearApp(packageName, deviceId = null) {
+    const targetDevice = deviceId || this.primaryDevice?.id;
+    if (!targetDevice) throw new Error('No device connected');
+    return await clearAppData(packageName, targetDevice);
+  }
+
+  /**
+   * Force stop app
+   */
+  async stopApp(packageName, deviceId = null) {
+    const targetDevice = deviceId || this.primaryDevice?.id;
+    if (!targetDevice) throw new Error('No device connected');
+    return await forceStopApp(packageName, targetDevice);
+  }
+
+  /**
+   * Check if app is installed
+   */
+  async isInstalled(packageName, deviceId = null) {
+    const targetDevice = deviceId || this.primaryDevice?.id;
+    if (!targetDevice) return false;
+    return await isAppInstalled(packageName, targetDevice);
+  }
+
+  /**
+   * Launch app
+   */
+  async openApp(packageName, deviceId = null) {
+    const targetDevice = deviceId || this.primaryDevice?.id;
+    if (!targetDevice) throw new Error('No device connected');
+    return await launchApp(packageName, targetDevice);
   }
 }
 

@@ -2,6 +2,9 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 import { CONFIG } from "./config.js";
 import processManager from "./utils/process-manager.js";
@@ -92,7 +95,8 @@ class MobileAutomationAgent {
       })
     );
 
-    this.app.use(express.json({ limit: "50mb" }));
+    this.app.use(express.json({ limit: "500mb" }));
+    this.app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
     /* ---------------- HEALTH ---------------- */
     this.app.get("/health", (req, res) => {
@@ -225,6 +229,94 @@ class MobileAutomationAgent {
         res.json({ success: true, xml });
       } catch (e) {
         res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    /* ---------------- APP MANAGEMENT ---------------- */
+    this.app.post("/app/clear", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        if (!packageName) throw new Error("Package name is required");
+        await deviceController.clearApp(packageName);
+        res.json({ success: true, message: `Cleared data for ${packageName}` });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.post("/app/stop", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        if (!packageName) throw new Error("Package name is required");
+        await deviceController.stopApp(packageName);
+        res.json({ success: true, message: `Stopped ${packageName}` });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.post("/app/launch", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        if (!packageName) throw new Error("Package name is required");
+        await deviceController.openApp(packageName);
+        res.json({ success: true, message: `Launched ${packageName}` });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.get("/app/check-install/:packageName", async (req, res) => {
+      try {
+        const { packageName } = req.params;
+        const installed = await deviceController.isInstalled(packageName);
+        res.json({ success: true, installed });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    this.app.get("/app/installed-packages", async (req, res) => {
+      try {
+        const { getInstalledPackages } = await import("./utils/adb-utils.js");
+        const packages = await getInstalledPackages();
+        res.json({ success: true, packages });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    this.app.post("/app/upload", async (req, res) => {
+      try {
+        const { base64, fileName } = req.body;
+        if (!base64) throw new Error("No file content provided");
+
+        const buffer = Buffer.from(base64, "base64");
+        const tempDir = os.tmpdir();
+        const filePath = path.join(tempDir, fileName || `temp_${Date.now()}.apk`);
+
+        fs.writeFileSync(filePath, buffer);
+        console.log(`[Agent] Saved uploaded APK to: ${filePath}`);
+
+        res.json({ success: true, path: filePath, name: fileName });
+      } catch (e) {
+        console.error("[Agent] Upload failed:", e.message);
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.post("/app/install", async (req, res) => {
+      try {
+        const { apkPath } = req.body;
+        if (!apkPath) throw new Error("APK path is required");
+
+        const { installApk } = await import("./utils/adb-utils.js");
+        await installApk(apkPath);
+
+        res.json({ success: true, message: "Installation successful" });
+      } catch (e) {
+        console.error("[Agent] Install failed:", e.message);
+        res.status(500).json({ error: e.message });
       }
     });
 
