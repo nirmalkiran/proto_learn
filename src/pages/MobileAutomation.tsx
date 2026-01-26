@@ -1,9 +1,9 @@
 import { Layout } from "@/components/Layout";
-import MobileAutomation from "@/modules/mobileAutomation";
+import MobileAutomation from "@/components/mobileAutomation";
 
 export default function MobileAutomationPage() {
   return (
-    <Layout currentView="mobile-automation" onViewChange={() => {}}>
+    <Layout currentView="mobile-automation" onViewChange={() => { }}>
       <MobileAutomation />
     </Layout>
   );

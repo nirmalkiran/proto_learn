@@ -58,7 +58,7 @@ export default function SelfHosting() {
           <CardContent className="space-y-4">
             <div className="bg-muted rounded-lg p-4 font-mono text-sm">
               <p className="text-muted-foreground"># Navigate to agent folder</p>
-              <p>cd tools/mobile-automation-helper</p>
+              <p>cd public\mobile-automation</p>
               <p className="text-muted-foreground mt-2"># Install dependencies</p>
               <p>npm install</p>
               <p className="text-muted-foreground mt-2"># Start the agent</p>

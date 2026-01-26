@@ -13,7 +13,7 @@ import NotFound from "./pages/NotFound";
 import SelfHosting from "./pages/SelfHosting";
 import { MenuConfigPanel } from "./components/MenuConfigPanel";
 
-import MobileAutomation from "@/modules/mobileAutomation";
+import MobileAutomation from "@/components/mobileAutomation";
 
 // Wrapper component to pass projectId to ProtectedRoute
 const ProjectRoute = () => {
@@ -58,7 +58,7 @@ const App = () => (
               <ProtectedRoute>
                 <MobileAutomation />
               </ProtectedRoute>
-            }/>
+            } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

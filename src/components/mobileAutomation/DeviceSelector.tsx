@@ -1,0 +1,224 @@
+import { useEffect, useState, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Smartphone } from "lucide-react";
+import { toast } from "sonner";
+
+const AGENT_URL = "http://localhost:3001";
+
+import { ActionType, RecordedAction, SelectedDevice } from "./types";
+
+interface DeviceInfo {
+  id: string;
+  name?: string;
+  type: "emulator" | "real";
+  os_version?: string;
+}
+
+export default function DeviceSelector({
+  onSelect,
+  selectedDeviceFromSetup,
+  disabled = false,
+  refreshKey = 0,
+}: {
+  onSelect: (d: SelectedDevice) => void;
+  selectedDeviceFromSetup?: string;
+  disabled?: boolean;
+  refreshKey?: number;
+}) {
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  /* ---------------- FETCH DEVICES ---------------- */
+
+  const fetchDevices = async () => {
+    if (disabled) return;
+    setLoading(true);
+    try {
+      // Fetch both connected devices and available AVDs (with timeouts for reliability)
+      const [connectedRes, availableRes] = await Promise.all([
+        fetch(`${AGENT_URL}/device/check`, {
+          signal: AbortSignal.timeout(5000)
+        }),
+        fetch(`${AGENT_URL}/emulator/available`, {
+          signal: AbortSignal.timeout(5000)
+        })
+      ]);
+
+      const connectedData = await connectedRes.json();
+      const availableData = await availableRes.json();
+
+      const allDevices: DeviceInfo[] = [];
+
+      // Add connected devices
+      if (connectedData.connected && connectedData.devices?.length) {
+        const connectedParsed: DeviceInfo[] = connectedData.devices.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type === "emulator" ? "emulator" : "real",
+          os_version: d.release || "13",
+        }));
+        allDevices.push(...connectedParsed);
+      }
+
+      // Add available AVDs that aren't already connected
+      if (availableData.success && availableData.avds?.length) {
+        const availableParsed: DeviceInfo[] = availableData.avds
+          .filter((avd: string) => !allDevices.some(d => d.id === avd))
+          .map((avd: string) => ({
+            id: avd,
+            type: "emulator" as const,
+            os_version: "13", // Safe default for emulator
+          }));
+        allDevices.push(...availableParsed);
+      }
+
+      setDevices(allDevices);
+    } catch {
+      toast.error("Failed to fetch devices");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!disabled) {
+      fetchDevices();
+    }
+  }, [disabled, refreshKey]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  /* ---------------- SELECT DEVICE ---------------- */
+
+  const selectDevice = (d: DeviceInfo) => {
+    if (disabled) return;
+    onSelect({
+      device: d.id,
+      name: d.name,
+      os_version: d.os_version || "13",
+      real_mobile: d.type === "real",
+    });
+
+    setDropdownOpen(false);
+    toast.success(`Selected device: ${d.id}`);
+  };
+
+  /* ---------------- UI ---------------- */
+
+  return (
+    <div className="relative">
+      {loading && !disabled && <p className="text-sm">Checking devices...</p>}
+
+      {/* Dropdown-style device selector */}
+      <div className="relative" ref={dropdownRef}>
+        <button
+          className={`flex items-center gap-2 p-2 border rounded-md transition-colors min-w-[200px] text-left ${disabled
+            ? 'cursor-not-allowed bg-green-50 border-green-200 text-green-700 font-medium'
+            : 'bg-background hover:bg-muted/50'
+            }`}
+          onClick={() => !disabled && setDropdownOpen(!dropdownOpen)}
+          disabled={disabled}
+        >
+          <Smartphone className={`h-4 w-4 ${disabled ? 'text-green-600' : ''}`} />
+          <span className="text-sm truncate">
+            {(() => {
+              if (!selectedDeviceFromSetup) return 'Select device...';
+              const device = devices.find(d => d.id === selectedDeviceFromSetup);
+              return device?.name || selectedDeviceFromSetup;
+            })()}
+          </span>
+        </button>
+
+        {/* Device list dropdown */}
+        {dropdownOpen && !disabled && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
+            {/* Show all available devices */}
+            {devices.length === 0 ? (
+              <div className="p-4 space-y-3">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">No devices found</p>
+                  <p className="text-xs text-muted-foreground">Physical device not appearing?</p>
+                </div>
+                <div className="bg-muted/30 rounded-md p-3 space-y-2 text-xs">
+                  <p className="font-semibold text-foreground">Quick Checklist:</p>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">✓</span>
+                      <span>USB debugging enabled on device</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">✓</span>
+                      <span>USB cable supports data transfer</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">✓</span>
+                      <span>Accepted "Allow USB Debugging" on device</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5">✓</span>
+                      <span>Click Refresh button above</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="text-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => {
+                      fetchDevices();
+                      toast.info("Refreshing device list...");
+                    }}
+                  >
+                    <Smartphone className="h-3 w-3 mr-1.5" />
+                    Refresh Devices
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              devices.map((d) => (
+                <div
+                  key={d.id}
+                  className={`p-2 hover:bg-muted/50 cursor-pointer ${d.id === selectedDeviceFromSetup ? 'bg-blue-50/50' : ''
+                    }`}
+                  onClick={() => selectDevice(d)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="h-4 w-4" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate max-w-[200px]" title={d.name || d.id}>
+                          {d.name || d.id}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {d.name ? `ID: ${d.id}` : `Android ${d.os_version}`}
+                          {d.id === selectedDeviceFromSetup && ' (Matched)'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {d.type === "emulator" ? "Emulator" : "Real Device"}
+                    </Badge>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

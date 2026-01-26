@@ -108,20 +108,22 @@ export function useDeviceMirror() {
     setMirrorLoading(true);
 
     try {
-      // First check if local helper is running
+      // First check if local helper is running (increased timeout to 5s for reliability)
       const healthRes = await fetch(`${AGENT_URL}/health`, {
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(5000)
       }).catch(() => null);
 
       if (!healthRes?.ok) {
         setMirrorLoading(false);
-        setMirrorError("Local helper not running. Run: cd tools/mobile-automation-helper && npm start");
+        setMirrorError("Local helper not running. Run: cd public\\mobile-automation; npm start");
         toast.error("Local helper not running");
         return false;
       }
 
       // Verify device is connected
-      const deviceRes = await fetch(`${AGENT_URL}/device/check`);
+      const deviceRes = await fetch(`${AGENT_URL}/device/check`, {
+        signal: AbortSignal.timeout(5000)
+      });
       const deviceData = await deviceRes.json();
 
       if (!deviceData.connected) {
@@ -160,7 +162,7 @@ export function useDeviceMirror() {
     } catch (err: any) {
       console.error("[connectDevice] Error:", err);
       setMirrorLoading(false);
-      setMirrorError("Cannot connect to local helper. Run: npm start in tools/mobile-automation-helper");
+      setMirrorError("Cannot connect to local helper. Run: cd public\\mobile-automation; npm start");
       toast.error("Local helper not running");
       return false;
     }

@@ -11,7 +11,7 @@ export function useAgentStatus() {
     try {
       // Check if agent server is running
       const health = await fetch(`${AGENT_URL}/health`, {
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(5000)
       }).then(r => r.json()).catch(() => null);
 
       if (!health?.status) {
@@ -21,7 +21,7 @@ export function useAgentStatus() {
 
       // Check if device is connected
       const device = await fetch(`${AGENT_URL}/device/check`, {
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(5000)
       }).then(r => r.json()).catch(() => null);
 
       if (health?.status && device?.connected) {

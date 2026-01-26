@@ -22,7 +22,7 @@ import { AIGovernance } from "@/components/AIGovernance";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import MobileAutomation from "@/modules/mobileAutomation";
+import MobileAutomation from "@/components/mobileAutomation";
 
 const Project = () => {
   const { projectId, view } = useParams<{ projectId: string; view?: string }>();
@@ -121,13 +121,13 @@ const Project = () => {
       case 'nocode-automation':
         return <NoCodeAutomation projectId={selectedProject.id} />;
       case "mobile-no-code-automation":
-         return <MobileAutomation />;
+        return <MobileAutomation />;
       case "performance-testing":
-         return <EnhancedPerformanceTestGenerator />;
+        return <EnhancedPerformanceTestGenerator />;
       case "agents":
-         return <AgentManagement projectId={selectedProject.id} />;
+        return <AgentManagement projectId={selectedProject.id} />;
       case "ai-governance":
-         return <AIGovernance projectId={selectedProject.id} />;
+        return <AIGovernance projectId={selectedProject.id} />;
       default:
         return <Dashboard onViewChange={setCurrentView} projectId={selectedProject.id} />;
     }
@@ -135,8 +135,8 @@ const Project = () => {
 
   if (isLoading) {
     return (
-      <Layout 
-        currentView={currentView} 
+      <Layout
+        currentView={currentView}
         onViewChange={handleViewChange}
         selectedProject={selectedProject}
         onBackToProjects={handleBackToProjects}
@@ -154,8 +154,8 @@ const Project = () => {
   }
 
   return (
-    <Layout 
-      currentView={currentView} 
+    <Layout
+      currentView={currentView}
       onViewChange={handleViewChange}
       selectedProject={selectedProject}
       onBackToProjects={handleBackToProjects}
