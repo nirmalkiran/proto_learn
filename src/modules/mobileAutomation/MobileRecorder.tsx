@@ -170,7 +170,38 @@ export default function MobileRecorder({
             setSelectedNode(event.elementMetadata);
           }
 
-          setActions((prev) => [...prev, newAction]);
+          // Deduplication logic: skip if last action is essentially the same
+          setActions((prev) => {
+            const lastAction = prev[prev.length - 1];
+            const now = newAction.timestamp || Date.now();
+            
+            if (lastAction) {
+              const timeDiff = now - (lastAction.timestamp || 0);
+              const sameType = lastAction.type === newAction.type;
+              const sameLocator = lastAction.locator === newAction.locator;
+              
+              // Check for duplicate within 500ms window
+              if (sameType && sameLocator && timeDiff < 500) {
+                // For tap/longPress, check coordinates proximity
+                if (newAction.type === 'tap' || newAction.type === 'longPress' || newAction.type === 'doubleTap') {
+                  const coordsMatch = lastAction.coordinates && newAction.coordinates &&
+                    Math.abs(lastAction.coordinates.x - newAction.coordinates.x) < 10 &&
+                    Math.abs(lastAction.coordinates.y - newAction.coordinates.y) < 10;
+                  if (coordsMatch) {
+                    console.log("[MobileRecorder] Skipping duplicate tap action");
+                    return prev;
+                  }
+                } else if (lastAction.value === newAction.value) {
+                  // For other actions, check value match
+                  console.log("[MobileRecorder] Skipping duplicate action:", newAction.type);
+                  return prev;
+                }
+              }
+            }
+            
+            return [...prev, newAction];
+          });
+          
           setSavedManualScript(null); // Invalidate manual edit when new step arrives
           if (recording) {
             toast.info(`Captured: ${newAction.description}`);

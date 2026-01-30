@@ -9,6 +9,12 @@ echo "================================================"
 echo "   WISPR Agent - Linux/macOS Setup Initializing"
 echo "================================================"
 
+# Clean up any existing directory to avoid duplicates
+if [ -d "$DIR" ]; then
+  echo "Removing existing $DIR directory..."
+  rm -rf "$DIR"
+fi
+
 mkdir -p "$DIR"
 cd "$DIR"
 
