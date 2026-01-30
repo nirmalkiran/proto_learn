@@ -6,10 +6,14 @@ Write-Host "================================================" -ForegroundColor C
 Write-Host "   WISPR Agent - Windows Setup Initializing" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 
-if(!(Test-Path $dir)) { 
-    Write-Host "Creating directory: $dir"
-    New-Item -ItemType Directory -Path $dir 
+# Clean up any existing directory to avoid duplicates
+if(Test-Path $dir) { 
+    Write-Host "Removing existing $dir directory..." -ForegroundColor Yellow
+    Remove-Item -Recurse -Force $dir
 }
+
+Write-Host "Creating directory: $dir"
+New-Item -ItemType Directory -Path $dir | Out-Null
 Set-Location $dir
 
 $files = @(
