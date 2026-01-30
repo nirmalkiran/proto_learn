@@ -112,16 +112,17 @@ async function handleRegister(supabase: any, userId: string, body: any) {
   const { projectId, agentName, agentId, browsers, capacity } = body
   const apiKey = crypto.randomUUID()
 
+  console.log('Registering agent:', { projectId, agentName, agentId, browsers, capacity, userId })
+
   const { data, error } = await supabase
     .from('self_hosted_agents')
     .insert({
       project_id: projectId,
       user_id: userId,
-      agent_id: agentId,
-      name: agentName,
+      name: agentName || agentId || 'Unnamed Agent',
       agent_type: 'self-hosted',
       api_key: apiKey,
-      capabilities: { browsers, capacity },
+      capabilities: { browsers, capacity, agentId },
       status: 'online',
       last_heartbeat: new Date().toISOString()
     })
@@ -129,12 +130,14 @@ async function handleRegister(supabase: any, userId: string, body: any) {
     .single()
 
   if (error) {
-    if (error.code === '23505' && error.message.includes('agent_id')) {
-      throw new Error(`Agent ID "${agentId}" is already in use. Please choose a unique ID.`)
+    console.error('Registration error:', error)
+    if (error.code === '23505') {
+      throw new Error(`Agent name is already in use. Please choose a unique name.`)
     }
     throw error
   }
 
+  console.log('Agent registered successfully:', data)
   return new Response(JSON.stringify({ agent: data, apiToken: apiKey }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })

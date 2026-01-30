@@ -1,321 +1,1724 @@
 export type Json =
-    | string
-    | number
-    | boolean
-    | null
-    | { [key: string]: Json | undefined }
-    | Json[]
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export interface Database {
-    public: {
-        Tables: {
-            agent_activity_logs: {
-                Row: {
-                    agent_id: string | null
-                    created_at: string
-                    event_data: Json | null
-                    event_type: string
-                    id: string
-                    project_id: string
-                }
-                Insert: {
-                    agent_id?: string | null
-                    created_at?: string
-                    event_data?: Json | null
-                    event_type: string
-                    id?: string
-                    project_id: string
-                }
-                Update: {
-                    agent_id?: string | null
-                    created_at?: string
-                    event_data?: Json | null
-                    event_type?: string
-                    id?: string
-                    project_id?: string
-                }
-                Relationships: [
-                    {
-                        foreignKeyName: "agent_activity_logs_agent_id_fkey"
-                        columns: ["agent_id"]
-                        isOneToOne: false
-                        referencedRelation: "self_hosted_agents"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "agent_activity_logs_project_id_fkey"
-                        columns: ["project_id"]
-                        isOneToOne: false
-                        referencedRelation: "projects"
-                        referencedColumns: ["id"]
-                    },
-                ]
-            }
-            agent_execution_results: {
-                Row: {
-                    agent_id: string | null
-                    artifact_url: string | null
-                    created_at: string
-                    duration_ms: number | null
-                    error_message: string | null
-                    failed_steps: number
-                    id: string
-                    job_id: string
-                    passed_steps: number
-                    project_id: string
-                    results: Json | null
-                    screenshots: Json | null
-                    status: string
-                    total_steps: number
-                    trace_url: string | null
-                    video_url: string | null
-                }
-                Insert: {
-                    agent_id?: string | null
-                    artifact_url?: string | null
-                    created_at?: string
-                    duration_ms?: number | null
-                    error_message?: string | null
-                    failed_steps?: number
-                    id?: string
-                    job_id: string
-                    passed_steps?: number
-                    project_id: string
-                    results?: Json | null
-                    screenshots?: Json | null
-                    status: string
-                    total_steps?: number
-                    trace_url?: string | null
-                    video_url?: string | null
-                }
-                Update: {
-                    agent_id?: string | null
-                    artifact_url?: string | null
-                    created_at?: string
-                    duration_ms?: number | null
-                    error_message?: string | null
-                    failed_steps?: number
-                    id?: string
-                    job_id?: string
-                    passed_steps?: number
-                    project_id?: string
-                    results?: Json | null
-                    screenshots?: Json | null
-                    status?: string
-                    total_steps?: number
-                    trace_url?: string | null
-                    video_url?: string | null
-                }
-                Relationships: [
-                    {
-                        foreignKeyName: "agent_execution_results_agent_id_fkey"
-                        columns: ["agent_id"]
-                        isOneToOne: false
-                        referencedRelation: "self_hosted_agents"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "agent_execution_results_job_id_fkey"
-                        columns: ["job_id"]
-                        isOneToOne: false
-                        referencedRelation: "agent_job_queue"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "agent_execution_results_project_id_fkey"
-                        columns: ["project_id"]
-                        isOneToOne: false
-                        referencedRelation: "projects"
-                        referencedColumns: ["id"]
-                    },
-                ]
-            }
-            agent_job_queue: {
-                Row: {
-                    agent_id: string | null
-                    assigned_at: string | null
-                    base_url: string
-                    completed_at: string | null
-                    created_at: string
-                    created_by: string
-                    id: string
-                    max_retries: number
-                    priority: number
-                    project_id: string
-                    retries: number
-                    run_id: string
-                    started_at: string | null
-                    status: string
-                    steps: Json
-                    test_id: string
-                    updated_at: string
-                }
-                Insert: {
-                    agent_id?: string | null
-                    assigned_at?: string | null
-                    base_url: string
-                    completed_at?: string | null
-                    created_at?: string
-                    created_by: string
-                    id?: string
-                    max_retries?: number
-                    priority?: number
-                    project_id: string
-                    retries?: number
-                    run_id: string
-                    started_at?: string | null
-                    status?: string
-                    steps?: Json
-                    test_id: string
-                    updated_at?: string
-                }
-                Update: {
-                    agent_id?: string | null
-                    assigned_at?: string | null
-                    base_url?: string
-                    completed_at?: string | null
-                    created_at?: string
-                    created_by?: string
-                    id?: string
-                    max_retries?: number
-                    priority?: number
-                    project_id?: string
-                    retries?: number
-                    run_id?: string
-                    started_at?: string | null
-                    status?: string
-                    steps?: Json
-                    test_id?: string
-                    updated_at?: string
-                }
-                Relationships: [
-                    {
-                        foreignKeyName: "agent_job_queue_agent_id_fkey"
-                        columns: ["agent_id"]
-                        isOneToOne: false
-                        referencedRelation: "self_hosted_agents"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "agent_job_queue_project_id_fkey"
-                        columns: ["project_id"]
-                        isOneToOne: false
-                        referencedRelation: "projects"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "agent_job_queue_test_id_fkey"
-                        columns: ["test_id"]
-                        isOneToOne: false
-                        referencedRelation: "nocode_tests"
-                        referencedColumns: ["id"]
-                    },
-                ]
-            }
-            nocodemobile_scenarios: {
-                Row: {
-                    id: string
-                    name: string
-                    description: string | null
-                    steps: Json
-                    app_package: string | null
-                    user_id: string
-                    created_at: string
-                    updated_at: string
-                }
-                Insert: {
-                    id?: string
-                    name: string
-                    description?: string | null
-                    steps?: Json
-                    app_package?: string | null
-                    user_id: string
-                    created_at?: string
-                    updated_at?: string
-                }
-                Update: {
-                    id?: string
-                    name?: string
-                    description?: string | null
-                    steps?: Json
-                    app_package?: string | null
-                    user_id?: string
-                    created_at?: string
-                    updated_at?: string
-                }
-                Relationships: []
-            }
-            self_hosted_agents: {
-                Row: {
-                    agent_id: string
-                    agent_name: string
-                    api_token_hash: string
-                    browsers: string[] | null
-                    capacity: number
-                    config: Json | null
-                    created_at: string
-                    created_by: string
-                    id: string
-                    last_heartbeat: string | null
-                    project_id: string
-                    running_jobs: number
-                    status: string
-                    updated_at: string
-                }
-                Insert: {
-                    agent_id: string
-                    agent_name: string
-                    api_token_hash: string
-                    browsers?: string[] | null
-                    capacity?: number
-                    config?: Json | null
-                    created_at?: string
-                    created_by: string
-                    id?: string
-                    last_heartbeat?: string | null
-                    project_id: string
-                    running_jobs?: number
-                    status?: string
-                    updated_at?: string
-                }
-                Update: {
-                    agent_id?: string
-                    agent_name?: string
-                    api_token_hash?: string
-                    browsers?: string[] | null
-                    capacity?: number
-                    config?: Json | null
-                    created_at?: string
-                    created_by?: string
-                    id?: string
-                    last_heartbeat?: string | null
-                    project_id?: string
-                    running_jobs?: number
-                    status?: string
-                    updated_at?: string
-                }
-                Relationships: [
-                    {
-                        foreignKeyName: "self_hosted_agents_project_id_fkey"
-                        columns: ["project_id"]
-                        isOneToOne: false
-                        referencedRelation: "projects"
-                        referencedColumns: ["id"]
-                    },
-                ]
-            }
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
+  }
+  public: {
+    Tables: {
+      agent_job_queue: {
+        Row: {
+          agent_id: string | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_data: Json
+          job_type: string
+          result: Json | null
+          started_at: string | null
+          status: string | null
+          user_id: string
         }
-        Views: {
-            [_ in never]: never
+        Insert: {
+          agent_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_data?: Json
+          job_type: string
+          result?: Json | null
+          started_at?: string | null
+          status?: string | null
+          user_id: string
         }
-        Functions: {
-            [_ in never]: never
+        Update: {
+          agent_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_data?: Json
+          job_type?: string
+          result?: Json | null
+          started_at?: string | null
+          status?: string | null
+          user_id?: string
         }
-        Enums: {
-            [_ in never]: never
+        Relationships: [
+          {
+            foreignKeyName: "agent_job_queue_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "self_hosted_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_learning_data: {
+        Row: {
+          artifact_id: string
+          artifact_type: string
+          confidence_score: number | null
+          created_at: string
+          feedback_content: string | null
+          feedback_type: string
+          id: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
         }
-        CompositeTypes: {
-            [_ in never]: never
+        Insert: {
+          artifact_id: string
+          artifact_type: string
+          confidence_score?: number | null
+          created_at?: string
+          feedback_content?: string | null
+          feedback_type: string
+          id?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
         }
+        Update: {
+          artifact_id?: string
+          artifact_type?: string
+          confidence_score?: number | null
+          created_at?: string
+          feedback_content?: string | null
+          feedback_type?: string
+          id?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_learning_data_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_safety_controls: {
+        Row: {
+          confidence_threshold: number | null
+          created_at: string
+          enable_audit_logging: boolean | null
+          id: string
+          project_id: string | null
+          rate_limit_daily: number | null
+          require_approval_test_cases: boolean | null
+          require_approval_test_plans: boolean | null
+          require_approval_user_stories: boolean | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence_threshold?: number | null
+          created_at?: string
+          enable_audit_logging?: boolean | null
+          id?: string
+          project_id?: string | null
+          rate_limit_daily?: number | null
+          require_approval_test_cases?: boolean | null
+          require_approval_test_plans?: boolean | null
+          require_approval_user_stories?: boolean | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confidence_threshold?: number | null
+          created_at?: string
+          enable_audit_logging?: boolean | null
+          id?: string
+          project_id?: string | null
+          rate_limit_daily?: number | null
+          require_approval_test_cases?: boolean | null
+          require_approval_test_plans?: boolean | null
+          require_approval_user_stories?: boolean | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_safety_controls_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_usage_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          execution_time_ms: number | null
+          feature_type: string
+          id: string
+          openai_cost_usd: number | null
+          openai_model: string | null
+          openai_tokens_completion: number | null
+          openai_tokens_prompt: number | null
+          project_id: string | null
+          success: boolean | null
+          tokens_used: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          feature_type: string
+          id?: string
+          openai_cost_usd?: number | null
+          openai_model?: string | null
+          openai_tokens_completion?: number | null
+          openai_tokens_prompt?: number | null
+          project_id?: string | null
+          success?: boolean | null
+          tokens_used?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          feature_type?: string
+          id?: string
+          openai_cost_usd?: number | null
+          openai_model?: string | null
+          openai_tokens_completion?: number | null
+          openai_tokens_prompt?: number | null
+          project_id?: string | null
+          success?: boolean | null
+          tokens_used?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_results: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          id: string
+          logs: string | null
+          result: Json | null
+          status: string
+          test_case_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          logs?: string | null
+          result?: Json | null
+          status: string
+          test_case_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          id?: string
+          logs?: string | null
+          result?: Json | null
+          status?: string
+          test_case_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_results_test_case_id_fkey"
+            columns: ["test_case_id"]
+            isOneToOne: false
+            referencedRelation: "test_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      git_commits: {
+        Row: {
+          author: string | null
+          commit_hash: string
+          committed_at: string
+          created_at: string
+          id: string
+          message: string | null
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          author?: string | null
+          commit_hash: string
+          committed_at?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          author?: string | null
+          commit_hash?: string
+          committed_at?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "git_commits_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      git_files: {
+        Row: {
+          created_at: string
+          file_content: string | null
+          file_path: string
+          id: string
+          last_modified: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_content?: string | null
+          file_path: string
+          id?: string
+          last_modified?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_content?: string | null
+          file_path?: string
+          id?: string
+          last_modified?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "git_files_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_configs: {
+        Row: {
+          config: Json | null
+          created_at: string
+          enabled: boolean | null
+          id: string
+          integration_type: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          integration_type: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          integration_type?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_configs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_config: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_visible: boolean
+          label: string
+          menu_id: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_visible?: boolean
+          label: string
+          menu_id: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_visible?: boolean
+          label?: string
+          menu_id?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_suite_executions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          failed_tests: number
+          id: string
+          passed_tests: number
+          results: Json | null
+          started_at: string
+          status: string
+          suite_id: string
+          total_tests: number
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          failed_tests?: number
+          id?: string
+          passed_tests?: number
+          results?: Json | null
+          started_at?: string
+          status?: string
+          suite_id: string
+          total_tests?: number
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          failed_tests?: number
+          id?: string
+          passed_tests?: number
+          results?: Json | null
+          started_at?: string
+          status?: string
+          suite_id?: string
+          total_tests?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_suite_executions_suite_id_fkey"
+            columns: ["suite_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_test_suites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_suite_tests: {
+        Row: {
+          created_at: string
+          execution_order: number
+          id: string
+          suite_id: string
+          test_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          execution_order?: number
+          id?: string
+          suite_id: string
+          test_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          execution_order?: number
+          id?: string
+          suite_id?: string
+          test_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_suite_tests_suite_id_fkey"
+            columns: ["suite_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_test_suites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nocode_suite_tests_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_test_executions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          results: Json | null
+          started_at: string
+          status: string
+          test_id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          results?: Json | null
+          started_at?: string
+          status?: string
+          test_id: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          results?: Json | null
+          started_at?: string
+          status?: string
+          test_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_test_executions_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_test_folders: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_test_folders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_test_suites: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_test_suites_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_tests: {
+        Row: {
+          base_url: string
+          created_at: string
+          description: string | null
+          folder_id: string | null
+          id: string
+          name: string
+          project_id: string
+          status: string
+          steps: Json | null
+          test_case_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          base_url?: string
+          created_at?: string
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          name: string
+          project_id: string
+          status?: string
+          steps?: Json | null
+          test_case_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          base_url?: string
+          created_at?: string
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          status?: string
+          steps?: Json | null
+          test_case_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_tests_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_test_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nocode_tests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nocode_tests_test_case_id_fkey"
+            columns: ["test_case_id"]
+            isOneToOne: false
+            referencedRelation: "test_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nocode_visual_baselines: {
+        Row: {
+          baseline_image: string | null
+          created_at: string
+          id: string
+          step_name: string
+          test_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          baseline_image?: string | null
+          created_at?: string
+          id?: string
+          step_name: string
+          test_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          baseline_image?: string | null
+          created_at?: string
+          id?: string
+          step_name?: string
+          test_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nocode_visual_baselines_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "nocode_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      project_members: {
+        Row: {
+          created_at: string
+          id: string
+          invited_email: string | null
+          project_id: string
+          role: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_email?: string | null
+          project_id: string
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_email?: string | null
+          project_id?: string
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          git_branch: string | null
+          git_last_sync: string | null
+          git_repository_url: string | null
+          git_sync_status: string | null
+          id: string
+          markdown_settings: Json | null
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          git_branch?: string | null
+          git_last_sync?: string | null
+          git_repository_url?: string | null
+          git_sync_status?: string | null
+          id?: string
+          markdown_settings?: Json | null
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          git_branch?: string | null
+          git_last_sync?: string | null
+          git_repository_url?: string | null
+          git_sync_status?: string | null
+          id?: string
+          markdown_settings?: Json | null
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      qa_ai_feedback: {
+        Row: {
+          ai_output: Json | null
+          comment: string | null
+          created_at: string
+          feature_type: string
+          feedback_type: string
+          id: string
+          project_id: string | null
+          rating: number | null
+          user_id: string
+        }
+        Insert: {
+          ai_output?: Json | null
+          comment?: string | null
+          created_at?: string
+          feature_type: string
+          feedback_type: string
+          id?: string
+          project_id?: string | null
+          rating?: number | null
+          user_id: string
+        }
+        Update: {
+          ai_output?: Json | null
+          comment?: string | null
+          created_at?: string
+          feature_type?: string
+          feedback_type?: string
+          id?: string
+          project_id?: string | null
+          rating?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_ai_feedback_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qa_embeddings: {
+        Row: {
+          artifact_id: string
+          artifact_type: string
+          content: string
+          created_at: string
+          embedding_data: Json | null
+          id: string
+          is_approved: boolean | null
+          metadata: Json | null
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          artifact_id: string
+          artifact_type: string
+          content: string
+          created_at?: string
+          embedding_data?: Json | null
+          id?: string
+          is_approved?: boolean | null
+          metadata?: Json | null
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          artifact_id?: string
+          artifact_type?: string
+          content?: string
+          created_at?: string
+          embedding_data?: Json | null
+          id?: string
+          is_approved?: boolean | null
+          metadata?: Json | null
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_embeddings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qa_proven_patterns: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_public: boolean | null
+          pattern_content: Json
+          pattern_name: string
+          pattern_type: string
+          project_ids: string[] | null
+          success_rate: number | null
+          tags: string[] | null
+          updated_at: string
+          usage_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_public?: boolean | null
+          pattern_content?: Json
+          pattern_name: string
+          pattern_type: string
+          project_ids?: string[] | null
+          success_rate?: number | null
+          tags?: string[] | null
+          updated_at?: string
+          usage_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_public?: boolean | null
+          pattern_content?: Json
+          pattern_name?: string
+          pattern_type?: string
+          project_ids?: string[] | null
+          success_rate?: number | null
+          tags?: string[] | null
+          updated_at?: string
+          usage_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      qa_standards: {
+        Row: {
+          created_at: string
+          description: string | null
+          examples: Json
+          id: string
+          is_active: boolean | null
+          name: string
+          project_id: string | null
+          rules: Json
+          standard_type: string
+          updated_at: string
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          examples?: Json
+          id?: string
+          is_active?: boolean | null
+          name: string
+          project_id?: string | null
+          rules?: Json
+          standard_type: string
+          updated_at?: string
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          examples?: Json
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          project_id?: string | null
+          rules?: Json
+          standard_type?: string
+          updated_at?: string
+          user_id?: string
+          version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_standards_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_api_test_cases: {
+        Row: {
+          additional_prompt: string | null
+          auth_token: string | null
+          base_url: string | null
+          created_at: string
+          id: string
+          name: string
+          postman_collection: Json | null
+          project_id: string | null
+          swagger_content: string | null
+          swagger_url: string | null
+          test_cases: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_prompt?: string | null
+          auth_token?: string | null
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          postman_collection?: Json | null
+          project_id?: string | null
+          swagger_content?: string | null
+          swagger_url?: string | null
+          test_cases?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_prompt?: string | null
+          auth_token?: string | null
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          postman_collection?: Json | null
+          project_id?: string | null
+          swagger_content?: string | null
+          swagger_url?: string | null
+          test_cases?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_api_test_cases_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_test_plans: {
+        Row: {
+          content: Json | null
+          created_at: string
+          id: string
+          name: string
+          project_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: Json | null
+          created_at?: string
+          id?: string
+          name: string
+          project_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: Json | null
+          created_at?: string
+          id?: string
+          name?: string
+          project_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_test_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_test_reports: {
+        Row: {
+          azure_devops_data: Json | null
+          content: Json | null
+          created_at: string
+          id: string
+          jira_data: Json | null
+          name: string
+          project_id: string | null
+          project_name: string | null
+          report_content: string | null
+          report_name: string | null
+          report_type: string | null
+          statistics: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          azure_devops_data?: Json | null
+          content?: Json | null
+          created_at?: string
+          id?: string
+          jira_data?: Json | null
+          name: string
+          project_id?: string | null
+          project_name?: string | null
+          report_content?: string | null
+          report_name?: string | null
+          report_type?: string | null
+          statistics?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          azure_devops_data?: Json | null
+          content?: Json | null
+          created_at?: string
+          id?: string
+          jira_data?: Json | null
+          name?: string
+          project_id?: string | null
+          project_name?: string | null
+          report_content?: string | null
+          report_name?: string | null
+          report_type?: string | null
+          statistics?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_test_reports_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      self_hosted_agents: {
+        Row: {
+          agent_type: string
+          api_key: string | null
+          capabilities: Json | null
+          created_at: string
+          endpoint_url: string | null
+          id: string
+          last_heartbeat: string | null
+          name: string
+          project_id: string | null
+          status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_type: string
+          api_key?: string | null
+          capabilities?: Json | null
+          created_at?: string
+          endpoint_url?: string | null
+          id?: string
+          last_heartbeat?: string | null
+          name: string
+          project_id?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_type?: string
+          api_key?: string | null
+          capabilities?: Json | null
+          created_at?: string
+          endpoint_url?: string | null
+          id?: string
+          last_heartbeat?: string | null
+          name?: string
+          project_id?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "self_hosted_agents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_case_folders: {
+        Row: {
+          created_at: string
+          id: string
+          is_custom: boolean
+          name: string
+          project_id: string
+          user_id: string
+          user_story_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_custom?: boolean
+          name: string
+          project_id: string
+          user_id: string
+          user_story_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_custom?: boolean
+          name?: string
+          project_id?: string
+          user_id?: string
+          user_story_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_case_folders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_case_folders_user_story_id_fkey"
+            columns: ["user_story_id"]
+            isOneToOne: false
+            referencedRelation: "user_stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_cases: {
+        Row: {
+          automated: boolean | null
+          created_at: string
+          description: string | null
+          expected_result: string | null
+          folder_id: string | null
+          id: string
+          priority: string | null
+          project_id: string | null
+          readable_id: string | null
+          status: string | null
+          steps: Json | null
+          structured_steps: Json | null
+          test_data: Json | null
+          title: string
+          updated_at: string
+          user_id: string
+          user_story_id: string | null
+        }
+        Insert: {
+          automated?: boolean | null
+          created_at?: string
+          description?: string | null
+          expected_result?: string | null
+          folder_id?: string | null
+          id?: string
+          priority?: string | null
+          project_id?: string | null
+          readable_id?: string | null
+          status?: string | null
+          steps?: Json | null
+          structured_steps?: Json | null
+          test_data?: Json | null
+          title: string
+          updated_at?: string
+          user_id: string
+          user_story_id?: string | null
+        }
+        Update: {
+          automated?: boolean | null
+          created_at?: string
+          description?: string | null
+          expected_result?: string | null
+          folder_id?: string | null
+          id?: string
+          priority?: string | null
+          project_id?: string | null
+          readable_id?: string | null
+          status?: string | null
+          steps?: Json | null
+          structured_steps?: Json | null
+          test_data?: Json | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+          user_story_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_cases_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "test_case_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_cases_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_cases_user_story_id_fkey"
+            columns: ["user_story_id"]
+            isOneToOne: false
+            referencedRelation: "user_stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_run_cases: {
+        Row: {
+          actual_result: string | null
+          created_at: string
+          executed_at: string | null
+          executed_by: string | null
+          id: string
+          notes: string | null
+          status: string | null
+          step_results: Json | null
+          test_case_id: string | null
+          test_run_id: string | null
+          user_id: string
+        }
+        Insert: {
+          actual_result?: string | null
+          created_at?: string
+          executed_at?: string | null
+          executed_by?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          step_results?: Json | null
+          test_case_id?: string | null
+          test_run_id?: string | null
+          user_id: string
+        }
+        Update: {
+          actual_result?: string | null
+          created_at?: string
+          executed_at?: string | null
+          executed_by?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          step_results?: Json | null
+          test_case_id?: string | null
+          test_run_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_run_cases_test_case_id_fkey"
+            columns: ["test_case_id"]
+            isOneToOne: false
+            referencedRelation: "test_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_run_cases_test_run_id_fkey"
+            columns: ["test_run_id"]
+            isOneToOne: false
+            referencedRelation: "test_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          failed_cases: number | null
+          id: string
+          name: string
+          passed_cases: number | null
+          project_id: string | null
+          run_type: string | null
+          skipped_cases: number | null
+          started_at: string | null
+          status: string | null
+          total_cases: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_cases?: number | null
+          id?: string
+          name: string
+          passed_cases?: number | null
+          project_id?: string | null
+          run_type?: string | null
+          skipped_cases?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_cases?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_cases?: number | null
+          id?: string
+          name?: string
+          passed_cases?: number | null
+          project_id?: string | null
+          run_type?: string | null
+          skipped_cases?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_cases?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_stories: {
+        Row: {
+          acceptance_criteria: string | null
+          board_id: string | null
+          board_name: string | null
+          created_at: string
+          description: string | null
+          id: string
+          priority: string | null
+          project_id: string
+          readable_id: string | null
+          sprint_id: string | null
+          sprint_name: string | null
+          status: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          acceptance_criteria?: string | null
+          board_id?: string | null
+          board_name?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          priority?: string | null
+          project_id: string
+          readable_id?: string | null
+          sprint_id?: string | null
+          sprint_name?: string | null
+          status?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          acceptance_criteria?: string | null
+          board_id?: string | null
+          board_name?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          priority?: string | null
+          project_id?: string
+          readable_id?: string | null
+          sprint_id?: string | null
+          sprint_name?: string | null
+          status?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_stories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+    }
+    Enums: {
+      app_role: "admin" | "moderator" | "user"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
+  },
+} as const
