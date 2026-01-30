@@ -10,6 +10,7 @@ class RecordingService extends EventEmitter {
   constructor() {
     super();
     this.isRecording = false;
+    this.isPaused = false;
     this.recordedSteps = [];
     this.stepCounter = 0;
     this.startTime = null;
@@ -52,6 +53,7 @@ class RecordingService extends EventEmitter {
     }
 
     this.isRecording = false;
+    this.isPaused = false;
     const steps = [...this.recordedSteps];
     const duration = Date.now() - this.startTime;
 
@@ -74,10 +76,34 @@ class RecordingService extends EventEmitter {
   }
 
   /**
+   * Pause recording session
+   */
+  pauseRecording() {
+    if (!this.isRecording) {
+      throw new Error('No active recording to pause');
+    }
+    this.isPaused = true;
+    console.log(`[RecordingService] Paused recording session: ${this.sessionId}`);
+    this.emit('recording-paused', { sessionId: this.sessionId });
+  }
+
+  /**
+   * Resume recording session
+   */
+  resumeRecording() {
+    if (!this.isRecording) {
+      throw new Error('No active recording to resume');
+    }
+    this.isPaused = false;
+    console.log(`[RecordingService] Resumed recording session: ${this.sessionId}`);
+    this.emit('recording-resumed', { sessionId: this.sessionId });
+  }
+
+  /**
    * Add a step to the recording
    */
   addStep(step) {
-    if (!this.isRecording) {
+    if (!this.isRecording || this.isPaused) {
       return null;
     }
 
@@ -154,6 +180,7 @@ class RecordingService extends EventEmitter {
   getStatus() {
     return {
       recording: this.isRecording,
+      isPaused: this.isPaused,
       sessionId: this.sessionId,
       steps: this.recordedSteps.length,
       duration: this.startTime ? Date.now() - this.startTime : 0,

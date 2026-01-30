@@ -141,9 +141,8 @@ export default function Inspector() {
     return (
       <div style={{ marginLeft: depth * 16 }}>
         <div
-          className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${
-            isSelected ? "bg-primary/10 border border-primary/30" : ""
-          }`}
+          className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${isSelected ? "bg-primary/10 border border-primary/30" : ""
+            }`}
           onClick={() => setSelectedNode(node)}
         >
           {hasChildren ? (
@@ -273,8 +272,8 @@ export default function Inspector() {
                             loc.confidence === "high"
                               ? "default"
                               : loc.confidence === "medium"
-                              ? "secondary"
-                              : "outline"
+                                ? "secondary"
+                                : "outline"
                           }
                           className="shrink-0"
                         >
@@ -314,7 +313,7 @@ export default function Inspector() {
               <div>
                 <h4 className="font-medium mb-2">Using ADB + UIAutomator</h4>
                 <pre className="bg-zinc-950 text-zinc-100 p-3 rounded text-xs">
-{`# Dump UI hierarchy to device
+                  {`# Dump UI hierarchy to device
 adb shell uiautomator dump
 
 # Pull to local machine
@@ -326,7 +325,7 @@ adb pull /sdcard/window_dump.xml
               <div>
                 <h4 className="font-medium mb-2">Using Appium Inspector</h4>
                 <pre className="bg-zinc-950 text-zinc-100 p-3 rounded text-xs">
-{`# 1. Start Appium server
+                  {`# 1. Start Appium server
 appium --port 4723
 
 # 2. Open Appium Inspector app
@@ -334,7 +333,7 @@ appium --port 4723
 {
   "platformName": "Android",
   "appium:automationName": "UiAutomator2",
-  "appium:deviceName": "emulator-5554"
+  "appium:deviceName": "DEVICE_NAME"
 }`}
                 </pre>
               </div>

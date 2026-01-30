@@ -24,9 +24,6 @@ interface SelectedElement {
 
 const AGENT_URL = "http://localhost:3001";
 const projectId = "c4a1b02d-7682-4c28-874b-6e9f9024c0e9";
-/* =====================================================
-   COMPONENT
-===================================================== */
 
 export default function MobileInspector() {
   /* ---------- Inspector ---------- */
@@ -38,7 +35,7 @@ export default function MobileInspector() {
   const [config, setConfig] = useState({
     appiumHost: "127.0.0.1",
     appiumPort: "4723",
-    deviceName: "emulator-5554",
+    deviceName: "",
     platformVersion: "14",
     appPath: "", // optional .apk path
     appPackage: "com.example.app",
@@ -47,10 +44,6 @@ export default function MobileInspector() {
 
   const updateConfig = (k: string, v: string) =>
     setConfig((p) => ({ ...p, [k]: v }));
-
-  /* =====================================================
-     OPEN LOCAL APPIUM INSPECTOR
-  ===================================================== */
 
   const openLocalInspector = async () => {
     try {
@@ -75,10 +68,6 @@ export default function MobileInspector() {
       setOpening(false);
     }
   };
-
-  /* =====================================================
-     LOCATOR GENERATION
-  ===================================================== */
 
   const generateLocators = (node: SelectedElement) => {
     const locators: { type: string; value: string; confidence: string }[] = [];
@@ -121,9 +110,6 @@ export default function MobileInspector() {
     return locators;
   };
 
-  /* =====================================================
-     GENERATED CAPS & ENV
-  ===================================================== */
 
   const capabilities = useMemo(
     () => ({

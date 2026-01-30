@@ -239,6 +239,49 @@ class MobileAutomationAgent {
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
+    this.app.post("/device/scroll", async (req, res) => {
+      try {
+        const { direction, duration } = req.body;
+        const { width, height } = await deviceController.getScreenSize();
+
+        // Center X
+        const x = Math.round(width / 2);
+
+        let x1 = x, y1 = 0, x2 = x, y2 = 0;
+        const swipeDuration = duration || 1000;
+
+        // Scroll "Down" = Content moves up = Finger moves up (Start Low, End High)
+        // Scroll "Up" = Content moves down = Finger moves down (Start High, End Low)
+
+        switch (direction?.toLowerCase()) {
+          case 'down': // Drag UP
+            y1 = Math.round(height * 0.8);
+            y2 = Math.round(height * 0.2);
+            break;
+          case 'up': // Drag DOWN
+            y1 = Math.round(height * 0.2);
+            y2 = Math.round(height * 0.8);
+            break;
+          default:
+            throw new Error(`Invalid scroll direction: ${direction}`);
+        }
+
+        await deviceController.swipe(x1, y1, x2, y2, swipeDuration);
+
+        const step = {
+          type: "scroll",
+          description: `Scroll ${direction}`,
+          value: direction,
+          direction: direction,
+          timestamp: Date.now()
+        };
+
+        if (recordingService.isRecording) recordingService.addStep(step);
+
+        res.json({ success: true, step });
+      } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
     this.app.post("/device/key", async (req, res) => {
       try {
         const { keyCode, keyName } = req.body; await deviceController.pressKey(keyCode);

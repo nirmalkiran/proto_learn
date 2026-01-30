@@ -251,17 +251,78 @@ class MobileAutomationAgent {
     this.app.post("/device/hide-keyboard", async (req, res) => { try { await deviceController.hideKeyboard(req.body.deviceId); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
     /* ---------------- APP MANAGEMENT ---------------- */
-    this.app.post("/app/launch", async (req, res) => { try { await deviceController.openApp(req.body.packageName); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
-    this.app.post("/app/stop", async (req, res) => { try { await deviceController.stopApp(req.body.packageName); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
-    this.app.post("/app/clear", async (req, res) => { try { await deviceController.clearApp(req.body.packageName); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
-    this.app.get("/app/installed-packages", async (req, res) => { try { const { getInstalledPackages } = await import("./mobile-automation/utils/adb-utils.js"); res.json({ success: true, packages: await getInstalledPackages() }); } catch (e) { res.status(500).json({ error: e.message }); } });
+    this.app.post("/app/launch", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        await deviceController.openApp(packageName);
+
+        if (recordingService.isRecording) {
+          recordingService.addStep({
+            type: "openApp",
+            description: `Launch app: ${packageName}`,
+            value: packageName,
+            timestamp: Date.now()
+          });
+        }
+
+        res.json({ success: true });
+      } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    this.app.post("/app/stop", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        await deviceController.stopApp(packageName);
+        if (recordingService.isRecording) {
+          recordingService.addStep({
+            type: "stopApp",
+            description: `Force stop app: ${packageName}`,
+            value: packageName,
+            timestamp: Date.now()
+          });
+        }
+        res.json({ success: true });
+      } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    this.app.post("/app/clear", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        await deviceController.clearApp(packageName);
+        if (recordingService.isRecording) {
+          recordingService.addStep({
+            type: "clearApp",
+            description: `Clear data for app: ${packageName}`,
+            value: packageName,
+            timestamp: Date.now()
+          });
+        }
+        res.json({ success: true });
+      } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    this.app.get("/app/installed-packages", async (req, res) => { try { const { getInstalledPackages } = await import("./utils/adb-utils.js"); res.json({ success: true, packages: await getInstalledPackages() }); } catch (e) { res.status(500).json({ error: e.message }); } });
+    this.app.get("/app/check-install/:packageName", async (req, res) => { try { const { isAppInstalled } = await import("./utils/adb-utils.js"); res.json({ success: true, installed: await isAppInstalled(req.params.packageName) }); } catch (e) { res.status(500).json({ error: e.message }); } });
     this.app.post("/app/upload", async (req, res) => { try { const { base64, fileName } = req.body; const buffer = Buffer.from(base64, "base64"); const filePath = path.join(os.tmpdir(), fileName || `temp_${Date.now()}.apk`); fs.writeFileSync(filePath, buffer); res.json({ success: true, path: filePath }); } catch (e) { res.status(500).json({ error: e.message }); } });
-    this.app.post("/app/install", async (req, res) => { try { const { installApk } = await import("./mobile-automation/utils/adb-utils.js"); await installApk(req.body.apkPath); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
-    this.app.post("/device/uninstall", async (req, res) => { try { res.json({ success: true, output: await deviceController.uninstall(req.body.packageName) }); } catch (e) { res.status(500).json({ error: e.message }); } });
+    this.app.post("/app/install", async (req, res) => { try { const { installApk } = await import("./utils/adb-utils.js"); await installApk(req.body.apkPath); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+    this.app.post("/device/uninstall", async (req, res) => {
+      try {
+        const { packageName } = req.body;
+        const output = await deviceController.uninstall(packageName);
+        if (recordingService.isRecording) {
+          recordingService.addStep({
+            type: "uninstallApp",
+            description: `Uninstall app: ${packageName}`,
+            value: packageName,
+            timestamp: Date.now()
+          });
+        }
+        res.json({ success: true, output });
+      } catch (e) { res.status(500).json({ error: e.message }); }
+    });
 
     /* ---------------- RECORDING & REPLAY ---------------- */
     this.app.post("/recording/start", (req, res) => { recordingService.startRecording(); res.json({ success: true }); });
     this.app.post("/recording/stop", (req, res) => { const steps = recordingService.stopRecording(); res.json({ success: true, steps }); });
+    this.app.post("/recording/pause", (req, res) => { try { recordingService.pauseRecording(); res.json({ success: true }); } catch (e) { res.status(400).json({ error: e.message }); } });
+    this.app.post("/recording/resume", (req, res) => { try { recordingService.resumeRecording(); res.json({ success: true }); } catch (e) { res.status(400).json({ error: e.message }); } });
     this.app.get("/recording/steps", (req, res) => res.json({ success: true, steps: recordingService.getRecordedSteps() }));
 
     this.app.get("/recording/events", (req, res) => {

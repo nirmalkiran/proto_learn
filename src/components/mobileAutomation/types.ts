@@ -5,11 +5,17 @@ export interface CheckResult {
 
 export type ActionType =
     | "tap"
+    | "doubleTap"
+    | "longPress"
     | "input"
     | "scroll"
+    | "swipe"
     | "wait"
     | "assert"
-    | "openApp";
+    | "openApp"
+    | "clearCache"
+    | "hideKeyboard"
+    | "pressKey";
 
 export interface RecordedAction {
     id: string;
@@ -30,6 +36,8 @@ export interface RecordedAction {
     elementText?: string;
     elementClass?: string;
     elementContentDesc?: string;
+    // Assertion Metadata
+    assertionType?: "visible" | "text_equals" | "enabled" | "disabled" | "toast" | "screen_loaded";
 }
 
 export interface DeviceInfo {

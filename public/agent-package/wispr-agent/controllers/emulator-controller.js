@@ -104,11 +104,8 @@ class EmulatorController {
       const emulators = devices.filter(d => d.type === 'emulator');
 
       if (avd) {
-        // Check specific AVD
-        return emulators.some(emu => emu.id.includes(avd));
+        return emulators.some(emu => emu.id.includes(avd) || emu.name?.includes(avd));
       }
-
-      // Check if any emulator is running
       return emulators.length > 0;
     } catch (error) {
       console.error('[EmulatorController] Failed to check emulator status:', error.message);
@@ -124,12 +121,11 @@ class EmulatorController {
       throw new Error('Emulator executable not found. Please ensure Android SDK is installed.');
     }
 
-    if (this.isRunning) {
-      console.log('[EmulatorController] Emulator is already running');
-      return true;
-    }
-
     try {
+
+      console.log('[EmulatorController] Ensuring system is clean before starting new emulator...');
+      await this.stop();
+
       console.log(`[EmulatorController] Starting emulator${avd ? ` with AVD: ${avd}` : ''}...`);
 
       // Determine AVD to use
@@ -181,20 +177,39 @@ class EmulatorController {
    * Stop emulator
    */
   async stop() {
-    if (!this.isRunning) {
-      return true;
-    }
-
     try {
-      console.log('[EmulatorController] Stopping emulator...');
+      console.log('[EmulatorController] Stopping all running emulators...');
 
+      // 1. Try to stop via ADB (cleanest)
+      const devices = await getConnectedDevices();
+      const emulators = devices.filter(d => d.type === 'emulator');
+
+      for (const emu of emulators) {
+        try {
+          console.log(`[EmulatorController] Killing emulator instance: ${emu.id}`);
+          await execAsync(`adb -s ${emu.id} emu kill`, { timeout: 5000 }).catch(() => { });
+        } catch (e) {
+          // Ignore errors during individual kills
+        }
+      }
+
+      // 2. Stop process tracked by processManager
       await processManager.stopProcess('emulator');
+
+      // 3. Fallback: Force kill emulator processes at OS level if still running
+      if (process.platform === 'win32') {
+        await execAsync('taskkill /F /IM emulator.exe /T', { timeout: 5000 }).catch(() => { });
+        await execAsync('taskkill /F /IM qemu-system-x86_64.exe /T', { timeout: 5000 }).catch(() => { });
+      } else {
+        await execAsync('pkill -9 emulator', { timeout: 5000 }).catch(() => { });
+        await execAsync('pkill -9 qemu-system', { timeout: 5000 }).catch(() => { });
+      }
 
       this.isRunning = false;
       this.currentAvd = null;
       this.startTime = null;
 
-      console.log('[EmulatorController] Emulator stopped');
+      console.log('[EmulatorController] System cleaned of emulator processes');
       return true;
 
     } catch (error) {

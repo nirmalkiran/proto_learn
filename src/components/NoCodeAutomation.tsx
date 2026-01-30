@@ -142,35 +142,35 @@ const DraggableTest = ({
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`
   } : undefined;
   return <Card ref={setNodeRef} style={style} className={`cursor-pointer transition-all hover:shadow-md ${isSelected ? "ring-2 ring-primary" : ""} ${isDragging ? "opacity-50" : ""} ${isChecked ? "bg-primary/5" : ""}`} onClick={onSelect}>
-      <CardContent className="p-3">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            {showCheckbox && <Checkbox checked={isChecked} onCheckedChange={checked => onCheckChange(checked as boolean)} onClick={e => e.stopPropagation()} className="mr-1" />}
-            <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <h3 className="font-medium text-sm">{test.name}</h3>
+    <CardContent className="p-3">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          {showCheckbox && <Checkbox checked={isChecked} onCheckedChange={checked => onCheckChange(checked as boolean)} onClick={e => e.stopPropagation()} className="mr-1" />}
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
           </div>
-          <Select value={test.status} onValueChange={onStatusChange}>
-            <SelectTrigger className="w-auto h-5 px-1.5 text-xs" onClick={e => e.stopPropagation()}>
-              <Badge variant={test.status === "failed" ? "destructive" : "secondary"} className={`text-xs ${test.status === "passed" ? "bg-green-500 hover:bg-green-600" : test.status === "active" ? "bg-blue-500 hover:bg-blue-600" : ""}`}>
-                {test.status}
-              </Badge>
-            </SelectTrigger>
-            <SelectContent onClick={e => e.stopPropagation()}>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="passed">Passed</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-              <SelectItem value="disabled">Disabled</SelectItem>
-            </SelectContent>
-          </Select>
+          <h3 className="font-medium text-sm">{test.name}</h3>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 ml-6">
-          <span>{(Array.isArray(test.steps) ? test.steps : []).length} steps</span>
-        </div>
-      </CardContent>
-    </Card>;
+        <Select value={test.status} onValueChange={onStatusChange}>
+          <SelectTrigger className="w-auto h-5 px-1.5 text-xs" onClick={e => e.stopPropagation()}>
+            <Badge variant={test.status === "failed" ? "destructive" : "secondary"} className={`text-xs ${test.status === "passed" ? "bg-green-500 hover:bg-green-600" : test.status === "active" ? "bg-blue-500 hover:bg-blue-600" : ""}`}>
+              {test.status}
+            </Badge>
+          </SelectTrigger>
+          <SelectContent onClick={e => e.stopPropagation()}>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="passed">Passed</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="disabled">Disabled</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 ml-6">
+        <span>{(Array.isArray(test.steps) ? test.steps : []).length} steps</span>
+      </div>
+    </CardContent>
+  </Card>;
 };
 
 // Droppable Folder Component
@@ -190,8 +190,8 @@ const DroppableFolder = ({
     id
   });
   return <div ref={setNodeRef} className={`transition-colors rounded-md ${isOver ? "bg-primary/10 ring-2 ring-primary/30" : ""}`}>
-      {children}
-    </div>;
+    {children}
+  </div>;
 };
 
 // Sortable Suite Test Component
@@ -220,26 +220,26 @@ const SortableSuiteTest = ({
     opacity: isDragging ? 0.5 : 1
   };
   return <Card ref={setNodeRef} style={style} className={`border-l-4 border-l-primary/50 ${isDragging ? "shadow-lg" : ""}`}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-              {index + 1}
-            </div>
-            <div>
-              <p className="font-medium">{suiteTest.test?.name || "Unknown Test"}</p>
-              <p className="text-xs text-muted-foreground">{(suiteTest.test?.steps as any[])?.length || 0} steps</p>
-            </div>
+    <CardContent className="p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
           </div>
-          <Button variant="ghost" size="sm" onClick={onRemove}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
+            {index + 1}
+          </div>
+          <div>
+            <p className="font-medium">{suiteTest.test?.name || "Unknown Test"}</p>
+            <p className="text-xs text-muted-foreground">{(suiteTest.test?.steps as any[])?.length || 0} steps</p>
+          </div>
         </div>
-      </CardContent>
-    </Card>;
+        <Button variant="ghost" size="sm" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </CardContent>
+  </Card>;
 };
 
 // Sortable Create Step Component
@@ -274,37 +274,37 @@ const SortableCreateStep = ({
     opacity: isDragging ? 0.5 : 1
   };
   return <Card ref={setNodeRef} style={style} className={cn(isDragging ? "shadow-lg" : "", step.skip && "opacity-60")}>
-      <CardContent className="p-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <span className="text-sm font-semibold text-muted-foreground">{index + 1}.</span>
-            <Badge variant="outline">{step.type}</Badge>
-            <span className={cn("text-sm", step.skip && "line-through text-muted-foreground")}>{step.description}</span>
-            {step.skip && <Badge variant="secondary" className="text-xs">Skipped</Badge>}
+    <CardContent className="p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="flex items-center gap-1">
-            <div className="flex items-center gap-1 mr-2">
-              <Checkbox id={`skip-create-${step.id}`} checked={step.skip || false} onCheckedChange={checked => onToggleSkip(checked === true)} />
-              <Label htmlFor={`skip-create-${step.id}`} className="text-xs text-muted-foreground cursor-pointer">
-                Skip
-              </Label>
-            </div>
-            <Button size="sm" variant="ghost" onClick={onEdit} title="Edit step">
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onInsert} title="Insert step below">
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onRemove}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+          <span className="text-sm font-semibold text-muted-foreground">{index + 1}.</span>
+          <Badge variant="outline">{step.type}</Badge>
+          <span className={cn("text-sm", step.skip && "line-through text-muted-foreground")}>{step.description}</span>
+          {step.skip && <Badge variant="secondary" className="text-xs">Skipped</Badge>}
         </div>
-      </CardContent>
-    </Card>;
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 mr-2">
+            <Checkbox id={`skip-create-${step.id}`} checked={step.skip || false} onCheckedChange={checked => onToggleSkip(checked === true)} />
+            <Label htmlFor={`skip-create-${step.id}`} className="text-xs text-muted-foreground cursor-pointer">
+              Skip
+            </Label>
+          </div>
+          <Button size="sm" variant="ghost" onClick={onEdit} title="Edit step">
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onInsert} title="Insert step below">
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onRemove}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </CardContent>
+  </Card>;
 };
 export const NoCodeAutomation = ({
   projectId
@@ -596,13 +596,13 @@ export const NoCodeAutomation = ({
   // Helper function to get or create "Ungrouped Tests" folder
   const getOrCreateUngroupedFolder = async (userId: string): Promise<string> => {
     const UNGROUPED_FOLDER_NAME = "Ungrouped Tests";
-    
+
     // Check if folder already exists
     const existingFolder = folders.find(f => f.name === UNGROUPED_FOLDER_NAME);
     if (existingFolder) {
       return existingFolder.id;
     }
-    
+
     // Create the folder if it doesn't exist
     const { data, error } = await supabase
       .from("nocode_test_folders")
@@ -613,12 +613,12 @@ export const NoCodeAutomation = ({
       }])
       .select()
       .single();
-    
+
     if (error) throw error;
-    
+
     // Reload folders to include the new one
     await loadFolders();
-    
+
     return data.id;
   };
 
@@ -1647,16 +1647,75 @@ playwright/.cache/
       });
       return;
     }
+
     try {
-      setIsRunningSuite(true);
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Create suite execution record
+      // Check if we should use agent or browserbase
+      if (suiteExecutionTarget === "agent") {
+        if (!selectedSuiteAgentId) {
+          toast({
+            title: "Agent Required",
+            description: "Please select an agent to run the suite",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        const agent = availableAgents.find(a => a.id === selectedSuiteAgentId);
+        if (agent && !isAgentOnline(agent)) {
+          setShowOfflineAgentConfirm(true);
+          setPendingSuiteRun(true);
+          return;
+        }
+
+        setIsRunningSuite(true);
+        const runId = `suite_run_${Date.now()}`;
+
+        // Create a suite execution record
+        const { data: suiteExec, error: suiteExecError } = await supabase.from("nocode_suite_executions").insert({
+          suite_id: selectedSuite.id,
+          status: "pending",
+          user_id: user.id,
+          total_tests: suiteTests.length,
+          passed_tests: 0,
+          failed_tests: 0
+        }).select().single();
+
+        if (suiteExecError) throw suiteExecError;
+
+        // Queue all tests in the suite
+        for (const suiteTest of suiteTests) {
+          if (!suiteTest.test) continue;
+
+          await supabase.from("agent_job_queue").insert({
+            project_id: projectId,
+            test_id: suiteTest.test.id,
+            run_id: runId,
+            agent_id: selectedSuiteAgentId,
+            status: "pending",
+            priority: 5,
+            config: {
+              suite_execution_id: suiteExec.id,
+              baseUrl: suiteTest.test.base_url,
+              steps: suiteTest.test.steps
+            }
+          });
+        }
+
+        toast({
+          title: "Suite Scheduled",
+          description: `${suiteTests.length} tests added to the agent's queue`
+        });
+        loadSuiteExecutions(selectedSuite.id);
+        setIsRunningSuite(false);
+        return;
+      }
+
+      setIsRunningSuite(true);
+
+      // Create suite execution record for standard flow
       const {
         data: execution,
         error: execError
@@ -1668,8 +1727,10 @@ playwright/.cache/
         passed_tests: 0,
         failed_tests: 0
       }).select().single();
+
       if (execError) throw execError;
       setCurrentSuiteExecution(execution);
+
       toast({
         title: "Suite Execution Started",
         description: `Running ${suiteTests.length} tests...`
@@ -1679,6 +1740,7 @@ playwright/.cache/
       let passed = 0;
       let failed = 0;
       const results: any[] = [];
+
       for (const suiteTest of suiteTests) {
         if (!suiteTest.test) continue;
         try {
@@ -1694,10 +1756,7 @@ playwright/.cache/
           if (testExecError) throw testExecError;
 
           // Execute the test
-          const {
-            data,
-            error
-          } = await supabase.functions.invoke("execute-nocode-test", {
+          await supabase.functions.invoke("execute-nocode-test", {
             body: {
               testId: suiteTest.test.id,
               projectId: projectId,
@@ -1711,11 +1770,13 @@ playwright/.cache/
           const {
             data: updatedExec
           } = await supabase.from("nocode_test_executions").select("*").eq("id", testExec.id).single();
+
           if (updatedExec?.status === "passed") {
             passed++;
           } else {
             failed++;
           }
+
           results.push({
             test_id: suiteTest.test.id,
             test_name: suiteTest.test.name,
@@ -1750,6 +1811,7 @@ playwright/.cache/
         failed_tests: failed,
         results: results
       }).eq("id", execution.id);
+
       toast({
         title: "Suite Execution Complete",
         description: `${passed} passed, ${failed} failed`,
@@ -2492,13 +2554,13 @@ playwright/.cache/
         }
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      
+
       // If no folder selected, use "Ungrouped Tests" folder
       let folderId: string | null = selectedFolderId;
       if (!folderId) {
         folderId = await getOrCreateUngroupedFolder(user.id);
       }
-      
+
       const {
         data,
         error
@@ -2624,6 +2686,48 @@ playwright/.cache/
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Check if we should use agent or browserbase
+      if (executionTarget === "agent") {
+        if (!selectedAgentId) {
+          toast({
+            title: "Agent Required",
+            description: "Please select an agent to run the test",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        const agent = availableAgents.find(a => a.id === selectedAgentId);
+        if (agent && !isAgentOnline(agent)) {
+          setShowOfflineAgentConfirm(true);
+          setPendingTestRun(test);
+          return;
+        }
+
+        // Insert job into queue
+        const { error: jobError } = await supabase.from("agent_job_queue").insert({
+          project_id: projectId,
+          test_id: test.id,
+          run_id: `run_${Date.now()}`,
+          agent_id: selectedAgentId,
+          status: "pending",
+          priority: 10,
+          config: {
+            baseUrl: test.base_url,
+            steps: test.steps
+          }
+        });
+
+        if (jobError) throw jobError;
+
+        toast({
+          title: "Job Scheduled",
+          description: "Test has been added to the agent's queue"
+        });
+        return;
+      }
+
+      // Default Browserbase execution flow
       // Create execution record
       const {
         data: execution,
@@ -2984,13 +3088,13 @@ playwright/.cache/
         }
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      
+
       // If no folder selected, use "Ungrouped Tests" folder
       let folderId: string | null = selectedFolderId;
       if (!folderId) {
         folderId = await getOrCreateUngroupedFolder(user.id);
       }
-      
+
       const {
         error
       } = await supabase.from("nocode_tests").insert([{
@@ -3267,96 +3371,96 @@ playwright/.cache/
     }
   };
   return <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">No-Code Automation</h1>
-          <p className="text-muted-foreground mt-2">Create and run automated tests without writing any code</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExportProject}>
-            <Download className="mr-2 h-4 w-4" />
-            Export Playwright
-          </Button>
-          {activeTab === "tests" ? <>
-              <Button variant="outline" onClick={() => setShowCreateFolderDialog(true)}>
-                <Folder className="mr-2 h-4 w-4" />
-                Add Folder
-              </Button>
-              <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-                <Upload className="mr-2 h-4 w-4" />
-                Select Test Case
-              </Button>
-              <Button variant="outline" onClick={() => setShowRecordDialog(true)}>
-                <Video className="mr-2 h-4 w-4" />
-                Record Test
-              </Button>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Test
-              </Button>
-            </> : <Button onClick={() => setShowCreateSuiteDialog(true)}>
-              <FolderPlus className="mr-2 h-4 w-4" />
-              Create Suite
-            </Button>}
-        </div>
+    <div className="flex justify-between items-center">
+      <div>
+        <h1 className="text-3xl font-bold">No-Code Automation</h1>
+        <p className="text-muted-foreground mt-2">Create and run automated tests without writing any code</p>
       </div>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={handleExportProject}>
+          <Download className="mr-2 h-4 w-4" />
+          Export Playwright
+        </Button>
+        {activeTab === "tests" ? <>
+          <Button variant="outline" onClick={() => setShowCreateFolderDialog(true)}>
+            <Folder className="mr-2 h-4 w-4" />
+            Add Folder
+          </Button>
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Select Test Case
+          </Button>
+          <Button variant="outline" onClick={() => setShowRecordDialog(true)}>
+            <Video className="mr-2 h-4 w-4" />
+            Record Test
+          </Button>
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Test
+          </Button>
+        </> : <Button onClick={() => setShowCreateSuiteDialog(true)}>
+          <FolderPlus className="mr-2 h-4 w-4" />
+          Create Suite
+        </Button>}
+      </div>
+    </div>
 
-      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as "tests" | "suites")}>
-        <TabsList>
-          <TabsTrigger value="tests">
-            <Play className="mr-2 h-4 w-4" />
-            Tests
-          </TabsTrigger>
-          <TabsTrigger value="suites">
-            <Layers className="mr-2 h-4 w-4" />
-            Test Suites
-          </TabsTrigger>
-        </TabsList>
+    <Tabs value={activeTab} onValueChange={v => setActiveTab(v as "tests" | "suites")}>
+      <TabsList>
+        <TabsTrigger value="tests">
+          <Play className="mr-2 h-4 w-4" />
+          Tests
+        </TabsTrigger>
+        <TabsTrigger value="suites">
+          <Layers className="mr-2 h-4 w-4" />
+          Test Suites
+        </TabsTrigger>
+      </TabsList>
 
-        <TabsContent value="tests" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Test List */}
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Tests</CardTitle>
-                    <CardDescription>Your automated test scenarios</CardDescription>
-                  </div>
-                  {tests.length > 0 && <Checkbox checked={bulkSelectedTests.size === tests.length && tests.length > 0} onCheckedChange={handleSelectAllTests} aria-label="Select all tests" />}
+      <TabsContent value="tests" className="mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Test List */}
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Tests</CardTitle>
+                  <CardDescription>Your automated test scenarios</CardDescription>
                 </div>
-                {bulkSelectedTests.size > 0 && <div className="flex items-center justify-between mt-3 p-2 bg-primary/10 rounded-md">
-                    <span className="text-sm font-medium">{bulkSelectedTests.size} selected</span>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setShowBulkMoveDialog(true)}>
-                        <Folder className="mr-1 h-3 w-3" />
-                        Move
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={clearBulkSelection}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>}
-              </CardHeader>
-              <CardContent>
-                {isLoading ? <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div> : tests.length === 0 && folders.length === 0 ? <div className="text-center py-8 text-muted-foreground">
-                    No tests yet. Create your first test or folder to get started.
-                  </div> : <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-                    <ScrollArea className="h-[600px] pr-4">
-                      <div className="space-y-2">
-                        {/* Folders with their tests */}
-                        {folders.map(folder => {
+                {tests.length > 0 && <Checkbox checked={bulkSelectedTests.size === tests.length && tests.length > 0} onCheckedChange={handleSelectAllTests} aria-label="Select all tests" />}
+              </div>
+              {bulkSelectedTests.size > 0 && <div className="flex items-center justify-between mt-3 p-2 bg-primary/10 rounded-md">
+                <span className="text-sm font-medium">{bulkSelectedTests.size} selected</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setShowBulkMoveDialog(true)}>
+                    <Folder className="mr-1 h-3 w-3" />
+                    Move
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={clearBulkSelection}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>}
+            </CardHeader>
+            <CardContent>
+              {isLoading ? <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div> : tests.length === 0 && folders.length === 0 ? <div className="text-center py-8 text-muted-foreground">
+                No tests yet. Create your first test or folder to get started.
+              </div> : <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                <ScrollArea className="h-[600px] pr-4">
+                  <div className="space-y-2">
+                    {/* Folders with their tests */}
+                    {folders.map(folder => {
                       const folderTests = tests.filter(t => t.folder_id === folder.id);
                       const isExpanded = expandedFolders.has(folder.id);
                       return <DroppableFolder key={folder.id} id={`folder-${folder.id}`} isOver={false}>
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer group" onClick={() => toggleFolder(folder.id)}>
-                                  <div className="flex items-center gap-2">
-                                    {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                                    {isExpanded ? <FolderOpen className="h-4 w-4 text-primary" /> : <Folder className="h-4 w-4 text-muted-foreground" />}
-                                    {editingFolderId === folder.id ? <Input value={editingFolderName} onChange={e => setEditingFolderName(e.target.value)} onBlur={() => handleRenameFolder(folder.id, editingFolderName)} onKeyDown={e => {
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer group" onClick={() => toggleFolder(folder.id)}>
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                              {isExpanded ? <FolderOpen className="h-4 w-4 text-primary" /> : <Folder className="h-4 w-4 text-muted-foreground" />}
+                              {editingFolderId === folder.id ? <Input value={editingFolderName} onChange={e => setEditingFolderName(e.target.value)} onBlur={() => handleRenameFolder(folder.id, editingFolderName)} onKeyDown={e => {
                                 if (e.key === "Enter") {
                                   handleRenameFolder(folder.id, editingFolderName);
                                 } else if (e.key === "Escape") {
@@ -3367,295 +3471,295 @@ playwright/.cache/
                                 setEditingFolderId(folder.id);
                                 setEditingFolderName(folder.name);
                               }}>
-                                        {folder.name}
-                                      </span>}
-                                    <Badge variant="secondary" className="text-xs">
-                                      {folderTests.length}
-                                    </Badge>
-                                  </div>
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={e => {
+                                {folder.name}
+                              </span>}
+                              <Badge variant="secondary" className="text-xs">
+                                {folderTests.length}
+                              </Badge>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={e => {
                                 e.stopPropagation();
                                 setEditingFolderId(folder.id);
                                 setEditingFolderName(folder.name);
                               }}>
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={e => {
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={e => {
                                 e.stopPropagation();
                                 setFolderToDelete(folder.id);
                               }}>
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
 
-                                {isExpanded && <div className="ml-6 space-y-2">
-                                    {folderTests.length === 0 ? <p className="text-xs text-muted-foreground py-2 pl-2">Drop tests here</p> : folderTests.map(test => <DraggableTest key={test.id} test={test} isSelected={selectedTest?.id === test.id} onSelect={() => {
+                          {isExpanded && <div className="ml-6 space-y-2">
+                            {folderTests.length === 0 ? <p className="text-xs text-muted-foreground py-2 pl-2">Drop tests here</p> : folderTests.map(test => <DraggableTest key={test.id} test={test} isSelected={selectedTest?.id === test.id} onSelect={() => {
                               setSelectedTest(test);
                               loadExecutions(test.id);
                             }} onStatusChange={value => updateTestStatus(test.id, value)} isChecked={bulkSelectedTests.has(test.id)} onCheckChange={checked => handleBulkSelectTest(test.id, checked)} showCheckbox={bulkSelectedTests.size > 0 || true} />)}
-                                  </div>}
-                              </div>
-                            </DroppableFolder>;
+                          </div>}
+                        </div>
+                      </DroppableFolder>;
                     })}
 
-                        {/* Root level drop zone */}
-                        <DroppableFolder id="root-drop" isOver={false}>
-                          <div className="min-h-[40px]">
-                            {tests.filter(t => !t.folder_id).length > 0 && <>
-                                {folders.length > 0 && <div className="pt-2 pb-1">
-                                    <span className="text-xs font-medium text-muted-foreground">Ungrouped Tests</span>
-                                  </div>}
-                                <div className="space-y-2">
-                                  {tests.filter(t => !t.folder_id).map(test => <DraggableTest key={test.id} test={test} isSelected={selectedTest?.id === test.id} onSelect={() => {
+                    {/* Root level drop zone */}
+                    <DroppableFolder id="root-drop" isOver={false}>
+                      <div className="min-h-[40px]">
+                        {tests.filter(t => !t.folder_id).length > 0 && <>
+                          {folders.length > 0 && <div className="pt-2 pb-1">
+                            <span className="text-xs font-medium text-muted-foreground">Ungrouped Tests</span>
+                          </div>}
+                          <div className="space-y-2">
+                            {tests.filter(t => !t.folder_id).map(test => <DraggableTest key={test.id} test={test} isSelected={selectedTest?.id === test.id} onSelect={() => {
                               setSelectedTest(test);
                               loadExecutions(test.id);
                             }} onStatusChange={value => updateTestStatus(test.id, value)} isChecked={bulkSelectedTests.has(test.id)} onCheckChange={checked => handleBulkSelectTest(test.id, checked)} showCheckbox={bulkSelectedTests.size > 0 || true} />)}
-                                </div>
-                              </>}
-                            {folders.length > 0 && tests.filter(t => !t.folder_id).length === 0 && <p className="text-xs text-muted-foreground py-2 text-center">Drop here for root level</p>}
                           </div>
-                        </DroppableFolder>
+                        </>}
+                        {folders.length > 0 && tests.filter(t => !t.folder_id).length === 0 && <p className="text-xs text-muted-foreground py-2 text-center">Drop here for root level</p>}
                       </div>
-                    </ScrollArea>
-
-                    <DragOverlay>
-                      {activeId ? <Card className="shadow-lg opacity-90">
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-2">
-                              <GripVertical className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium text-sm">{tests.find(t => t.id === activeId)?.name}</span>
-                            </div>
-                          </CardContent>
-                        </Card> : null}
-                    </DragOverlay>
-                  </DndContext>}
-              </CardContent>
-            </Card>
-
-            {/* Test Details */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle>{selectedTest ? selectedTest.name : "Select a test"}</CardTitle>
-                    <CardDescription>
-                      {selectedTest ? "Test details and execution history" : "Choose a test from the list to view details"}
-                    </CardDescription>
+                    </DroppableFolder>
                   </div>
-                  {selectedTest && <div className="flex gap-2">
-                      <Button onClick={() => handleRunTest(selectedTest)} size="sm">
-                        <Play className="mr-2 h-4 w-4" />
-                        Run Test
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEditTest(selectedTest)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleCloneTest(selectedTest)}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Clone
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => setTestToDelete(selectedTest.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {selectedTest ? <div className="space-y-6">
-                    {/* Base URL */}
-                    <div>
-                      <Label className="text-sm font-semibold">Base URL</Label>
-                      <p className="text-sm text-muted-foreground mt-1">{selectedTest.base_url}</p>
-                    </div>
+                </ScrollArea>
 
-                    {/* Steps */}
-                    <div>
-                      <Label className="text-sm font-semibold mb-3 block">Test Steps</Label>
-                      <div className="space-y-2">
-                        {(Array.isArray(selectedTest.steps) ? selectedTest.steps : []).map((step: TestStep, index: number) => <Card key={step.id} className="border-l-4 border-l-primary/50">
-                              <CardContent className="p-4">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                                    {index + 1}
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-lg">{getStepIcon(step.type)}</span>
-                                      <Badge variant="outline">{step.type}</Badge>
-                                    </div>
-                                    <p className="text-sm font-medium">{step.description}</p>
-                                    {step.selector && <p className="text-xs text-muted-foreground mt-1">Selector: {step.selector}</p>}
-                                    {step.value && <p className="text-xs text-muted-foreground">Value: {step.value}</p>}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>)}
+                <DragOverlay>
+                  {activeId ? <Card className="shadow-lg opacity-90">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2">
+                        <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium text-sm">{tests.find(t => t.id === activeId)?.name}</span>
                       </div>
-                    </div>
+                    </CardContent>
+                  </Card> : null}
+                </DragOverlay>
+              </DndContext>}
+            </CardContent>
+          </Card>
 
-                    {/* Execution History */}
-                    <div>
-                      <Label className="text-sm font-semibold mb-3 block">Recent Executions</Label>
-                      {executions.length === 0 ? <p className="text-sm text-muted-foreground">No executions yet</p> : <div className="space-y-2">
-                          {executions.map(execution => <Card key={execution.id} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => {
+          {/* Test Details */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>{selectedTest ? selectedTest.name : "Select a test"}</CardTitle>
+                  <CardDescription>
+                    {selectedTest ? "Test details and execution history" : "Choose a test from the list to view details"}
+                  </CardDescription>
+                </div>
+                {selectedTest && <div className="flex gap-2">
+                  <Button onClick={() => handleRunTest(selectedTest)} size="sm">
+                    <Play className="mr-2 h-4 w-4" />
+                    Run Test
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleEditTest(selectedTest)}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleCloneTest(selectedTest)}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Clone
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => setTestToDelete(selectedTest.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {selectedTest ? <div className="space-y-6">
+                {/* Base URL */}
+                <div>
+                  <Label className="text-sm font-semibold">Base URL</Label>
+                  <p className="text-sm text-muted-foreground mt-1">{selectedTest.base_url}</p>
+                </div>
+
+                {/* Steps */}
+                <div>
+                  <Label className="text-sm font-semibold mb-3 block">Test Steps</Label>
+                  <div className="space-y-2">
+                    {(Array.isArray(selectedTest.steps) ? selectedTest.steps : []).map((step: TestStep, index: number) => <Card key={step.id} className="border-l-4 border-l-primary/50">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg">{getStepIcon(step.type)}</span>
+                              <Badge variant="outline">{step.type}</Badge>
+                            </div>
+                            <p className="text-sm font-medium">{step.description}</p>
+                            {step.selector && <p className="text-xs text-muted-foreground mt-1">Selector: {step.selector}</p>}
+                            {step.value && <p className="text-xs text-muted-foreground">Value: {step.value}</p>}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>)}
+                  </div>
+                </div>
+
+                {/* Execution History */}
+                <div>
+                  <Label className="text-sm font-semibold mb-3 block">Recent Executions</Label>
+                  {executions.length === 0 ? <p className="text-sm text-muted-foreground">No executions yet</p> : <div className="space-y-2">
+                    {executions.map(execution => <Card key={execution.id} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => {
                       setSelectedExecution(execution);
                       setShowLogsDialog(true);
                     }}>
-                              <CardContent className="p-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    {getStatusIcon(execution.status)}
-                                    <div>
-                                      <p className="text-sm font-medium capitalize">{execution.status}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {new Date(execution.started_at).toLocaleString()}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  {execution.duration_ms && <Badge variant="secondary">{execution.duration_ms}ms</Badge>}
-                                </div>
-                                {execution.error_message && <p className="text-xs text-red-500 mt-2">{execution.error_message}</p>}
-                              </CardContent>
-                            </Card>)}
-                        </div>}
-                    </div>
-                  </div> : <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                    <Eye className="h-12 w-12 mb-4 opacity-50" />
-                    <p>Select a test to view details</p>
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {getStatusIcon(execution.status)}
+                            <div>
+                              <p className="text-sm font-medium capitalize">{execution.status}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(execution.started_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          {execution.duration_ms && <Badge variant="secondary">{execution.duration_ms}ms</Badge>}
+                        </div>
+                        {execution.error_message && <p className="text-xs text-red-500 mt-2">{execution.error_message}</p>}
+                      </CardContent>
+                    </Card>)}
                   </div>}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+                </div>
+              </div> : <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Eye className="h-12 w-12 mb-4 opacity-50" />
+                <p>Select a test to view details</p>
+              </div>}
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
 
-        <TabsContent value="suites" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Suite List */}
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle>Test Suites</CardTitle>
-                <CardDescription>Groups of tests to run together</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {suites.length === 0 ? <div className="text-center py-8 text-muted-foreground">
-                    No test suites yet. Create your first suite to get started.
-                  </div> : <ScrollArea className="h-[600px] pr-4">
-                    <div className="space-y-3">
-                      {suites.map(suite => <Card key={suite.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedSuite?.id === suite.id ? "ring-2 ring-primary" : ""}`} onClick={() => {
+      <TabsContent value="suites" className="mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Suite List */}
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle>Test Suites</CardTitle>
+              <CardDescription>Groups of tests to run together</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {suites.length === 0 ? <div className="text-center py-8 text-muted-foreground">
+                No test suites yet. Create your first suite to get started.
+              </div> : <ScrollArea className="h-[600px] pr-4">
+                <div className="space-y-3">
+                  {suites.map(suite => <Card key={suite.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedSuite?.id === suite.id ? "ring-2 ring-primary" : ""}`} onClick={() => {
                     setSelectedSuite(suite);
                     loadSuiteTests(suite.id);
                     loadSuiteExecutions(suite.id);
                   }}>
-                          <CardContent className="p-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <h3 className="font-semibold">{suite.name}</h3>
-                              <Badge variant="secondary">{suite.test_count || 0} tests</Badge>
-                            </div>
-                            {suite.description && <p className="text-sm text-muted-foreground mb-3">{suite.description}</p>}
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-semibold">{suite.name}</h3>
+                        <Badge variant="secondary">{suite.test_count || 0} tests</Badge>
+                      </div>
+                      {suite.description && <p className="text-sm text-muted-foreground mb-3">{suite.description}</p>}
 
-                            {/* Suite Statistics */}
-                            {(suite.total_runs ?? 0) > 0 ? <div className="mt-3 pt-3 border-t border-border/50">
-                                <div className="grid grid-cols-3 gap-2 text-xs">
-                                  <div className="text-center">
-                                    <p className="text-muted-foreground">Pass Rate</p>
-                                    <p className={`font-semibold ${(suite.pass_rate ?? 0) >= 80 ? "text-green-500" : (suite.pass_rate ?? 0) >= 50 ? "text-yellow-500" : "text-red-500"}`}>
-                                      {suite.pass_rate ?? 0}%
-                                    </p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-muted-foreground">Total Runs</p>
-                                    <p className="font-semibold">{suite.total_runs ?? 0}</p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-muted-foreground">Last Run</p>
-                                    {suite.last_status === "passed" ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : suite.last_status === "failed" ? <XCircle className="h-4 w-4 text-red-500 mx-auto" /> : suite.last_status === "running" ? <Loader2 className="h-4 w-4 text-blue-500 animate-spin mx-auto" /> : <Circle className="h-4 w-4 text-muted-foreground mx-auto" />}
-                                  </div>
-                                </div>
-                                {suite.last_run && <p className="text-xs text-muted-foreground text-center mt-2">
-                                    Last: {new Date(suite.last_run).toLocaleDateString()}
-                                  </p>}
-                              </div> : <div className="mt-3 pt-3 border-t border-border/50">
-                                <p className="text-xs text-muted-foreground text-center">No executions yet</p>
-                              </div>}
-                          </CardContent>
-                        </Card>)}
-                    </div>
-                  </ScrollArea>}
-              </CardContent>
-            </Card>
+                      {/* Suite Statistics */}
+                      {(suite.total_runs ?? 0) > 0 ? <div className="mt-3 pt-3 border-t border-border/50">
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div className="text-center">
+                            <p className="text-muted-foreground">Pass Rate</p>
+                            <p className={`font-semibold ${(suite.pass_rate ?? 0) >= 80 ? "text-green-500" : (suite.pass_rate ?? 0) >= 50 ? "text-yellow-500" : "text-red-500"}`}>
+                              {suite.pass_rate ?? 0}%
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-muted-foreground">Total Runs</p>
+                            <p className="font-semibold">{suite.total_runs ?? 0}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-muted-foreground">Last Run</p>
+                            {suite.last_status === "passed" ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : suite.last_status === "failed" ? <XCircle className="h-4 w-4 text-red-500 mx-auto" /> : suite.last_status === "running" ? <Loader2 className="h-4 w-4 text-blue-500 animate-spin mx-auto" /> : <Circle className="h-4 w-4 text-muted-foreground mx-auto" />}
+                          </div>
+                        </div>
+                        {suite.last_run && <p className="text-xs text-muted-foreground text-center mt-2">
+                          Last: {new Date(suite.last_run).toLocaleDateString()}
+                        </p>}
+                      </div> : <div className="mt-3 pt-3 border-t border-border/50">
+                        <p className="text-xs text-muted-foreground text-center">No executions yet</p>
+                      </div>}
+                    </CardContent>
+                  </Card>)}
+                </div>
+              </ScrollArea>}
+            </CardContent>
+          </Card>
 
-            {/* Suite Details */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle>{selectedSuite ? selectedSuite.name : "Select a suite"}</CardTitle>
-                    <CardDescription>
-                      {selectedSuite ? "Suite tests and execution history" : "Choose a suite from the list to view details"}
-                    </CardDescription>
-                  </div>
-                  {selectedSuite && <div className="flex gap-2">
-                      <Button onClick={handleRunSuite} size="sm" disabled={isRunningSuite || suiteTests.length === 0}>
-                        {isRunningSuite ? <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Running...
-                          </> : <>
-                            <Play className="mr-2 h-4 w-4" />
-                            Run Suite
-                          </>}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => {
+          {/* Suite Details */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>{selectedSuite ? selectedSuite.name : "Select a suite"}</CardTitle>
+                  <CardDescription>
+                    {selectedSuite ? "Suite tests and execution history" : "Choose a suite from the list to view details"}
+                  </CardDescription>
+                </div>
+                {selectedSuite && <div className="flex gap-2">
+                  <Button onClick={handleRunSuite} size="sm" disabled={isRunningSuite || suiteTests.length === 0}>
+                    {isRunningSuite ? <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Running...
+                    </> : <>
+                      <Play className="mr-2 h-4 w-4" />
+                      Run Suite
+                    </>}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => {
                     setSelectedTestsForSuite(new Set());
                     setShowAddTestsToSuiteDialog(true);
                   }}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Tests
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteSuite(selectedSuite.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {selectedSuite ? <div className="space-y-6">
-                    {/* Suite Statistics Summary */}
-                    {(selectedSuite.total_runs ?? 0) > 0 && <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
-                        <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Pass Rate</p>
-                          <div className="flex items-center justify-center gap-2">
-                            <Progress value={selectedSuite.pass_rate ?? 0} className="h-2 w-16" />
-                            <span className={`text-lg font-bold ${(selectedSuite.pass_rate ?? 0) >= 80 ? "text-green-500" : (selectedSuite.pass_rate ?? 0) >= 50 ? "text-yellow-500" : "text-red-500"}`}>
-                              {selectedSuite.pass_rate ?? 0}%
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Total Runs</p>
-                          <p className="text-lg font-bold">{selectedSuite.total_runs ?? 0}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Tests Passed</p>
-                          <p className="text-lg font-bold text-green-500">{selectedSuite.total_passed ?? 0}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Tests Failed</p>
-                          <p className="text-lg font-bold text-red-500">{selectedSuite.total_failed ?? 0}</p>
-                        </div>
-                      </div>}
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Tests
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDeleteSuite(selectedSuite.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {selectedSuite ? <div className="space-y-6">
+                {/* Suite Statistics Summary */}
+                {(selectedSuite.total_runs ?? 0) > 0 && <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Pass Rate</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <Progress value={selectedSuite.pass_rate ?? 0} className="h-2 w-16" />
+                      <span className={`text-lg font-bold ${(selectedSuite.pass_rate ?? 0) >= 80 ? "text-green-500" : (selectedSuite.pass_rate ?? 0) >= 50 ? "text-yellow-500" : "text-red-500"}`}>
+                        {selectedSuite.pass_rate ?? 0}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Total Runs</p>
+                    <p className="text-lg font-bold">{selectedSuite.total_runs ?? 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Tests Passed</p>
+                    <p className="text-lg font-bold text-green-500">{selectedSuite.total_passed ?? 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Tests Failed</p>
+                    <p className="text-lg font-bold text-red-500">{selectedSuite.total_failed ?? 0}</p>
+                  </div>
+                </div>}
 
-                    {/* Suite Tests */}
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <Label className="text-sm font-semibold">Tests in Suite ({suiteTests.length})</Label>
-                        {suiteTests.length > 1 && <span className="text-xs text-muted-foreground">Drag to reorder execution</span>}
-                      </div>
-                      {suiteTests.length === 0 ? <p className="text-sm text-muted-foreground">
-                          No tests in this suite yet. Add some tests to get started.
-                        </p> : <DndContext sensors={suiteReorderSensors} collisionDetection={closestCenter} onDragEnd={event => {
+                {/* Suite Tests */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-sm font-semibold">Tests in Suite ({suiteTests.length})</Label>
+                    {suiteTests.length > 1 && <span className="text-xs text-muted-foreground">Drag to reorder execution</span>}
+                  </div>
+                  {suiteTests.length === 0 ? <p className="text-sm text-muted-foreground">
+                    No tests in this suite yet. Add some tests to get started.
+                  </p> : <DndContext sensors={suiteReorderSensors} collisionDetection={closestCenter} onDragEnd={event => {
                     const {
                       active,
                       over
@@ -3664,132 +3768,132 @@ playwright/.cache/
                       handleReorderSuiteTests(active.id as string, over.id as string);
                     }
                   }}>
-                          <SortableContext items={suiteTests.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-2">
-                              {suiteTests.map((suiteTest, index) => <SortableSuiteTest key={suiteTest.id} suiteTest={suiteTest} index={index} onRemove={() => handleRemoveTestFromSuite(suiteTest.id)} />)}
-                            </div>
-                          </SortableContext>
-                        </DndContext>}
-                    </div>
-
-                    {/* Suite Execution History */}
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <Label className="text-sm font-semibold">Recent Suite Executions</Label>
-                        {suiteExecutions.length > 0 && <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={exportSuiteHistoryAsCSV} className="gap-2">
-                              <FileSpreadsheet className="h-4 w-4" />
-                              CSV
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={exportSuiteHistoryAsPDF} className="gap-2">
-                              <FileText className="h-4 w-4" />
-                              PDF
-                            </Button>
-                          </div>}
+                    <SortableContext items={suiteTests.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {suiteTests.map((suiteTest, index) => <SortableSuiteTest key={suiteTest.id} suiteTest={suiteTest} index={index} onRemove={() => handleRemoveTestFromSuite(suiteTest.id)} />)}
                       </div>
-                      {suiteExecutions.length === 0 ? <p className="text-sm text-muted-foreground">No executions yet</p> : <div className="space-y-2">
-                          {suiteExecutions.map(execution => <Card key={execution.id} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => {
+                    </SortableContext>
+                  </DndContext>}
+                </div>
+
+                {/* Suite Execution History */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-sm font-semibold">Recent Suite Executions</Label>
+                    {suiteExecutions.length > 0 && <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={exportSuiteHistoryAsCSV} className="gap-2">
+                        <FileSpreadsheet className="h-4 w-4" />
+                        CSV
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={exportSuiteHistoryAsPDF} className="gap-2">
+                        <FileText className="h-4 w-4" />
+                        PDF
+                      </Button>
+                    </div>}
+                  </div>
+                  {suiteExecutions.length === 0 ? <p className="text-sm text-muted-foreground">No executions yet</p> : <div className="space-y-2">
+                    {suiteExecutions.map(execution => <Card key={execution.id} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => {
                       setSelectedSuiteExecution(execution);
                       setExpandedTestResults(new Set());
                       setTestStepResults({});
                       setShowSuiteLogsDialog(true);
                     }}>
-                              <CardContent className="p-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    {getStatusIcon(execution.status)}
-                                    <div>
-                                      <p className="text-sm font-medium capitalize">{execution.status}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {new Date(execution.started_at).toLocaleString()}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Badge variant="default">{execution.passed_tests} passed</Badge>
-                                    {execution.failed_tests > 0 && <Badge variant="destructive">{execution.failed_tests} failed</Badge>}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>)}
-                        </div>}
-                    </div>
-                  </div> : <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                    <Layers className="h-12 w-12 mb-4 opacity-50" />
-                    <p>Select a suite to view details</p>
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {getStatusIcon(execution.status)}
+                            <div>
+                              <p className="text-sm font-medium capitalize">{execution.status}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(execution.started_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge variant="default">{execution.passed_tests} passed</Badge>
+                            {execution.failed_tests > 0 && <Badge variant="destructive">{execution.failed_tests} failed</Badge>}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>)}
                   </div>}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Create Test Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create New Test</DialogTitle>
-            <DialogDescription>Define your automated test scenario with visual steps</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="testName">Test Name *</Label>
-              <Input id="testName" value={testName} onChange={e => setTestName(e.target.value)} placeholder="e.g., Login Flow Test" />
-            </div>
-            <div>
-              <Label htmlFor="testDescription">Description</Label>
-              <Textarea id="testDescription" value={testDescription} onChange={e => setTestDescription(e.target.value)} placeholder="Describe what this test does" />
-            </div>
-            <div>
-              <Label htmlFor="baseUrl">Base URL *</Label>
-              <Input id="baseUrl" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://example.com" />
-            </div>
-
-            {/* AI Step Generation Section */}
-            <div className="border rounded-lg p-4 bg-muted/30">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <h4 className="font-medium">AI Step Generation (Optional)</h4>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Upload mockups or paste HTML to automatically generate test steps using AI
-              </p>
-
-              {/* Mockup Upload Section */}
-              <div className="space-y-2 mb-4">
-                <Label className="flex items-center gap-2">
-                  <Image className="h-4 w-4" />
-                  Mockup/Screenshot Images (Up to 5)
-                </Label>
-                <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
-                  <input id="create-mockup-upload" type="file" accept="image/*" multiple onChange={handleCreateMockupFileChange} className="hidden" />
-                  <label htmlFor="create-mockup-upload" className="cursor-pointer flex flex-col items-center gap-2">
-                    <Upload className="h-6 w-6 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {createMockupFiles.length > 0 ? `${createMockupFiles.length} file${createMockupFiles.length > 1 ? "s" : ""} selected` : "Click to upload mockup images"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB each</span>
-                  </label>
                 </div>
-                {createMockupFiles.length > 0 && <div className="space-y-1">
-                    {createMockupFiles.map((file, index) => <div key={index} className="flex items-center justify-between text-sm bg-muted/50 rounded px-3 py-2">
-                        <span className="text-green-600 flex items-center gap-2">
-                          ✓ {file.name}
-                          <span className="text-xs text-muted-foreground">
-                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                          </span>
-                        </span>
-                        <Button variant="ghost" size="sm" onClick={() => removeCreateMockupFile(index)} className="h-6 px-2">
-                          Remove
-                        </Button>
-                      </div>)}
-                  </div>}
-              </div>
+              </div> : <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Layers className="h-12 w-12 mb-4 opacity-50" />
+                <p>Select a suite to view details</p>
+              </div>}
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
+    </Tabs>
 
-              {/* HTML DOM Section */}
-              <div className="space-y-2 mb-4">
-                <Label>HTML DOM Structure</Label>
-                <Textarea placeholder={`Paste your HTML DOM structure here...
+    {/* Create Test Dialog */}
+    <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create New Test</DialogTitle>
+          <DialogDescription>Define your automated test scenario with visual steps</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="testName">Test Name *</Label>
+            <Input id="testName" value={testName} onChange={e => setTestName(e.target.value)} placeholder="e.g., Login Flow Test" />
+          </div>
+          <div>
+            <Label htmlFor="testDescription">Description</Label>
+            <Textarea id="testDescription" value={testDescription} onChange={e => setTestDescription(e.target.value)} placeholder="Describe what this test does" />
+          </div>
+          <div>
+            <Label htmlFor="baseUrl">Base URL *</Label>
+            <Input id="baseUrl" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://example.com" />
+          </div>
+
+          {/* AI Step Generation Section */}
+          <div className="border rounded-lg p-4 bg-muted/30">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h4 className="font-medium">AI Step Generation (Optional)</h4>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Upload mockups or paste HTML to automatically generate test steps using AI
+            </p>
+
+            {/* Mockup Upload Section */}
+            <div className="space-y-2 mb-4">
+              <Label className="flex items-center gap-2">
+                <Image className="h-4 w-4" />
+                Mockup/Screenshot Images (Up to 5)
+              </Label>
+              <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
+                <input id="create-mockup-upload" type="file" accept="image/*" multiple onChange={handleCreateMockupFileChange} className="hidden" />
+                <label htmlFor="create-mockup-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    {createMockupFiles.length > 0 ? `${createMockupFiles.length} file${createMockupFiles.length > 1 ? "s" : ""} selected` : "Click to upload mockup images"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB each</span>
+                </label>
+              </div>
+              {createMockupFiles.length > 0 && <div className="space-y-1">
+                {createMockupFiles.map((file, index) => <div key={index} className="flex items-center justify-between text-sm bg-muted/50 rounded px-3 py-2">
+                  <span className="text-green-600 flex items-center gap-2">
+                    ✓ {file.name}
+                    <span className="text-xs text-muted-foreground">
+                      ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </span>
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => removeCreateMockupFile(index)} className="h-6 px-2">
+                    Remove
+                  </Button>
+                </div>)}
+              </div>}
+            </div>
+
+            {/* HTML DOM Section */}
+            <div className="space-y-2 mb-4">
+              <Label>HTML DOM Structure</Label>
+              <Textarea placeholder={`Paste your HTML DOM structure here...
 
 Example:
 <div class="login-form">
@@ -3797,52 +3901,52 @@ Example:
   <input id="password" type="password" placeholder="Password" />
   <button id="login-btn">Login</button>
 </div>`} value={createHtmlDom} onChange={e => setCreateHtmlDom(e.target.value)} className="min-h-[100px] font-mono text-sm" />
-              </div>
-
-              {/* Generate Steps Button */}
-              {(createMockupFiles.length > 0 || createHtmlDom.trim()) && <div className="space-y-3">
-                  <Button variant="outline" className="w-full" onClick={handleGenerateStepsFromMockups} disabled={isGeneratingSteps || !baseUrl.trim()}>
-                    {isGeneratingSteps ? <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating Steps...
-                      </> : <>
-                        <Wand2 className="h-4 w-4 mr-2" />
-                        Generate Test Steps with AI
-                      </>}
-                  </Button>
-                  {!baseUrl.trim() && <p className="text-xs text-destructive text-center">Please enter a Base URL first</p>}
-                  {isGeneratingSteps && <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Analyzing and generating steps...</span>
-                        <span className="font-medium">{generationProgress}%</span>
-                      </div>
-                      <Progress value={generationProgress} className="h-2" />
-                    </div>}
-                </div>}
             </div>
 
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <Label>Test Steps</Label>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => {
+            {/* Generate Steps Button */}
+            {(createMockupFiles.length > 0 || createHtmlDom.trim()) && <div className="space-y-3">
+              <Button variant="outline" className="w-full" onClick={handleGenerateStepsFromMockups} disabled={isGeneratingSteps || !baseUrl.trim()}>
+                {isGeneratingSteps ? <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating Steps...
+                </> : <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Generate Test Steps with AI
+                </>}
+              </Button>
+              {!baseUrl.trim() && <p className="text-xs text-destructive text-center">Please enter a Base URL first</p>}
+              {isGeneratingSteps && <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Analyzing and generating steps...</span>
+                  <span className="font-medium">{generationProgress}%</span>
+                </div>
+                <Progress value={generationProgress} className="h-2" />
+              </div>}
+            </div>}
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <Label>Test Steps</Label>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => {
                   setImportStepsTarget("create");
                   setImportFromTestId("");
                   setShowImportStepsDialog(true);
                 }}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Steps
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowStepDialog(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Step
-                  </Button>
-                </div>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Steps
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setShowStepDialog(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Step
+                </Button>
               </div>
-              {currentSteps.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">No steps added yet. Add steps manually or use AI generation above.</p> : <DndContext sensors={createStepSensors} collisionDetection={closestCenter} onDragEnd={handleCreateStepDragEnd}>
-                  <SortableContext items={currentSteps.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-2">
-                      {currentSteps.map((step, index) => <SortableCreateStep key={step.id} step={step} index={index} onEdit={() => handleEditCreateStep(index)} onInsert={() => {
+            </div>
+            {currentSteps.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">No steps added yet. Add steps manually or use AI generation above.</p> : <DndContext sensors={createStepSensors} collisionDetection={closestCenter} onDragEnd={handleCreateStepDragEnd}>
+              <SortableContext items={currentSteps.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {currentSteps.map((step, index) => <SortableCreateStep key={step.id} step={step} index={index} onEdit={() => handleEditCreateStep(index)} onInsert={() => {
                     setInsertStepAtIndex(index);
                     setShowStepDialog(true);
                   }} onRemove={() => handleRemoveStep(step.id)} onToggleSkip={skip => {
@@ -3853,22 +3957,22 @@ Example:
                     };
                     setCurrentSteps(updated);
                   }} />)}
-                    </div>
-                  </SortableContext>
-                </DndContext>}
-            </div>
+                </div>
+              </SortableContext>
+            </DndContext>}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateTest}>Create Test</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreateTest}>Create Test</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Import Test Case Dialog */}
-      <Dialog open={showImportDialog} onOpenChange={open => {
+    {/* Import Test Case Dialog */}
+    <Dialog open={showImportDialog} onOpenChange={open => {
       if (!open) {
         resetElementExtraction();
         setSelectedTestCaseId("");
@@ -3876,85 +3980,85 @@ Example:
       }
       setShowImportDialog(open);
     }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Import Test Case</DialogTitle>
-            <DialogDescription>
-              Select a test case and optionally provide mockup images or HTML DOM for better element extraction
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6">
-            {/* Folder Selection */}
-            <div>
-              <Label>Import to Folder (Optional)</Label>
-              <Select value={importToFolderId || "none"} onValueChange={v => setImportToFolderId(v === "none" ? null : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a folder" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No folder (root level)</SelectItem>
-                  {folders.map(folder => <SelectItem key={folder.id} value={folder.id}>
-                      <div className="flex items-center gap-2">
-                        <Folder className="h-4 w-4" />
-                        {folder.name}
-                      </div>
-                    </SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Test Case Selection */}
-            <div>
-              <Label>Select Test Case</Label>
-              <Select value={selectedTestCaseId} onValueChange={setSelectedTestCaseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a test case" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTestCases.map(tc => <SelectItem key={tc.id} value={tc.id}>
-                      {tc.title}
-                      {tc.user_stories && ` - ${tc.user_stories.title}`}
-                    </SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedTestCaseId && <>
-                {/* Mockup Upload Section */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Image className="h-4 w-4" />
-                    Mockup/Screenshot Images (Optional - Up to 5)
-                  </Label>
-                  <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
-                    <input id="mockup-upload-nocode" type="file" accept="image/*" multiple onChange={handleMockupFileChange} className="hidden" />
-                    <label htmlFor="mockup-upload-nocode" className="cursor-pointer flex flex-col items-center gap-2">
-                      <Upload className="h-6 w-6 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        {mockupFiles.length > 0 ? `${mockupFiles.length} file${mockupFiles.length > 1 ? "s" : ""} selected` : "Click to upload mockup images"}
-                      </span>
-                      <span className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB each</span>
-                    </label>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Import Test Case</DialogTitle>
+          <DialogDescription>
+            Select a test case and optionally provide mockup images or HTML DOM for better element extraction
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6">
+          {/* Folder Selection */}
+          <div>
+            <Label>Import to Folder (Optional)</Label>
+            <Select value={importToFolderId || "none"} onValueChange={v => setImportToFolderId(v === "none" ? null : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a folder" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No folder (root level)</SelectItem>
+                {folders.map(folder => <SelectItem key={folder.id} value={folder.id}>
+                  <div className="flex items-center gap-2">
+                    <Folder className="h-4 w-4" />
+                    {folder.name}
                   </div>
-                  {mockupFiles.length > 0 && <div className="space-y-1">
-                      {mockupFiles.map((file, index) => <div key={index} className="flex items-center justify-between text-sm bg-muted/50 rounded px-3 py-2">
-                          <span className="text-green-600 flex items-center gap-2">
-                            ✓ {file.name}
-                            <span className="text-xs text-muted-foreground">
-                              ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                            </span>
-                          </span>
-                          <Button variant="ghost" size="sm" onClick={() => removeMockupFile(index)} className="h-6 px-2">
-                            Remove
-                          </Button>
-                        </div>)}
-                    </div>}
-                </div>
+                </SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
 
-                {/* HTML DOM Section */}
-                <div className="space-y-2">
-                  <Label>HTML DOM Structure (Optional)</Label>
-                  <Textarea placeholder={`Paste your HTML DOM structure here...
+          {/* Test Case Selection */}
+          <div>
+            <Label>Select Test Case</Label>
+            <Select value={selectedTestCaseId} onValueChange={setSelectedTestCaseId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a test case" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTestCases.map(tc => <SelectItem key={tc.id} value={tc.id}>
+                  {tc.title}
+                  {tc.user_stories && ` - ${tc.user_stories.title}`}
+                </SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {selectedTestCaseId && <>
+            {/* Mockup Upload Section */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Image className="h-4 w-4" />
+                Mockup/Screenshot Images (Optional - Up to 5)
+              </Label>
+              <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
+                <input id="mockup-upload-nocode" type="file" accept="image/*" multiple onChange={handleMockupFileChange} className="hidden" />
+                <label htmlFor="mockup-upload-nocode" className="cursor-pointer flex flex-col items-center gap-2">
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    {mockupFiles.length > 0 ? `${mockupFiles.length} file${mockupFiles.length > 1 ? "s" : ""} selected` : "Click to upload mockup images"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB each</span>
+                </label>
+              </div>
+              {mockupFiles.length > 0 && <div className="space-y-1">
+                {mockupFiles.map((file, index) => <div key={index} className="flex items-center justify-between text-sm bg-muted/50 rounded px-3 py-2">
+                  <span className="text-green-600 flex items-center gap-2">
+                    ✓ {file.name}
+                    <span className="text-xs text-muted-foreground">
+                      ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </span>
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => removeMockupFile(index)} className="h-6 px-2">
+                    Remove
+                  </Button>
+                </div>)}
+              </div>}
+            </div>
+
+            {/* HTML DOM Section */}
+            <div className="space-y-2">
+              <Label>HTML DOM Structure (Optional)</Label>
+              <Textarea placeholder={`Paste your HTML DOM structure here...
 
 Example:
 <div class="login-form">
@@ -3962,979 +4066,979 @@ Example:
   <input id="password" type="password" placeholder="Password" />
   <button id="login-btn">Login</button>
 </div>`} value={htmlDom} onChange={e => setHtmlDom(e.target.value)} className="min-h-[120px] font-mono text-sm" />
+              <p className="text-xs text-muted-foreground">
+                Provide HTML structure for more accurate element locators
+              </p>
+            </div>
+
+            {/* Extract Elements Button */}
+            {(mockupFiles.length > 0 || htmlDom.trim()) && <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium">Element Extraction</h4>
                   <p className="text-xs text-muted-foreground">
-                    Provide HTML structure for more accurate element locators
+                    Use AI to extract UI elements from mockups/DOM before conversion
                   </p>
                 </div>
+                <Button variant="outline" size="sm" onClick={handleExtractElements} disabled={isExtracting}>
+                  {isExtracting ? <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Extracting...
+                  </> : <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Extract Elements
+                  </>}
+                </Button>
+              </div>
+              {isExtracting && <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Extracting elements...</span>
+                  <span className="font-medium">{extractionProgress}%</span>
+                </div>
+                <Progress value={extractionProgress} className="h-2" />
+              </div>}
+              {parsedElements.length > 0 && <div className="flex items-center gap-2 text-sm text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                {parsedElements.length} elements extracted ({selectedElements.size} selected)
+                <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setShowElementExtractionDialog(true)}>
+                  View/Edit
+                </Button>
+              </div>}
+            </div>}
 
-                {/* Extract Elements Button */}
-                {(mockupFiles.length > 0 || htmlDom.trim()) && <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium">Element Extraction</h4>
-                        <p className="text-xs text-muted-foreground">
-                          Use AI to extract UI elements from mockups/DOM before conversion
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={handleExtractElements} disabled={isExtracting}>
-                        {isExtracting ? <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Extracting...
-                          </> : <>
-                            <Eye className="h-4 w-4 mr-2" />
-                            Extract Elements
-                          </>}
-                      </Button>
-                    </div>
-                    {isExtracting && <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Extracting elements...</span>
-                          <span className="font-medium">{extractionProgress}%</span>
-                        </div>
-                        <Progress value={extractionProgress} className="h-2" />
-                      </div>}
-                    {parsedElements.length > 0 && <div className="flex items-center gap-2 text-sm text-green-600">
-                        <CheckCircle2 className="h-4 w-4" />
-                        {parsedElements.length} elements extracted ({selectedElements.size} selected)
-                        <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setShowElementExtractionDialog(true)}>
-                          View/Edit
-                        </Button>
-                      </div>}
-                  </div>}
-
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Smart Conversion</AlertTitle>
-                  <AlertDescription>
-                    Natural language test steps will be converted to automation steps.
-                    {parsedElements.length > 0 && " Extracted elements will be used for better selector accuracy."} You
-                    can review and edit before creating.
-                  </AlertDescription>
-                </Alert>
-              </>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Smart Conversion</AlertTitle>
+              <AlertDescription>
+                Natural language test steps will be converted to automation steps.
+                {parsedElements.length > 0 && " Extracted elements will be used for better selector accuracy."} You
+                can review and edit before creating.
+              </AlertDescription>
+            </Alert>
+          </>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowImportDialog(false);
             resetElementExtraction();
             setSelectedTestCaseId("");
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleImportTestCase} disabled={!selectedTestCaseId || isExtracting}>
-              Preview Conversion
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleImportTestCase} disabled={!selectedTestCaseId || isExtracting}>
+            Preview Conversion
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Element Extraction Selection Dialog */}
-      <Dialog open={showElementExtractionDialog} onOpenChange={setShowElementExtractionDialog}>
-        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Extracted UI Elements</DialogTitle>
-            <DialogDescription>Select elements to use for generating automation selectors</DialogDescription>
-          </DialogHeader>
+    {/* Element Extraction Selection Dialog */}
+    <Dialog open={showElementExtractionDialog} onOpenChange={setShowElementExtractionDialog}>
+      <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Extracted UI Elements</DialogTitle>
+          <DialogDescription>Select elements to use for generating automation selectors</DialogDescription>
+        </DialogHeader>
 
-          <div className="flex items-center justify-between py-2">
-            <span className="text-sm text-muted-foreground">
-              {selectedElements.size} of {parsedElements.length} elements selected
-            </span>
-            <Button variant="ghost" size="sm" onClick={toggleSelectAllElements}>
-              {selectedElements.size === parsedElements.length ? "Deselect All" : "Select All"}
-            </Button>
+        <div className="flex items-center justify-between py-2">
+          <span className="text-sm text-muted-foreground">
+            {selectedElements.size} of {parsedElements.length} elements selected
+          </span>
+          <Button variant="ghost" size="sm" onClick={toggleSelectAllElements}>
+            {selectedElements.size === parsedElements.length ? "Deselect All" : "Select All"}
+          </Button>
+        </div>
+
+        <ScrollArea className="flex-1 pr-4">
+          <div className="space-y-2">
+            {parsedElements.map((element, index) => <div key={index} className={`flex items-start gap-3 p-3 rounded-md border transition-colors ${selectedElements.has(index) ? "bg-primary/5 border-primary/20" : "hover:bg-muted/50"}`}>
+              <Checkbox id={`element-${index}`} checked={selectedElements.has(index)} onCheckedChange={() => toggleElement(index)} className="mt-1" />
+              <label htmlFor={`element-${index}`} className="flex-1 cursor-pointer space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{element.name}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {element.tagName}
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground font-mono break-all">{element.locatorStrategy}</div>
+              </label>
+            </div>)}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="pt-4 border-t">
+          <Button variant="outline" onClick={() => setShowElementExtractionDialog(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Confirmation Dialog */}
+    <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Confirm Test Conversion</DialogTitle>
+          <DialogDescription>Review the converted automation steps before creating the test</DialogDescription>
+        </DialogHeader>
+
+        {conversionPreview && <div className="space-y-6">
+          <div>
+            <h3 className="font-semibold mb-2">Test Case: {conversionPreview.testCase.title}</h3>
+            <p className="text-sm text-muted-foreground">{conversionPreview.testCase.description}</p>
           </div>
 
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-2">
-              {parsedElements.map((element, index) => <div key={index} className={`flex items-start gap-3 p-3 rounded-md border transition-colors ${selectedElements.has(index) ? "bg-primary/5 border-primary/20" : "hover:bg-muted/50"}`}>
-                  <Checkbox id={`element-${index}`} checked={selectedElements.has(index)} onCheckedChange={() => toggleElement(index)} className="mt-1" />
-                  <label htmlFor={`element-${index}`} className="flex-1 cursor-pointer space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{element.name}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {element.tagName}
-                      </Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground font-mono break-all">{element.locatorStrategy}</div>
-                  </label>
-                </div>)}
-            </div>
-          </ScrollArea>
+          <Tabs defaultValue="original" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="original">Original Steps</TabsTrigger>
+              <TabsTrigger value="converted">Converted Steps</TabsTrigger>
+            </TabsList>
 
-          <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setShowElementExtractionDialog(false)}>
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmation Dialog */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Confirm Test Conversion</DialogTitle>
-            <DialogDescription>Review the converted automation steps before creating the test</DialogDescription>
-          </DialogHeader>
-
-          {conversionPreview && <div className="space-y-6">
-              <div>
-                <h3 className="font-semibold mb-2">Test Case: {conversionPreview.testCase.title}</h3>
-                <p className="text-sm text-muted-foreground">{conversionPreview.testCase.description}</p>
-              </div>
-
-              <Tabs defaultValue="original" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="original">Original Steps</TabsTrigger>
-                  <TabsTrigger value="converted">Converted Steps</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="original" className="space-y-2">
-                  <Label className="text-sm font-semibold">Natural Language Steps</Label>
-                  {conversionPreview.originalSteps.map((step, index) => <Card key={index}>
-                      <CardContent className="p-3">
-                        <div className="flex items-start gap-2">
-                          <span className="font-semibold text-muted-foreground">{index + 1}.</span>
-                          <p className="text-sm">{step}</p>
-                        </div>
-                      </CardContent>
-                    </Card>)}
-                </TabsContent>
-
-                <TabsContent value="converted" className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-semibold">Automation Steps (Editable)</Label>
-                    <p className="text-xs text-muted-foreground">Adjust selectors and values as needed</p>
+            <TabsContent value="original" className="space-y-2">
+              <Label className="text-sm font-semibold">Natural Language Steps</Label>
+              {conversionPreview.originalSteps.map((step, index) => <Card key={index}>
+                <CardContent className="p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="font-semibold text-muted-foreground">{index + 1}.</span>
+                    <p className="text-sm">{step}</p>
                   </div>
-                  {editedSteps.map((step, index) => <Card key={step.id} className="border-l-4 border-l-primary/50">
-                      <CardContent className="p-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-semibold text-xs">
-                              {index + 1}
-                            </div>
-                            <span className="text-lg">{getStepIcon(step.type)}</span>
-                          </div>
+                </CardContent>
+              </Card>)}
+            </TabsContent>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <Label htmlFor={`action-${index}`} className="text-xs text-muted-foreground">
-                                Action Type
-                              </Label>
-                              <Select value={step.type} onValueChange={value => updateEditedStep(index, "type", value)}>
-                                <SelectTrigger id={`action-${index}`} className="h-9">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="navigate">Navigate</SelectItem>
-                                  <SelectItem value="click">Click</SelectItem>
-                                  <SelectItem value="type">Type</SelectItem>
-                                  <SelectItem value="verify">Verify</SelectItem>
-                                  <SelectItem value="wait">Wait</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label htmlFor={`description-${index}`} className="text-xs text-muted-foreground">
-                                Description
-                              </Label>
-                              <Input id={`description-${index}`} value={step.description} onChange={e => updateEditedStep(index, "description", e.target.value)} className="h-9" />
-                            </div>
-                          </div>
+            <TabsContent value="converted" className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Automation Steps (Editable)</Label>
+                <p className="text-xs text-muted-foreground">Adjust selectors and values as needed</p>
+              </div>
+              {editedSteps.map((step, index) => <Card key={step.id} className="border-l-4 border-l-primary/50">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-semibold text-xs">
+                        {index + 1}
+                      </div>
+                      <span className="text-lg">{getStepIcon(step.type)}</span>
+                    </div>
 
-                          {step.type !== "wait" && <div>
-                              <Label htmlFor={`selector-${index}`} className="text-xs text-muted-foreground">
-                                CSS Selector
-                              </Label>
-                              <Input id={`selector-${index}`} value={step.selector || ""} onChange={e => updateEditedStep(index, "selector", e.target.value)} placeholder="e.g., #username, .btn-primary, [data-testid='login']" className="font-mono text-xs h-9" />
-                            </div>}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor={`action-${index}`} className="text-xs text-muted-foreground">
+                          Action Type
+                        </Label>
+                        <Select value={step.type} onValueChange={value => updateEditedStep(index, "type", value)}>
+                          <SelectTrigger id={`action-${index}`} className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="navigate">Navigate</SelectItem>
+                            <SelectItem value="click">Click</SelectItem>
+                            <SelectItem value="type">Type</SelectItem>
+                            <SelectItem value="verify">Verify</SelectItem>
+                            <SelectItem value="wait">Wait</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor={`description-${index}`} className="text-xs text-muted-foreground">
+                          Description
+                        </Label>
+                        <Input id={`description-${index}`} value={step.description} onChange={e => updateEditedStep(index, "description", e.target.value)} className="h-9" />
+                      </div>
+                    </div>
 
-                          {(step.type === "type" || step.type === "verify" || step.type === "navigate") && <div>
-                              <Label htmlFor={`value-${index}`} className="text-xs text-muted-foreground">
-                                {step.type === "type" ? "Text to Type" : step.type === "navigate" ? "URL" : "Expected Value"}
-                              </Label>
-                              <Input id={`value-${index}`} value={step.value || ""} onChange={e => updateEditedStep(index, "value", e.target.value)} placeholder={step.type === "type" ? "Enter text" : step.type === "navigate" ? "https://example.com" : "Expected value"} className="h-9" />
-                            </div>}
-                        </div>
-                      </CardContent>
-                    </Card>)}
-                </TabsContent>
-              </Tabs>
+                    {step.type !== "wait" && <div>
+                      <Label htmlFor={`selector-${index}`} className="text-xs text-muted-foreground">
+                        CSS Selector
+                      </Label>
+                      <Input id={`selector-${index}`} value={step.selector || ""} onChange={e => updateEditedStep(index, "selector", e.target.value)} placeholder="e.g., #username, .btn-primary, [data-testid='login']" className="font-mono text-xs h-9" />
+                    </div>}
 
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Review Required</AlertTitle>
-                <AlertDescription>
-                  Please review the converted steps. You can edit them after creation if needed. The conversion is based
-                  on keyword detection and may require manual adjustment.
-                </AlertDescription>
-              </Alert>
-            </div>}
+                    {(step.type === "type" || step.type === "verify" || step.type === "navigate") && <div>
+                      <Label htmlFor={`value-${index}`} className="text-xs text-muted-foreground">
+                        {step.type === "type" ? "Text to Type" : step.type === "navigate" ? "URL" : "Expected Value"}
+                      </Label>
+                      <Input id={`value-${index}`} value={step.value || ""} onChange={e => updateEditedStep(index, "value", e.target.value)} placeholder={step.type === "type" ? "Enter text" : step.type === "navigate" ? "https://example.com" : "Expected value"} className="h-9" />
+                    </div>}
+                  </div>
+                </CardContent>
+              </Card>)}
+            </TabsContent>
+          </Tabs>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Review Required</AlertTitle>
+            <AlertDescription>
+              Please review the converted steps. You can edit them after creation if needed. The conversion is based
+              on keyword detection and may require manual adjustment.
+            </AlertDescription>
+          </Alert>
+        </div>}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowConfirmDialog(false);
             setConversionPreview(null);
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmImport}>Confirm & Create Test</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmImport}>Confirm & Create Test</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Live Progress Dialog */}
-      <Dialog open={showLiveProgressDialog} onOpenChange={setShowLiveProgressDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Test Execution in Progress</DialogTitle>
-            <DialogDescription>Watch your test execute in real-time</DialogDescription>
-          </DialogHeader>
+    {/* Live Progress Dialog */}
+    <Dialog open={showLiveProgressDialog} onOpenChange={setShowLiveProgressDialog}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Test Execution in Progress</DialogTitle>
+          <DialogDescription>Watch your test execute in real-time</DialogDescription>
+        </DialogHeader>
 
-          {liveExecution && <div className="flex-1 overflow-hidden flex flex-col">
-              {/* Status Bar */}
-              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg mb-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    {(liveExecution.status === "running" || liveExecution.status === "cancelling") && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
-                    {liveExecution.status === "passed" && <CheckCircle2 className="h-5 w-5 text-green-500" />}
-                    {liveExecution.status === "failed" && <XCircle className="h-5 w-5 text-red-500" />}
-                    {liveExecution.status === "cancelled" && <Circle className="h-5 w-5 text-yellow-500" />}
-                    <span className="font-semibold capitalize">
-                      {isCancelling ? "Cancelling..." : liveExecution.status}
-                    </span>
-                  </div>
-                  {liveExecution.results && Array.isArray(liveExecution.results) && <Badge variant="secondary">
-                      {liveExecution.results.length} /{" "}
-                      {selectedTest?.steps && Array.isArray(selectedTest.steps) ? selectedTest.steps.length : 0} steps
-                    </Badge>}
-                </div>
-                {liveExecution.status === "running" && !isCancelling && <Button variant="destructive" size="sm" onClick={handleCancelTest}>
-                    Cancel Test
-                  </Button>}
+        {liveExecution && <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Status Bar */}
+          <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg mb-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                {(liveExecution.status === "running" || liveExecution.status === "cancelling") && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+                {liveExecution.status === "passed" && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+                {liveExecution.status === "failed" && <XCircle className="h-5 w-5 text-red-500" />}
+                {liveExecution.status === "cancelled" && <Circle className="h-5 w-5 text-yellow-500" />}
+                <span className="font-semibold capitalize">
+                  {isCancelling ? "Cancelling..." : liveExecution.status}
+                </span>
               </div>
+              {liveExecution.results && Array.isArray(liveExecution.results) && <Badge variant="secondary">
+                {liveExecution.results.length} /{" "}
+                {selectedTest?.steps && Array.isArray(selectedTest.steps) ? selectedTest.steps.length : 0} steps
+              </Badge>}
+            </div>
+            {liveExecution.status === "running" && !isCancelling && <Button variant="destructive" size="sm" onClick={handleCancelTest}>
+              Cancel Test
+            </Button>}
+          </div>
 
-              {/* Live Steps Progress */}
-              <ScrollArea className="flex-1 pr-4 overflow-auto">
-                {liveExecution.results && Array.isArray(liveExecution.results) ? <div className="space-y-3">
-                    {liveExecution.results.map((result: any, index: number) => <Card key={index} className={`border-l-4 ${result.status === "passed" ? "border-l-green-500 animate-in slide-in-from-left" : result.status === "failed" ? "border-l-red-500 animate-in slide-in-from-left" : "border-l-yellow-500"}`}>
-                        <CardContent className="p-4">
-                          <div className="space-y-3">
-                            {/* Step Header */}
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-start gap-3">
-                                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                                  {index + 1}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Badge variant="outline" className="font-mono text-xs">
-                                      {result.step?.type || "unknown"}
-                                    </Badge>
-                                    {result.status === "passed" ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : result.status === "failed" ? <XCircle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-                                    <span className="text-xs font-semibold capitalize">{result.status}</span>
-                                  </div>
-                                  <p className="text-sm font-medium">{result.step?.description || "No description"}</p>
-                                </div>
-                              </div>
-                              {result.duration && <Badge variant="secondary" className="text-xs">
-                                  {result.duration}ms
-                                </Badge>}
-                            </div>
-
-                            {/* Step Details */}
-                            <div className="ml-10 space-y-2">
-                              {result.step?.selector && <div className="flex items-start gap-2 text-xs">
-                                  <span className="text-muted-foreground font-semibold min-w-[80px]">Selector:</span>
-                                  <code className="font-mono bg-muted px-2 py-1 rounded text-xs">
-                                    {result.step.selector}
-                                  </code>
-                                </div>}
-                              {result.step?.value && <div className="flex items-start gap-2 text-xs">
-                                  <span className="text-muted-foreground font-semibold min-w-[80px]">Value:</span>
-                                  <span className="font-mono bg-muted px-2 py-1 rounded text-xs">
-                                    {result.step.value}
-                                  </span>
-                                </div>}
-                              {result.error && <div className="flex flex-col gap-2 text-xs mt-2">
-                                  <span className="text-red-500 font-semibold">Error Log:</span>
-                                  <pre className="text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded text-xs whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto font-mono border border-red-200 dark:border-red-900">
-                                    {result.error}
-                                  </pre>
-                                </div>}
-                              {result.screenshot && <div className="mt-2">
-                                  <img src={result.screenshot} alt={`Step ${index + 1}`} className="w-full max-w-xl border rounded-lg shadow-sm cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFullscreenScreenshot(result.screenshot)} title="Click to view fullscreen" />
-                                </div>}
-                            </div>
+          {/* Live Steps Progress */}
+          <ScrollArea className="flex-1 pr-4 overflow-auto">
+            {liveExecution.results && Array.isArray(liveExecution.results) ? <div className="space-y-3">
+              {liveExecution.results.map((result: any, index: number) => <Card key={index} className={`border-l-4 ${result.status === "passed" ? "border-l-green-500 animate-in slide-in-from-left" : result.status === "failed" ? "border-l-red-500 animate-in slide-in-from-left" : "border-l-yellow-500"}`}>
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    {/* Step Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary font-semibold text-sm">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {result.step?.type || "unknown"}
+                            </Badge>
+                            {result.status === "passed" ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : result.status === "failed" ? <XCircle className="h-4 w-4 text-red-500" /> : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                            <span className="text-xs font-semibold capitalize">{result.status}</span>
                           </div>
-                        </CardContent>
-                      </Card>)}
+                          <p className="text-sm font-medium">{result.step?.description || "No description"}</p>
+                        </div>
+                      </div>
+                      {result.duration && <Badge variant="secondary" className="text-xs">
+                        {result.duration}ms
+                      </Badge>}
+                    </div>
 
-                    {/* Show pending steps */}
-                    {selectedTest?.steps && Array.isArray(selectedTest.steps) && liveExecution.results && Array.isArray(liveExecution.results) && liveExecution.results.length < selectedTest.steps.length && <>
-                          {selectedTest.steps.slice(liveExecution.results.length).map((step: TestStep, idx: number) => <Card key={`pending-${idx}`} className="border-l-4 border-l-gray-300 opacity-50">
-                              <CardContent className="p-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
-                                    {liveExecution.results.length + idx + 1}
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <Badge variant="outline" className="font-mono text-xs">
-                                        {step.type}
-                                      </Badge>
-                                      <span className="text-xs text-muted-foreground">Pending</span>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">{step.description}</p>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>)}
-                        </>}
-                  </div> : <div className="flex flex-col items-center justify-center py-12">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-                    <p className="text-muted-foreground">Initializing test execution...</p>
-                  </div>}
-              </ScrollArea>
+                    {/* Step Details */}
+                    <div className="ml-10 space-y-2">
+                      {result.step?.selector && <div className="flex items-start gap-2 text-xs">
+                        <span className="text-muted-foreground font-semibold min-w-[80px]">Selector:</span>
+                        <code className="font-mono bg-muted px-2 py-1 rounded text-xs">
+                          {result.step.selector}
+                        </code>
+                      </div>}
+                      {result.step?.value && <div className="flex items-start gap-2 text-xs">
+                        <span className="text-muted-foreground font-semibold min-w-[80px]">Value:</span>
+                        <span className="font-mono bg-muted px-2 py-1 rounded text-xs">
+                          {result.step.value}
+                        </span>
+                      </div>}
+                      {result.error && <div className="flex flex-col gap-2 text-xs mt-2">
+                        <span className="text-red-500 font-semibold">Error Log:</span>
+                        <pre className="text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded text-xs whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto font-mono border border-red-200 dark:border-red-900">
+                          {result.error}
+                        </pre>
+                      </div>}
+                      {result.screenshot && <div className="mt-2">
+                        <img src={result.screenshot} alt={`Step ${index + 1}`} className="w-full max-w-xl border rounded-lg shadow-sm cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFullscreenScreenshot(result.screenshot)} title="Click to view fullscreen" />
+                      </div>}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>)}
+
+              {/* Show pending steps */}
+              {selectedTest?.steps && Array.isArray(selectedTest.steps) && liveExecution.results && Array.isArray(liveExecution.results) && liveExecution.results.length < selectedTest.steps.length && <>
+                {selectedTest.steps.slice(liveExecution.results.length).map((step: TestStep, idx: number) => <Card key={`pending-${idx}`} className="border-l-4 border-l-gray-300 opacity-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+                        {liveExecution.results.length + idx + 1}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {step.type}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">Pending</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{step.description}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>)}
+              </>}
+            </div> : <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+              <p className="text-muted-foreground">Initializing test execution...</p>
             </div>}
+          </ScrollArea>
+        </div>}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowLiveProgressDialog(false);
             setIsCancelling(false);
           }} disabled={liveExecution?.status === "running" || isCancelling}>
-              {liveExecution?.status === "running" || isCancelling ? "Running..." : "Close"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {liveExecution?.status === "running" || isCancelling ? "Running..." : "Close"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Execution Logs Dialog */}
-      <Dialog open={showLogsDialog} onOpenChange={setShowLogsDialog}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Execution Logs</DialogTitle>
-            <DialogDescription>
-              Detailed step-by-step execution results
-              {selectedExecution && ` - ${new Date(selectedExecution.started_at).toLocaleString()}`}
-            </DialogDescription>
-          </DialogHeader>
+    {/* Execution Logs Dialog */}
+    <Dialog open={showLogsDialog} onOpenChange={setShowLogsDialog}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Execution Logs</DialogTitle>
+          <DialogDescription>
+            Detailed step-by-step execution results
+            {selectedExecution && ` - ${new Date(selectedExecution.started_at).toLocaleString()}`}
+          </DialogDescription>
+        </DialogHeader>
 
-          {selectedExecution && <div className="flex-1 overflow-hidden flex flex-col">
-              {/* Summary Section */}
-              <div className="grid grid-cols-4 gap-4 mb-4 p-4 bg-muted/30 rounded-lg">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Status</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    {getStatusIcon(selectedExecution.status)}
-                    <span className="font-semibold capitalize">{selectedExecution.status}</span>
+        {selectedExecution && <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Summary Section */}
+          <div className="grid grid-cols-4 gap-4 mb-4 p-4 bg-muted/30 rounded-lg">
+            <div>
+              <Label className="text-xs text-muted-foreground">Status</Label>
+              <div className="flex items-center gap-2 mt-1">
+                {getStatusIcon(selectedExecution.status)}
+                <span className="font-semibold capitalize">{selectedExecution.status}</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Duration</Label>
+              <p className="font-semibold mt-1">
+                {selectedExecution.duration_ms ? `${selectedExecution.duration_ms}ms` : "N/A"}
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Started</Label>
+              <p className="font-semibold mt-1 text-sm">
+                {new Date(selectedExecution.started_at).toLocaleTimeString()}
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Completed</Label>
+              <p className="font-semibold mt-1 text-sm">
+                {selectedExecution.completed_at ? new Date(selectedExecution.completed_at).toLocaleTimeString() : "N/A"}
+              </p>
+            </div>
+          </div>
+          <ScrollArea className="h-[400px] pr-4">
+            {/* Error Message */}
+            {selectedExecution.error_message && <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Execution Error</AlertTitle>
+              <AlertDescription>{selectedExecution.error_message}</AlertDescription>
+            </Alert>}
+
+            {/* Auto Heal Button for Failed Tests */}
+            {selectedExecution.status === "failed" && selectedExecution.results?.some((r: any) => r.status === "failed") && <div className="mb-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/20 rounded-lg">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-sm">AI Auto-Heal</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Let AI analyze and fix the failing test steps
+                    </p>
                   </div>
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Duration</Label>
-                  <p className="font-semibold mt-1">
-                    {selectedExecution.duration_ms ? `${selectedExecution.duration_ms}ms` : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Started</Label>
-                  <p className="font-semibold mt-1 text-sm">
-                    {new Date(selectedExecution.started_at).toLocaleTimeString()}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Completed</Label>
-                  <p className="font-semibold mt-1 text-sm">
-                    {selectedExecution.completed_at ? new Date(selectedExecution.completed_at).toLocaleTimeString() : "N/A"}
-                  </p>
-                </div>
+                <Button onClick={handleAutoHeal} disabled={isAutoHealing} className="gap-2">
+                  {isAutoHealing ? <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyzing...
+                  </> : <>
+                    <Wand2 className="h-4 w-4" />
+                    Auto-Heal
+                  </>}
+                </Button>
               </div>
-              <ScrollArea className="h-[400px] pr-4">
-                {/* Error Message */}
-                {selectedExecution.error_message && <Alert variant="destructive" className="mb-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Execution Error</AlertTitle>
-                    <AlertDescription>{selectedExecution.error_message}</AlertDescription>
-                  </Alert>}
-
-                {/* Auto Heal Button for Failed Tests */}
-                {selectedExecution.status === "failed" && selectedExecution.results?.some((r: any) => r.status === "failed") && <div className="mb-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/20">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-primary/20 rounded-lg">
-                            <Sparkles className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <h4 className="font-semibold text-sm">AI Auto-Heal</h4>
-                            <p className="text-xs text-muted-foreground">
-                              Let AI analyze and fix the failing test steps
-                            </p>
-                          </div>
-                        </div>
-                        <Button onClick={handleAutoHeal} disabled={isAutoHealing} className="gap-2">
-                          {isAutoHealing ? <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Analyzing...
-                            </> : <>
-                              <Wand2 className="h-4 w-4" />
-                              Auto-Heal
-                            </>}
-                        </Button>
-                      </div>
-                    </div>}
-
-                {/* Step Results */}
-                {selectedExecution.results && Array.isArray(selectedExecution.results) ? <div className="space-y-3">
-                    {selectedExecution.results.map((result: any, index: number) => <Card key={index} className={`border-l-4 ${result.status === "passed" ? "border-l-green-500" : result.status === "failed" ? "border-l-red-500" : "border-l-yellow-500"}`}>
-                        <CardContent className="p-4">
-                          <div className="space-y-3">
-                            {/* Step Header */}
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-start gap-3">
-                                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                                  {index + 1}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Badge variant="outline" className="font-mono text-xs">
-                                      {result.step?.type || "unknown"}
-                                    </Badge>
-                                    {result.status === "passed" ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : result.status === "failed" ? <XCircle className="h-4 w-4 text-red-500" /> : <Circle className="h-4 w-4 text-yellow-500" />}
-                                    <span className="text-xs font-semibold capitalize">{result.status}</span>
-                                  </div>
-                                  <p className="text-sm font-medium">{result.step?.description || "No description"}</p>
-                                </div>
-                              </div>
-                              {result.duration && <Badge variant="secondary" className="text-xs">
-                                  {result.duration}ms
-                                </Badge>}
-                            </div>
-
-                            {/* Step Details */}
-                            <div className="ml-10 space-y-2">
-                              {result.step?.selector && <div className="flex items-start gap-2 text-xs">
-                                  <span className="text-muted-foreground font-semibold min-w-[80px]">Selector:</span>
-                                  <code className="font-mono bg-muted px-2 py-1 rounded">{result.step.selector}</code>
-                                </div>}
-                              {result.step?.value && <div className="flex items-start gap-2 text-xs">
-                                  <span className="text-muted-foreground font-semibold min-w-[80px]">Value:</span>
-                                  <span className="font-mono bg-muted px-2 py-1 rounded">{result.step.value}</span>
-                                </div>}
-                              {result.error && <div className="flex flex-col gap-2 text-xs mt-2">
-                                  <span className="text-red-500 font-semibold">Error Log:</span>
-                                  <pre className="text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded text-xs whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto font-mono border border-red-200 dark:border-red-900">
-                                    {result.error}
-                                  </pre>
-                                </div>}
-
-                              {/* Visual Regression Results */}
-                              {(result.step?.type === "visualRegression" || result.step?.type === "visualRegressionElement") && <div className="mt-3 p-3 bg-muted/50 rounded-lg space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-semibold flex items-center gap-2">
-                                      <Eye className="h-4 w-4" />
-                                      Visual Regression
-                                    </Label>
-                                    {result.step?.extraData?.visualDiff && <Badge variant="destructive" className="text-xs">
-                                        {result.step.extraData.mismatchPercentage}% difference
-                                      </Badge>}
-                                    {result.step?.extraData?.visualMatch && <Badge variant="default" className="text-xs bg-green-500">
-                                        Match ({result.step.extraData.mismatchPercentage}% diff)
-                                      </Badge>}
-                                    {result.step?.extraData?.noBaselineYet && <Badge variant="secondary" className="text-xs">
-                                        No Baseline
-                                      </Badge>}
-                                  </div>
-
-                                  {/* No baseline message */}
-                                  {result.step?.extraData?.noBaselineYet && <div className="flex items-center justify-between p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200 dark:border-yellow-800">
-                                      <span className="text-xs text-yellow-700 dark:text-yellow-300">
-                                        No baseline exists. Save the current screenshot as baseline.
-                                      </span>
-                                      <Button size="sm" variant="outline" onClick={() => handleSaveBaseline(result.step.id, result.step.description, result.step.extraData.currentScreenshot)} disabled={isSavingBaseline} className="gap-1">
-                                        {isSavingBaseline ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                                        Save as Baseline
-                                      </Button>
-                                    </div>}
-
-                                  {/* Visual diff available */}
-                                  {result.step?.extraData?.visualDiff && <div className="flex items-center justify-between p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-800">
-                                      <span className="text-xs text-red-700 dark:text-red-300">
-                                        Visual difference detected (threshold: {result.step.extraData.threshold}%)
-                                      </span>
-                                      <div className="flex gap-2">
-                                        <Button size="sm" variant="outline" onClick={() => handleViewVisualComparison(result)} className="gap-1">
-                                          <Eye className="h-3 w-3" />
-                                          Compare
-                                        </Button>
-                                        <Button size="sm" variant="outline" onClick={() => handleSaveBaseline(result.step.id, result.step.description, result.step.extraData.currentScreenshot)} disabled={isSavingBaseline} className="gap-1">
-                                          {isSavingBaseline ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                                          Update Baseline
-                                        </Button>
-                                      </div>
-                                    </div>}
-                                </div>}
-
-                              {result.screenshot && <div className="mt-3">
-                                  <Label className="text-xs text-muted-foreground mb-2 block">Screenshot</Label>
-                                  <img src={result.screenshot} alt={`Step ${index + 1} screenshot`} className="w-full max-w-2xl border rounded-lg shadow-sm cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFullscreenScreenshot(result.screenshot)} title="Click to view fullscreen" />
-                                </div>}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>)}
-                  </div> : <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <AlertCircle className="h-12 w-12 mb-4 opacity-50" />
-                    <p>No detailed logs available for this execution</p>
-                  </div>}
-              </ScrollArea>
             </div>}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLogsDialog(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {/* Step Results */}
+            {selectedExecution.results && Array.isArray(selectedExecution.results) ? <div className="space-y-3">
+              {selectedExecution.results.map((result: any, index: number) => <Card key={index} className={`border-l-4 ${result.status === "passed" ? "border-l-green-500" : result.status === "failed" ? "border-l-red-500" : "border-l-yellow-500"}`}>
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    {/* Step Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary font-semibold text-sm">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {result.step?.type || "unknown"}
+                            </Badge>
+                            {result.status === "passed" ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : result.status === "failed" ? <XCircle className="h-4 w-4 text-red-500" /> : <Circle className="h-4 w-4 text-yellow-500" />}
+                            <span className="text-xs font-semibold capitalize">{result.status}</span>
+                          </div>
+                          <p className="text-sm font-medium">{result.step?.description || "No description"}</p>
+                        </div>
+                      </div>
+                      {result.duration && <Badge variant="secondary" className="text-xs">
+                        {result.duration}ms
+                      </Badge>}
+                    </div>
 
-      {/* Add Step Dialog */}
-      <Dialog open={showStepDialog} onOpenChange={open => {
+                    {/* Step Details */}
+                    <div className="ml-10 space-y-2">
+                      {result.step?.selector && <div className="flex items-start gap-2 text-xs">
+                        <span className="text-muted-foreground font-semibold min-w-[80px]">Selector:</span>
+                        <code className="font-mono bg-muted px-2 py-1 rounded">{result.step.selector}</code>
+                      </div>}
+                      {result.step?.value && <div className="flex items-start gap-2 text-xs">
+                        <span className="text-muted-foreground font-semibold min-w-[80px]">Value:</span>
+                        <span className="font-mono bg-muted px-2 py-1 rounded">{result.step.value}</span>
+                      </div>}
+                      {result.error && <div className="flex flex-col gap-2 text-xs mt-2">
+                        <span className="text-red-500 font-semibold">Error Log:</span>
+                        <pre className="text-red-500 bg-red-50 dark:bg-red-950/20 px-3 py-2 rounded text-xs whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto font-mono border border-red-200 dark:border-red-900">
+                          {result.error}
+                        </pre>
+                      </div>}
+
+                      {/* Visual Regression Results */}
+                      {(result.step?.type === "visualRegression" || result.step?.type === "visualRegressionElement") && <div className="mt-3 p-3 bg-muted/50 rounded-lg space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold flex items-center gap-2">
+                            <Eye className="h-4 w-4" />
+                            Visual Regression
+                          </Label>
+                          {result.step?.extraData?.visualDiff && <Badge variant="destructive" className="text-xs">
+                            {result.step.extraData.mismatchPercentage}% difference
+                          </Badge>}
+                          {result.step?.extraData?.visualMatch && <Badge variant="default" className="text-xs bg-green-500">
+                            Match ({result.step.extraData.mismatchPercentage}% diff)
+                          </Badge>}
+                          {result.step?.extraData?.noBaselineYet && <Badge variant="secondary" className="text-xs">
+                            No Baseline
+                          </Badge>}
+                        </div>
+
+                        {/* No baseline message */}
+                        {result.step?.extraData?.noBaselineYet && <div className="flex items-center justify-between p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200 dark:border-yellow-800">
+                          <span className="text-xs text-yellow-700 dark:text-yellow-300">
+                            No baseline exists. Save the current screenshot as baseline.
+                          </span>
+                          <Button size="sm" variant="outline" onClick={() => handleSaveBaseline(result.step.id, result.step.description, result.step.extraData.currentScreenshot)} disabled={isSavingBaseline} className="gap-1">
+                            {isSavingBaseline ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                            Save as Baseline
+                          </Button>
+                        </div>}
+
+                        {/* Visual diff available */}
+                        {result.step?.extraData?.visualDiff && <div className="flex items-center justify-between p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-800">
+                          <span className="text-xs text-red-700 dark:text-red-300">
+                            Visual difference detected (threshold: {result.step.extraData.threshold}%)
+                          </span>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleViewVisualComparison(result)} className="gap-1">
+                              <Eye className="h-3 w-3" />
+                              Compare
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => handleSaveBaseline(result.step.id, result.step.description, result.step.extraData.currentScreenshot)} disabled={isSavingBaseline} className="gap-1">
+                              {isSavingBaseline ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                              Update Baseline
+                            </Button>
+                          </div>
+                        </div>}
+                      </div>}
+
+                      {result.screenshot && <div className="mt-3">
+                        <Label className="text-xs text-muted-foreground mb-2 block">Screenshot</Label>
+                        <img src={result.screenshot} alt={`Step ${index + 1} screenshot`} className="w-full max-w-2xl border rounded-lg shadow-sm cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFullscreenScreenshot(result.screenshot)} title="Click to view fullscreen" />
+                      </div>}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>)}
+            </div> : <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <AlertCircle className="h-12 w-12 mb-4 opacity-50" />
+              <p>No detailed logs available for this execution</p>
+            </div>}
+          </ScrollArea>
+        </div>}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowLogsDialog(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Add Step Dialog */}
+    <Dialog open={showStepDialog} onOpenChange={open => {
       setShowStepDialog(open);
       if (!open) {
         resetStepForm();
         setInsertStepAtIndex(null);
       }
     }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{editCreateStepIndex !== null ? "Edit Test Step" : "Add Test Step"}</DialogTitle>
-            <DialogDescription>
-              {editCreateStepIndex !== null ? "Modify the step configuration" : "Select an action category and configure the step"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-            {/* Category Selection */}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-2 block">Action Category</Label>
-              <div className="flex flex-wrap gap-1">
-                {ACTION_CATEGORIES.map(cat => <Button key={cat.id} variant={selectedActionCategory === cat.id ? "default" : "outline"} size="sm" onClick={() => {
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{editCreateStepIndex !== null ? "Edit Test Step" : "Add Test Step"}</DialogTitle>
+          <DialogDescription>
+            {editCreateStepIndex !== null ? "Modify the step configuration" : "Select an action category and configure the step"}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-hidden flex flex-col space-y-4">
+          {/* Category Selection */}
+          <div>
+            <Label className="text-xs text-muted-foreground mb-2 block">Action Category</Label>
+            <div className="flex flex-wrap gap-1">
+              {ACTION_CATEGORIES.map(cat => <Button key={cat.id} variant={selectedActionCategory === cat.id ? "default" : "outline"} size="sm" onClick={() => {
                 setSelectedActionCategory(cat.id);
                 const actions = getActionsByCategory(cat.id);
                 if (actions.length > 0) setStepType(actions[0].type);
               }} className="text-xs h-7">
-                    <span className="mr-1">{cat.icon}</span>
-                    {cat.label}
-                  </Button>)}
-              </div>
+                <span className="mr-1">{cat.icon}</span>
+                {cat.label}
+              </Button>)}
             </div>
+          </div>
 
-            {/* Action Selection */}
-            <div>
-              <Label htmlFor="stepType">Action Type</Label>
-              <Select value={stepType} onValueChange={(value: any) => {
+          {/* Action Selection */}
+          <div>
+            <Label htmlFor="stepType">Action Type</Label>
+            <Select value={stepType} onValueChange={(value: any) => {
               setStepType(value);
               setStepExtraData({});
             }}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-[200px]">
-                  {getActionsByCategory(selectedActionCategory).map(action => <SelectItem key={action.type} value={action.type}>
-                      <span className="flex items-center gap-2">
-                        <span>{action.icon}</span>
-                        <span>{action.label}</span>
-                      </span>
-                    </SelectItem>)}
-                </SelectContent>
-              </Select>
-              {getActionDefinition(stepType)?.description && <p className="text-xs text-muted-foreground mt-1">{getActionDefinition(stepType)?.description}</p>}
-            </div>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-[200px]">
+                {getActionsByCategory(selectedActionCategory).map(action => <SelectItem key={action.type} value={action.type}>
+                  <span className="flex items-center gap-2">
+                    <span>{action.icon}</span>
+                    <span>{action.label}</span>
+                  </span>
+                </SelectItem>)}
+              </SelectContent>
+            </Select>
+            {getActionDefinition(stepType)?.description && <p className="text-xs text-muted-foreground mt-1">{getActionDefinition(stepType)?.description}</p>}
+          </div>
 
-            {/* Dynamic Fields based on Action */}
-            <ScrollArea className="flex-1 pr-4 overflow-auto">
-              <div className="space-y-4">
-                {/* Selector Field */}
-                {getActionDefinition(stepType)?.requiresSelector && <div>
-                    <Label htmlFor="stepSelector">Element Selector *</Label>
-                    <Input id="stepSelector" value={stepSelector} onChange={e => setStepSelector(e.target.value)} placeholder="e.g., #username, .submit-button, [data-testid='login']" className="font-mono text-sm" />
-                    <p className="text-xs text-muted-foreground mt-1">CSS selector, XPath, or Playwright locator</p>
-                  </div>}
+          {/* Dynamic Fields based on Action */}
+          <ScrollArea className="flex-1 pr-4 overflow-auto">
+            <div className="space-y-4">
+              {/* Selector Field */}
+              {getActionDefinition(stepType)?.requiresSelector && <div>
+                <Label htmlFor="stepSelector">Element Selector *</Label>
+                <Input id="stepSelector" value={stepSelector} onChange={e => setStepSelector(e.target.value)} placeholder="e.g., #username, .submit-button, [data-testid='login']" className="font-mono text-sm" />
+                <p className="text-xs text-muted-foreground mt-1">CSS selector, XPath, or Playwright locator</p>
+              </div>}
 
-                {/* Value Field */}
-                {getActionDefinition(stepType)?.requiresValue && <div>
-                    <Label htmlFor="stepValue">{getActionDefinition(stepType)?.valueLabel || "Value"} *</Label>
-                    <Input id="stepValue" value={stepValue} onChange={e => setStepValue(e.target.value)} placeholder={getActionDefinition(stepType)?.valuePlaceholder || "Enter value..."} />
-                  </div>}
+              {/* Value Field */}
+              {getActionDefinition(stepType)?.requiresValue && <div>
+                <Label htmlFor="stepValue">{getActionDefinition(stepType)?.valueLabel || "Value"} *</Label>
+                <Input id="stepValue" value={stepValue} onChange={e => setStepValue(e.target.value)} placeholder={getActionDefinition(stepType)?.valuePlaceholder || "Enter value..."} />
+              </div>}
 
-                {/* Extra Fields */}
-                {getActionDefinition(stepType)?.extraFields?.map(field => <div key={field.name}>
-                    <Label htmlFor={`extra-${field.name}`}>
-                      {field.label} {field.required && "*"}
-                    </Label>
-                    {field.type === "select" ? <Select value={stepExtraData[field.name] || ""} onValueChange={v => setStepExtraData({
+              {/* Extra Fields */}
+              {getActionDefinition(stepType)?.extraFields?.map(field => <div key={field.name}>
+                <Label htmlFor={`extra-${field.name}`}>
+                  {field.label} {field.required && "*"}
+                </Label>
+                {field.type === "select" ? <Select value={stepExtraData[field.name] || ""} onValueChange={v => setStepExtraData({
                   ...stepExtraData,
                   [field.name]: v
                 })}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {field.options?.map(opt => <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>)}
-                        </SelectContent>
-                      </Select> : <Input id={`extra-${field.name}`} type={field.type === "number" ? "number" : "text"} value={stepExtraData[field.name] || ""} onChange={e => setStepExtraData({
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options?.map(opt => <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>)}
+                  </SelectContent>
+                </Select> : <Input id={`extra-${field.name}`} type={field.type === "number" ? "number" : "text"} value={stepExtraData[field.name] || ""} onChange={e => setStepExtraData({
                   ...stepExtraData,
                   [field.name]: e.target.value
                 })} placeholder={field.placeholder} />}
-                  </div>)}
+              </div>)}
 
-                {/* Description Field */}
-                <div>
-                  <Label htmlFor="stepDescription">Description *</Label>
-                  <Input id="stepDescription" value={stepDescription} onChange={e => setStepDescription(e.target.value)} placeholder="Describe what this step does" />
-                </div>
-
-                {/* Skip Step Checkbox */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="stepSkip" checked={stepSkip} onCheckedChange={checked => setStepSkip(checked === true)} />
-                  <Label htmlFor="stepSkip" className="text-sm font-normal cursor-pointer">
-                    Skip this step during execution
-                  </Label>
-                </div>
+              {/* Description Field */}
+              <div>
+                <Label htmlFor="stepDescription">Description *</Label>
+                <Input id="stepDescription" value={stepDescription} onChange={e => setStepDescription(e.target.value)} placeholder="Describe what this step does" />
               </div>
-            </ScrollArea>
-          </div>
-          <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => {
+
+              {/* Skip Step Checkbox */}
+              <div className="flex items-center space-x-2">
+                <Checkbox id="stepSkip" checked={stepSkip} onCheckedChange={checked => setStepSkip(checked === true)} />
+                <Label htmlFor="stepSkip" className="text-sm font-normal cursor-pointer">
+                  Skip this step during execution
+                </Label>
+              </div>
+            </div>
+          </ScrollArea>
+        </div>
+        <DialogFooter className="pt-4 border-t">
+          <Button variant="outline" onClick={() => {
             setShowStepDialog(false);
             resetStepForm();
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddStep}>
-              {editCreateStepIndex !== null ? "Update Step" : "Add Step"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleAddStep}>
+            {editCreateStepIndex !== null ? "Update Step" : "Add Step"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Edit Test Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Test</DialogTitle>
-            <DialogDescription>Modify test details and automation steps</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="editTestName">Test Name *</Label>
-              <Input id="editTestName" value={editTestName} onChange={e => setEditTestName(e.target.value)} placeholder="e.g., Login Flow Test" />
-            </div>
-            <div>
-              <Label htmlFor="editTestDescription">Description</Label>
-              <Textarea id="editTestDescription" value={editTestDescription} onChange={e => setEditTestDescription(e.target.value)} placeholder="Describe what this test does" />
-            </div>
-            <div>
-              <Label htmlFor="editBaseUrl">Base URL *</Label>
-              <Input id="editBaseUrl" value={editBaseUrl} onChange={e => setEditBaseUrl(e.target.value)} placeholder="https://example.com" />
-            </div>
+    {/* Edit Test Dialog */}
+    <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Test</DialogTitle>
+          <DialogDescription>Modify test details and automation steps</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="editTestName">Test Name *</Label>
+            <Input id="editTestName" value={editTestName} onChange={e => setEditTestName(e.target.value)} placeholder="e.g., Login Flow Test" />
+          </div>
+          <div>
+            <Label htmlFor="editTestDescription">Description</Label>
+            <Textarea id="editTestDescription" value={editTestDescription} onChange={e => setEditTestDescription(e.target.value)} placeholder="Describe what this test does" />
+          </div>
+          <div>
+            <Label htmlFor="editBaseUrl">Base URL *</Label>
+            <Input id="editBaseUrl" value={editBaseUrl} onChange={e => setEditBaseUrl(e.target.value)} placeholder="https://example.com" />
+          </div>
 
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <Label>Test Steps</Label>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => {
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <Label>Test Steps</Label>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => {
                   setImportStepsTarget("edit");
                   setImportFromTestId("");
                   setShowImportStepsDialog(true);
                 }}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Steps
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowEditStepDialog(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Step
-                  </Button>
-                </div>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Steps
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setShowEditStepDialog(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Step
+                </Button>
               </div>
-              {editTestSteps.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">No steps added yet</p> : <ScrollArea className="h-[400px] pr-4">
-                  <div className="space-y-3">
-                    {editTestSteps.map((step, index) => <Card key={step.id} className={cn("border-l-4 border-l-primary/50", step.skip && "opacity-60")}>
-                        <CardContent className="p-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-semibold text-xs">
-                                  {index + 1}
-                                </div>
-                                <span className="text-lg">{getStepIcon(step.type)}</span>
-                                {step.skip && <Badge variant="secondary" className="text-xs">Skipped</Badge>}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => moveEditStep(index, "up")} disabled={index === 0}>
-                                  <ChevronUp className="h-4 w-4" />
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => moveEditStep(index, "down")} disabled={index === editTestSteps.length - 1}>
-                                  <ChevronDown className="h-4 w-4" />
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => {
+            </div>
+            {editTestSteps.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">No steps added yet</p> : <ScrollArea className="h-[400px] pr-4">
+              <div className="space-y-3">
+                {editTestSteps.map((step, index) => <Card key={step.id} className={cn("border-l-4 border-l-primary/50", step.skip && "opacity-60")}>
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-semibold text-xs">
+                            {index + 1}
+                          </div>
+                          <span className="text-lg">{getStepIcon(step.type)}</span>
+                          {step.skip && <Badge variant="secondary" className="text-xs">Skipped</Badge>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => moveEditStep(index, "up")} disabled={index === 0}>
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => moveEditStep(index, "down")} disabled={index === editTestSteps.length - 1}>
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => {
                             setInsertEditStepAtIndex(index);
                             setShowEditStepDialog(true);
                           }} title="Insert step below">
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => handleRemoveEditStep(step.id)}>
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </div>
-                            </div>
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleRemoveEditStep(step.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Action Type</Label>
-                                <Select value={step.type} onValueChange={value => updateEditTestStep(index, "type", value)}>
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-[200px]">
-                                    {ACTIONS.map(action => <SelectItem key={action.type} value={action.type}>
-                                        <span className="flex items-center gap-2">
-                                          <span>{action.icon}</span>
-                                          <span>{action.label}</span>
-                                        </span>
-                                      </SelectItem>)}
-                                  </SelectContent>
-                                </Select>
-                                {getActionDefinition(step.type)?.description && <p className="text-xs text-muted-foreground mt-1">{getActionDefinition(step.type)?.description}</p>}
-                              </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Description</Label>
-                                <Input value={step.description} onChange={e => updateEditTestStep(index, "description", e.target.value)} className="h-9" />
-                              </div>
-                            </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Action Type</Label>
+                          <Select value={step.type} onValueChange={value => updateEditTestStep(index, "type", value)}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[200px]">
+                              {ACTIONS.map(action => <SelectItem key={action.type} value={action.type}>
+                                <span className="flex items-center gap-2">
+                                  <span>{action.icon}</span>
+                                  <span>{action.label}</span>
+                                </span>
+                              </SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          {getActionDefinition(step.type)?.description && <p className="text-xs text-muted-foreground mt-1">{getActionDefinition(step.type)?.description}</p>}
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Description</Label>
+                          <Input value={step.description} onChange={e => updateEditTestStep(index, "description", e.target.value)} className="h-9" />
+                        </div>
+                      </div>
 
-                            {/* Selector Field - based on action definition */}
-                            {getActionDefinition(step.type)?.requiresSelector && <div>
-                                <Label className="text-xs text-muted-foreground">Element Selector *</Label>
-                                <Input value={step.selector || ""} onChange={e => updateEditTestStep(index, "selector", e.target.value)} placeholder="e.g., #username, .btn-primary, [data-testid='login']" className="font-mono text-xs h-9" />
-                              </div>}
+                      {/* Selector Field - based on action definition */}
+                      {getActionDefinition(step.type)?.requiresSelector && <div>
+                        <Label className="text-xs text-muted-foreground">Element Selector *</Label>
+                        <Input value={step.selector || ""} onChange={e => updateEditTestStep(index, "selector", e.target.value)} placeholder="e.g., #username, .btn-primary, [data-testid='login']" className="font-mono text-xs h-9" />
+                      </div>}
 
-                            {/* Value Field - based on action definition */}
-                            {getActionDefinition(step.type)?.requiresValue && <div>
-                                <Label className="text-xs text-muted-foreground">
-                                  {getActionDefinition(step.type)?.valueLabel || "Value"} *
-                                </Label>
-                                <Input value={step.value || ""} onChange={e => updateEditTestStep(index, "value", e.target.value)} placeholder={getActionDefinition(step.type)?.valuePlaceholder || "Enter value"} className="h-9" />
-                              </div>}
+                      {/* Value Field - based on action definition */}
+                      {getActionDefinition(step.type)?.requiresValue && <div>
+                        <Label className="text-xs text-muted-foreground">
+                          {getActionDefinition(step.type)?.valueLabel || "Value"} *
+                        </Label>
+                        <Input value={step.value || ""} onChange={e => updateEditTestStep(index, "value", e.target.value)} placeholder={getActionDefinition(step.type)?.valuePlaceholder || "Enter value"} className="h-9" />
+                      </div>}
 
-                            {/* Extra Fields - based on action definition */}
-                            {getActionDefinition(step.type)?.extraFields?.map(field => <div key={field.name}>
-                                <Label className="text-xs text-muted-foreground">
-                                  {field.label} {field.required && "*"}
-                                </Label>
-                                {field.type === "select" ? <Select value={step.extraData?.[field.name] || ""} onValueChange={v => updateEditTestStep(index, "extraData", {
+                      {/* Extra Fields - based on action definition */}
+                      {getActionDefinition(step.type)?.extraFields?.map(field => <div key={field.name}>
+                        <Label className="text-xs text-muted-foreground">
+                          {field.label} {field.required && "*"}
+                        </Label>
+                        {field.type === "select" ? <Select value={step.extraData?.[field.name] || ""} onValueChange={v => updateEditTestStep(index, "extraData", {
                           ...step.extraData,
                           [field.name]: v
                         })}>
-                                    <SelectTrigger className="h-9">
-                                      <SelectValue placeholder="Select..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {field.options?.map(opt => <SelectItem key={opt.value} value={opt.value}>
-                                          {opt.label}
-                                        </SelectItem>)}
-                                    </SelectContent>
-                                  </Select> : <Input type={field.type === "number" ? "number" : "text"} value={step.extraData?.[field.name] || ""} onChange={e => updateEditTestStep(index, "extraData", {
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {field.options?.map(opt => <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>)}
+                          </SelectContent>
+                        </Select> : <Input type={field.type === "number" ? "number" : "text"} value={step.extraData?.[field.name] || ""} onChange={e => updateEditTestStep(index, "extraData", {
                           ...step.extraData,
                           [field.name]: e.target.value
                         })} placeholder={field.placeholder} className="h-9" />}
-                              </div>)}
+                      </div>)}
 
-                            {/* Skip Step Checkbox */}
-                            <div className="flex items-center space-x-2 pt-2 border-t">
-                              <Checkbox id={`skip-edit-${step.id}`} checked={step.skip || false} onCheckedChange={checked => updateEditTestStep(index, "skip", checked === true)} />
-                              <Label htmlFor={`skip-edit-${step.id}`} className="text-sm font-normal cursor-pointer">
-                                Skip this step during execution
-                              </Label>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>)}
-                  </div>
-                </ScrollArea>}
-            </div>
+                      {/* Skip Step Checkbox */}
+                      <div className="flex items-center space-x-2 pt-2 border-t">
+                        <Checkbox id={`skip-edit-${step.id}`} checked={step.skip || false} onCheckedChange={checked => updateEditTestStep(index, "skip", checked === true)} />
+                        <Label htmlFor={`skip-edit-${step.id}`} className="text-sm font-normal cursor-pointer">
+                          Skip this step during execution
+                        </Label>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>)}
+              </div>
+            </ScrollArea>}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateTest}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleUpdateTest}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Add Edit Step Dialog */}
-      <Dialog open={showEditStepDialog} onOpenChange={open => {
+    {/* Add Edit Step Dialog */}
+    <Dialog open={showEditStepDialog} onOpenChange={open => {
       setShowEditStepDialog(open);
       if (!open) {
         resetStepForm();
         setInsertEditStepAtIndex(null);
       }
     }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Add Test Step</DialogTitle>
-            <DialogDescription>Select an action category and configure the step</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-            {/* Category Selection */}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-2 block">Action Category</Label>
-              <div className="flex flex-wrap gap-1">
-                {ACTION_CATEGORIES.map(cat => <Button key={cat.id} variant={selectedActionCategory === cat.id ? "default" : "outline"} size="sm" onClick={() => {
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Add Test Step</DialogTitle>
+          <DialogDescription>Select an action category and configure the step</DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-hidden flex flex-col space-y-4">
+          {/* Category Selection */}
+          <div>
+            <Label className="text-xs text-muted-foreground mb-2 block">Action Category</Label>
+            <div className="flex flex-wrap gap-1">
+              {ACTION_CATEGORIES.map(cat => <Button key={cat.id} variant={selectedActionCategory === cat.id ? "default" : "outline"} size="sm" onClick={() => {
                 setSelectedActionCategory(cat.id);
                 const actions = getActionsByCategory(cat.id);
                 if (actions.length > 0) setStepType(actions[0].type);
               }} className="text-xs h-7">
-                    <span className="mr-1">{cat.icon}</span>
-                    {cat.label}
-                  </Button>)}
-              </div>
+                <span className="mr-1">{cat.icon}</span>
+                {cat.label}
+              </Button>)}
             </div>
+          </div>
 
-            {/* Action Selection */}
-            <div>
-              <Label>Action Type</Label>
-              <Select value={stepType} onValueChange={(value: any) => {
+          {/* Action Selection */}
+          <div>
+            <Label>Action Type</Label>
+            <Select value={stepType} onValueChange={(value: any) => {
               setStepType(value);
               setStepExtraData({});
             }}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-[200px]">
-                  {getActionsByCategory(selectedActionCategory).map(action => <SelectItem key={action.type} value={action.type}>
-                      <span className="flex items-center gap-2">
-                        <span>{action.icon}</span>
-                        <span>{action.label}</span>
-                      </span>
-                    </SelectItem>)}
-                </SelectContent>
-              </Select>
-              {getActionDefinition(stepType)?.description && <p className="text-xs text-muted-foreground mt-1">{getActionDefinition(stepType)?.description}</p>}
-            </div>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-[200px]">
+                {getActionsByCategory(selectedActionCategory).map(action => <SelectItem key={action.type} value={action.type}>
+                  <span className="flex items-center gap-2">
+                    <span>{action.icon}</span>
+                    <span>{action.label}</span>
+                  </span>
+                </SelectItem>)}
+              </SelectContent>
+            </Select>
+            {getActionDefinition(stepType)?.description && <p className="text-xs text-muted-foreground mt-1">{getActionDefinition(stepType)?.description}</p>}
+          </div>
 
-            {/* Dynamic Fields based on Action */}
-            <ScrollArea className="flex-1 pr-4">
-              <div className="space-y-4">
-                {/* Selector Field */}
-                {getActionDefinition(stepType)?.requiresSelector && <div>
-                    <Label>Element Selector *</Label>
-                    <Input value={stepSelector} onChange={e => setStepSelector(e.target.value)} placeholder="e.g., #username, .submit-button, [data-testid='login']" className="font-mono text-sm" />
-                  </div>}
+          {/* Dynamic Fields based on Action */}
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-4">
+              {/* Selector Field */}
+              {getActionDefinition(stepType)?.requiresSelector && <div>
+                <Label>Element Selector *</Label>
+                <Input value={stepSelector} onChange={e => setStepSelector(e.target.value)} placeholder="e.g., #username, .submit-button, [data-testid='login']" className="font-mono text-sm" />
+              </div>}
 
-                {/* Value Field */}
-                {getActionDefinition(stepType)?.requiresValue && <div>
-                    <Label>{getActionDefinition(stepType)?.valueLabel || "Value"} *</Label>
-                    <Input value={stepValue} onChange={e => setStepValue(e.target.value)} placeholder={getActionDefinition(stepType)?.valuePlaceholder || "Enter value..."} />
-                  </div>}
+              {/* Value Field */}
+              {getActionDefinition(stepType)?.requiresValue && <div>
+                <Label>{getActionDefinition(stepType)?.valueLabel || "Value"} *</Label>
+                <Input value={stepValue} onChange={e => setStepValue(e.target.value)} placeholder={getActionDefinition(stepType)?.valuePlaceholder || "Enter value..."} />
+              </div>}
 
-                {/* Extra Fields */}
-                {getActionDefinition(stepType)?.extraFields?.map(field => <div key={field.name}>
-                    <Label>
-                      {field.label} {field.required && "*"}
-                    </Label>
-                    {field.type === "select" ? <Select value={stepExtraData[field.name] || ""} onValueChange={v => setStepExtraData({
+              {/* Extra Fields */}
+              {getActionDefinition(stepType)?.extraFields?.map(field => <div key={field.name}>
+                <Label>
+                  {field.label} {field.required && "*"}
+                </Label>
+                {field.type === "select" ? <Select value={stepExtraData[field.name] || ""} onValueChange={v => setStepExtraData({
                   ...stepExtraData,
                   [field.name]: v
                 })}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {field.options?.map(opt => <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>)}
-                        </SelectContent>
-                      </Select> : <Input type={field.type === "number" ? "number" : "text"} value={stepExtraData[field.name] || ""} onChange={e => setStepExtraData({
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options?.map(opt => <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>)}
+                  </SelectContent>
+                </Select> : <Input type={field.type === "number" ? "number" : "text"} value={stepExtraData[field.name] || ""} onChange={e => setStepExtraData({
                   ...stepExtraData,
                   [field.name]: e.target.value
                 })} placeholder={field.placeholder} />}
-                  </div>)}
+              </div>)}
 
-                {/* Description Field */}
-                <div>
-                  <Label>Description *</Label>
-                  <Input value={stepDescription} onChange={e => setStepDescription(e.target.value)} placeholder="Describe what this step does" />
-                </div>
-
-                {/* Skip Step Checkbox */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="editStepSkip" checked={stepSkip} onCheckedChange={checked => setStepSkip(checked === true)} />
-                  <Label htmlFor="editStepSkip" className="text-sm font-normal cursor-pointer">
-                    Skip this step during execution
-                  </Label>
-                </div>
+              {/* Description Field */}
+              <div>
+                <Label>Description *</Label>
+                <Input value={stepDescription} onChange={e => setStepDescription(e.target.value)} placeholder="Describe what this step does" />
               </div>
-            </ScrollArea>
-          </div>
-          <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => {
+
+              {/* Skip Step Checkbox */}
+              <div className="flex items-center space-x-2">
+                <Checkbox id="editStepSkip" checked={stepSkip} onCheckedChange={checked => setStepSkip(checked === true)} />
+                <Label htmlFor="editStepSkip" className="text-sm font-normal cursor-pointer">
+                  Skip this step during execution
+                </Label>
+              </div>
+            </div>
+          </ScrollArea>
+        </div>
+        <DialogFooter className="pt-4 border-t">
+          <Button variant="outline" onClick={() => {
             setShowEditStepDialog(false);
             resetStepForm();
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddEditStep}>Add Step</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleAddEditStep}>Add Step</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Create Suite Dialog */}
-      <Dialog open={showCreateSuiteDialog} onOpenChange={setShowCreateSuiteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Test Suite</DialogTitle>
-            <DialogDescription>Create a group of tests to run together</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="suiteName">Suite Name *</Label>
-              <Input id="suiteName" value={suiteName} onChange={e => setSuiteName(e.target.value)} placeholder="e.g., Smoke Tests, Regression Suite" />
-            </div>
-            <div>
-              <Label htmlFor="suiteDescription">Description</Label>
-              <Textarea id="suiteDescription" value={suiteDescription} onChange={e => setSuiteDescription(e.target.value)} placeholder="Describe the purpose of this test suite" />
-            </div>
+    {/* Create Suite Dialog */}
+    <Dialog open={showCreateSuiteDialog} onOpenChange={setShowCreateSuiteDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Test Suite</DialogTitle>
+          <DialogDescription>Create a group of tests to run together</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="suiteName">Suite Name *</Label>
+            <Input id="suiteName" value={suiteName} onChange={e => setSuiteName(e.target.value)} placeholder="e.g., Smoke Tests, Regression Suite" />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+          <div>
+            <Label htmlFor="suiteDescription">Description</Label>
+            <Textarea id="suiteDescription" value={suiteDescription} onChange={e => setSuiteDescription(e.target.value)} placeholder="Describe the purpose of this test suite" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowCreateSuiteDialog(false);
             setSuiteName("");
             setSuiteDescription("");
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateSuite}>Create Suite</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleCreateSuite}>Create Suite</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Add Tests to Suite Dialog */}
-      <Dialog open={showAddTestsToSuiteDialog} onOpenChange={setShowAddTestsToSuiteDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Add Tests to Suite</DialogTitle>
-            <DialogDescription>Select tests to add to "{selectedSuite?.name}"</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {tests.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">
-                No tests available. Create some tests first.
-              </p> : <ScrollArea className="h-[400px] pr-4">
-                <div className="space-y-2">
-                  {tests.filter(test => !suiteTests.some(st => st.test_id === test.id)).map(test => {
+    {/* Add Tests to Suite Dialog */}
+    <Dialog open={showAddTestsToSuiteDialog} onOpenChange={setShowAddTestsToSuiteDialog}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add Tests to Suite</DialogTitle>
+          <DialogDescription>Select tests to add to "{selectedSuite?.name}"</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {tests.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">
+            No tests available. Create some tests first.
+          </p> : <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-2">
+              {tests.filter(test => !suiteTests.some(st => st.test_id === test.id)).map(test => {
                 const isSelected = selectedTestsForSuite.has(test.id);
                 return <Card key={test.id} className={`cursor-pointer transition-all ${isSelected ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"}`} onClick={() => {
                   setSelectedTestsForSuite(prev => {
@@ -4947,390 +5051,390 @@ Example:
                     return newSet;
                   });
                 }}>
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-3">
-                              <Checkbox checked={isSelected} onCheckedChange={() => {}} className="pointer-events-none" />
-                              <div className="flex-1">
-                                <h4 className="font-medium">{test.name}</h4>
-                                {test.description && <p className="text-sm text-muted-foreground">{test.description}</p>}
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {(Array.isArray(test.steps) ? test.steps : []).length} steps
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>;
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Checkbox checked={isSelected} onCheckedChange={() => { }} className="pointer-events-none" />
+                      <div className="flex-1">
+                        <h4 className="font-medium">{test.name}</h4>
+                        {test.description && <p className="text-sm text-muted-foreground">{test.description}</p>}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(Array.isArray(test.steps) ? test.steps : []).length} steps
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>;
               })}
-                </div>
-              </ScrollArea>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+            </div>
+          </ScrollArea>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowAddTestsToSuiteDialog(false);
             setSelectedTestsForSuite(new Set());
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddTestsToSuite} disabled={selectedTestsForSuite.size === 0}>
-              Add {selectedTestsForSuite.size} Test{selectedTestsForSuite.size !== 1 ? "s" : ""}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleAddTestsToSuite} disabled={selectedTestsForSuite.size === 0}>
+            Add {selectedTestsForSuite.size} Test{selectedTestsForSuite.size !== 1 ? "s" : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Suite Execution Logs Dialog */}
-      <Dialog open={showSuiteLogsDialog} onOpenChange={setShowSuiteLogsDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Suite Execution Logs</DialogTitle>
-            <DialogDescription>
-              Test results for this suite execution
-              {selectedSuiteExecution && ` - ${new Date(selectedSuiteExecution.started_at).toLocaleString()}`}
-            </DialogDescription>
-          </DialogHeader>
+    {/* Suite Execution Logs Dialog */}
+    <Dialog open={showSuiteLogsDialog} onOpenChange={setShowSuiteLogsDialog}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Suite Execution Logs</DialogTitle>
+          <DialogDescription>
+            Test results for this suite execution
+            {selectedSuiteExecution && ` - ${new Date(selectedSuiteExecution.started_at).toLocaleString()}`}
+          </DialogDescription>
+        </DialogHeader>
 
-          {selectedSuiteExecution && <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-              {/* Summary */}
-              <div className="flex items-center gap-4 p-4 bg-muted rounded-lg mb-4 flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(selectedSuiteExecution.status)}
-                  <span className="font-medium capitalize">{selectedSuiteExecution.status}</span>
-                </div>
-                <div className="flex gap-4 ml-auto">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-green-600">{selectedSuiteExecution.passed_tests}</p>
-                    <p className="text-xs text-muted-foreground">Passed</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-red-600">{selectedSuiteExecution.failed_tests}</p>
-                    <p className="text-xs text-muted-foreground">Failed</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold">{selectedSuiteExecution.total_tests}</p>
-                    <p className="text-xs text-muted-foreground">Total</p>
-                  </div>
-                </div>
+        {selectedSuiteExecution && <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {/* Summary */}
+          <div className="flex items-center gap-4 p-4 bg-muted rounded-lg mb-4 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              {getStatusIcon(selectedSuiteExecution.status)}
+              <span className="font-medium capitalize">{selectedSuiteExecution.status}</span>
+            </div>
+            <div className="flex gap-4 ml-auto">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-600">{selectedSuiteExecution.passed_tests}</p>
+                <p className="text-xs text-muted-foreground">Passed</p>
               </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-red-600">{selectedSuiteExecution.failed_tests}</p>
+                <p className="text-xs text-muted-foreground">Failed</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{selectedSuiteExecution.total_tests}</p>
+                <p className="text-xs text-muted-foreground">Total</p>
+              </div>
+            </div>
+          </div>
 
-              {/* Test Results */}
-              <Label className="text-sm font-semibold mb-2 flex-shrink-0">Test Results</Label>
-              <ScrollArea className="flex-1 min-h-0 h-[400px] overflow-auto">
-                <div className="space-y-2 pr-4">
-                  {selectedSuiteExecution.results && Array.isArray(selectedSuiteExecution.results) ? selectedSuiteExecution.results.map((result: any, index: number) => {
+          {/* Test Results */}
+          <Label className="text-sm font-semibold mb-2 flex-shrink-0">Test Results</Label>
+          <ScrollArea className="flex-1 min-h-0 h-[400px] overflow-auto">
+            <div className="space-y-2 pr-4">
+              {selectedSuiteExecution.results && Array.isArray(selectedSuiteExecution.results) ? selectedSuiteExecution.results.map((result: any, index: number) => {
                 const isExpanded = expandedTestResults.has(result.execution_id || result.test_id);
                 const stepResults = result.execution_id ? testStepResults[result.execution_id] : null;
                 return <Card key={result.test_id || index} className={`border-l-4 ${result.status === "passed" ? "border-l-green-500" : "border-l-red-500"}`}>
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleTestExpansion(result)}>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-semibold">
-                                  {index + 1}
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleTestExpansion(result)}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-semibold">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="font-medium">{result.test_name || "Unknown Test"}</p>
+                          {result.error && <p className="text-sm text-red-500 mt-1">{result.error}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={result.status === "passed" ? "default" : "destructive"}>
+                          {result.status}
+                        </Badge>
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </div>
+                    </div>
+
+                    {/* Expanded Step Results */}
+                    {isExpanded && <div className="mt-4 pt-4 border-t">
+                      <ScrollArea className="max-h-[300px] overflow-auto">
+                        <div className="space-y-3 pr-4">
+                          {stepResults ? stepResults.length > 0 ? stepResults.map((step: any, stepIndex: number) => <div key={step.stepId || stepIndex} className="space-y-2">
+                            <div className={`p-3 rounded-lg ${step.status === "passed" ? "bg-green-50 dark:bg-green-950/30" : step.status === "failed" ? "bg-red-50 dark:bg-red-950/30" : "bg-muted"}`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-medium text-muted-foreground">
+                                    Step {stepIndex + 1}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {step.step?.type || "unknown"}
+                                  </Badge>
+                                  {getStatusIcon(step.status)}
                                 </div>
-                                <div>
-                                  <p className="font-medium">{result.test_name || "Unknown Test"}</p>
-                                  {result.error && <p className="text-sm text-red-500 mt-1">{result.error}</p>}
-                                </div>
+                                <span className="text-xs text-muted-foreground">{step.duration}ms</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant={result.status === "passed" ? "default" : "destructive"}>
-                                  {result.status}
-                                </Badge>
-                                <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                              </div>
+                              <p className="text-sm mt-1">
+                                {step.step?.description || "No description"}
+                              </p>
+                              {step.step?.selector && <p className="text-xs text-muted-foreground mt-1 font-mono">
+                                Selector: {step.step.selector}
+                              </p>}
+                              {step.error && <div className="mt-2">
+                                <p className="text-xs text-red-500 font-semibold mb-1">Error Log:</p>
+                                <pre className="text-xs text-red-600 bg-red-50 dark:bg-red-950/20 px-2 py-1 rounded whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto font-mono border border-red-200 dark:border-red-900">
+                                  {step.error}
+                                </pre>
+                              </div>}
                             </div>
 
-                            {/* Expanded Step Results */}
-                            {isExpanded && <div className="mt-4 pt-4 border-t">
-                                <ScrollArea className="max-h-[300px] overflow-auto">
-                                  <div className="space-y-3 pr-4">
-                                    {stepResults ? stepResults.length > 0 ? stepResults.map((step: any, stepIndex: number) => <div key={step.stepId || stepIndex} className="space-y-2">
-                                            <div className={`p-3 rounded-lg ${step.status === "passed" ? "bg-green-50 dark:bg-green-950/30" : step.status === "failed" ? "bg-red-50 dark:bg-red-950/30" : "bg-muted"}`}>
-                                              <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-xs font-medium text-muted-foreground">
-                                                    Step {stepIndex + 1}
-                                                  </span>
-                                                  <Badge variant="outline" className="text-xs">
-                                                    {step.step?.type || "unknown"}
-                                                  </Badge>
-                                                  {getStatusIcon(step.status)}
-                                                </div>
-                                                <span className="text-xs text-muted-foreground">{step.duration}ms</span>
-                                              </div>
-                                              <p className="text-sm mt-1">
-                                                {step.step?.description || "No description"}
-                                              </p>
-                                              {step.step?.selector && <p className="text-xs text-muted-foreground mt-1 font-mono">
-                                                  Selector: {step.step.selector}
-                                                </p>}
-                                              {step.error && <div className="mt-2">
-                                                  <p className="text-xs text-red-500 font-semibold mb-1">Error Log:</p>
-                                                  <pre className="text-xs text-red-600 bg-red-50 dark:bg-red-950/20 px-2 py-1 rounded whitespace-pre-wrap overflow-x-auto max-h-40 overflow-y-auto font-mono border border-red-200 dark:border-red-900">
-                                                    {step.error}
-                                                  </pre>
-                                                </div>}
-                                            </div>
-
-                                            {/* Screenshot */}
-                                            {step.screenshot && <div className="rounded-lg overflow-hidden border">
-                                                <img src={step.screenshot} alt={`Step ${stepIndex + 1} screenshot`} className="w-full h-auto max-h-64 object-contain bg-muted cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFullscreenScreenshot(step.screenshot)} title="Click to view fullscreen" />
-                                              </div>}
-                                          </div>) : <p className="text-sm text-muted-foreground text-center py-4">
-                                          No step results available
-                                        </p> : <div className="flex justify-center py-4">
-                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                      </div>}
-                                  </div>
-                                </ScrollArea>
-                              </div>}
-                          </CardContent>
-                        </Card>;
-              }) : <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                      <AlertCircle className="h-12 w-12 mb-4 opacity-50" />
-                      <p>No detailed results available for this execution</p>
+                            {/* Screenshot */}
+                            {step.screenshot && <div className="rounded-lg overflow-hidden border">
+                              <img src={step.screenshot} alt={`Step ${stepIndex + 1} screenshot`} className="w-full h-auto max-h-64 object-contain bg-muted cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setFullscreenScreenshot(step.screenshot)} title="Click to view fullscreen" />
+                            </div>}
+                          </div>) : <p className="text-sm text-muted-foreground text-center py-4">
+                            No step results available
+                          </p> : <div className="flex justify-center py-4">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>}
+                        </div>
+                      </ScrollArea>
                     </div>}
-                </div>
-              </ScrollArea>
-
-              {/* Timing Info */}
-              {selectedSuiteExecution.completed_at && <div className="mt-4 pt-4 border-t text-sm text-muted-foreground">
-                  <p>Started: {new Date(selectedSuiteExecution.started_at).toLocaleString()}</p>
-                  <p>Completed: {new Date(selectedSuiteExecution.completed_at).toLocaleString()}</p>
-                </div>}
-            </div>}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSuiteLogsDialog(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Fullscreen Screenshot Dialog */}
-      <Dialog open={!!fullscreenScreenshot} onOpenChange={() => setFullscreenScreenshot(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
-          <DialogHeader className="p-4 pb-0">
-            <DialogTitle>Screenshot</DialogTitle>
-          </DialogHeader>
-          <div className="p-4 pt-2 overflow-auto max-h-[calc(95vh-100px)]">
-            {fullscreenScreenshot && <img src={fullscreenScreenshot} alt="Fullscreen screenshot" className="w-full h-auto object-contain" />}
-          </div>
-          <DialogFooter className="p-4 pt-0">
-            <Button variant="outline" onClick={() => setFullscreenScreenshot(null)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create Folder Dialog */}
-      <Dialog open={showCreateFolderDialog} onOpenChange={setShowCreateFolderDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Folder</DialogTitle>
-            <DialogDescription>Create a folder to organize your automated tests</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="folder-name">Folder Name</Label>
-              <Input id="folder-name" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="e.g., Login Tests, Checkout Flow" />
+                  </CardContent>
+                </Card>;
+              }) : <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <AlertCircle className="h-12 w-12 mb-4 opacity-50" />
+                <p>No detailed results available for this execution</p>
+              </div>}
             </div>
+          </ScrollArea>
+
+          {/* Timing Info */}
+          {selectedSuiteExecution.completed_at && <div className="mt-4 pt-4 border-t text-sm text-muted-foreground">
+            <p>Started: {new Date(selectedSuiteExecution.started_at).toLocaleString()}</p>
+            <p>Completed: {new Date(selectedSuiteExecution.completed_at).toLocaleString()}</p>
+          </div>}
+        </div>}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowSuiteLogsDialog(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Fullscreen Screenshot Dialog */}
+    <Dialog open={!!fullscreenScreenshot} onOpenChange={() => setFullscreenScreenshot(null)}>
+      <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
+        <DialogHeader className="p-4 pb-0">
+          <DialogTitle>Screenshot</DialogTitle>
+        </DialogHeader>
+        <div className="p-4 pt-2 overflow-auto max-h-[calc(95vh-100px)]">
+          {fullscreenScreenshot && <img src={fullscreenScreenshot} alt="Fullscreen screenshot" className="w-full h-auto object-contain" />}
+        </div>
+        <DialogFooter className="p-4 pt-0">
+          <Button variant="outline" onClick={() => setFullscreenScreenshot(null)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Create Folder Dialog */}
+    <Dialog open={showCreateFolderDialog} onOpenChange={setShowCreateFolderDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Folder</DialogTitle>
+          <DialogDescription>Create a folder to organize your automated tests</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="folder-name">Folder Name</Label>
+            <Input id="folder-name" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="e.g., Login Tests, Checkout Flow" />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowCreateFolderDialog(false);
             setNewFolderName("");
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateFolder}>Create Folder</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleCreateFolder}>Create Folder</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Bulk Move Dialog */}
-      <Dialog open={showBulkMoveDialog} onOpenChange={setShowBulkMoveDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Move {bulkSelectedTests.size} Test(s)</DialogTitle>
-            <DialogDescription>Select a destination folder for the selected tests</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Destination Folder</Label>
-              <Select value={bulkMoveTargetFolderId || "root"} onValueChange={v => setBulkMoveTargetFolderId(v === "root" ? null : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select destination" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="root">
-                    <div className="flex items-center gap-2">
-                      <Folder className="h-4 w-4" />
-                      Root level (no folder)
-                    </div>
-                  </SelectItem>
-                  {folders.map(folder => <SelectItem key={folder.id} value={folder.id}>
-                      <div className="flex items-center gap-2">
-                        <Folder className="h-4 w-4" />
-                        {folder.name}
-                      </div>
-                    </SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+    {/* Bulk Move Dialog */}
+    <Dialog open={showBulkMoveDialog} onOpenChange={setShowBulkMoveDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Move {bulkSelectedTests.size} Test(s)</DialogTitle>
+          <DialogDescription>Select a destination folder for the selected tests</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Destination Folder</Label>
+            <Select value={bulkMoveTargetFolderId || "root"} onValueChange={v => setBulkMoveTargetFolderId(v === "root" ? null : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select destination" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="root">
+                  <div className="flex items-center gap-2">
+                    <Folder className="h-4 w-4" />
+                    Root level (no folder)
+                  </div>
+                </SelectItem>
+                {folders.map(folder => <SelectItem key={folder.id} value={folder.id}>
+                  <div className="flex items-center gap-2">
+                    <Folder className="h-4 w-4" />
+                    {folder.name}
+                  </div>
+                </SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => {
             setShowBulkMoveDialog(false);
             setBulkMoveTargetFolderId(null);
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleBulkMoveTests}>Move Tests</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleBulkMoveTests}>Move Tests</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Auto-Heal Results Dialog */}
-      <Dialog open={showAutoHealDialog} onOpenChange={setShowAutoHealDialog}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              AI Auto-Heal Results
-            </DialogTitle>
-            <DialogDescription>Review the proposed fixes before applying them to your test</DialogDescription>
-          </DialogHeader>
+    {/* Auto-Heal Results Dialog */}
+    <Dialog open={showAutoHealDialog} onOpenChange={setShowAutoHealDialog}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            AI Auto-Heal Results
+          </DialogTitle>
+          <DialogDescription>Review the proposed fixes before applying them to your test</DialogDescription>
+        </DialogHeader>
 
-          {autoHealResult && <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-              {/* Analysis Summary */}
-              <Alert className="bg-primary/5 border-primary/20">
-                <Wand2 className="h-4 w-4" />
-                <AlertTitle>Analysis</AlertTitle>
-                <AlertDescription className="text-sm">{autoHealResult.analysis}</AlertDescription>
-              </Alert>
+        {autoHealResult && <div className="flex-1 overflow-hidden flex flex-col space-y-4">
+          {/* Analysis Summary */}
+          <Alert className="bg-primary/5 border-primary/20">
+            <Wand2 className="h-4 w-4" />
+            <AlertTitle>Analysis</AlertTitle>
+            <AlertDescription className="text-sm">{autoHealResult.analysis}</AlertDescription>
+          </Alert>
 
-              {/* Fixes List */}
+          {/* Fixes List */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Proposed Fixes ({autoHealResult.fixes.length})</Label>
+            <ScrollArea className="h-[200px] pr-4">
               <div className="space-y-2">
-                <Label className="text-sm font-semibold">Proposed Fixes ({autoHealResult.fixes.length})</Label>
-                <ScrollArea className="h-[200px] pr-4">
-                  <div className="space-y-2">
-                    {autoHealResult.fixes.map((fix, index) => <Card key={index} className="border-l-4 border-l-primary">
-                        <CardContent className="p-3">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">
-                                Step {fix.stepIndex + 1}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              <span className="font-medium text-destructive">Issue:</span> {fix.issue}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium text-primary">Fix:</span> {fix.fix}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>)}
-                  </div>
-                </ScrollArea>
-              </div>
-
-              {/* Preview Fixed Steps */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Updated Test Steps Preview</Label>
-                <ScrollArea className="h-[150px] pr-4 border rounded-lg p-2 bg-muted/30">
-                  <div className="space-y-1">
-                    {autoHealResult.fixedSteps.map((step, index) => <div key={step.id || index} className="flex items-center gap-2 text-xs p-2 hover:bg-muted/50 rounded">
-                        <span className="font-semibold text-muted-foreground w-6">{index + 1}.</span>
-                        <Badge variant="outline" className="text-xs font-mono">
-                          {step.type}
+                {autoHealResult.fixes.map((fix, index) => <Card key={index} className="border-l-4 border-l-primary">
+                  <CardContent className="p-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Step {fix.stepIndex + 1}
                         </Badge>
-                        <span className="truncate flex-1">{step.description}</span>
-                        {step.selector && <code className="text-xs bg-muted px-1 rounded truncate max-w-[200px]">{step.selector}</code>}
-                      </div>)}
-                  </div>
-                </ScrollArea>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-destructive">Issue:</span> {fix.issue}
+                      </p>
+                      <p className="text-sm">
+                        <span className="font-medium text-primary">Fix:</span> {fix.fix}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>)}
               </div>
-            </div>}
+            </ScrollArea>
+          </div>
 
-          <DialogFooter className="flex gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => {
+          {/* Preview Fixed Steps */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Updated Test Steps Preview</Label>
+            <ScrollArea className="h-[150px] pr-4 border rounded-lg p-2 bg-muted/30">
+              <div className="space-y-1">
+                {autoHealResult.fixedSteps.map((step, index) => <div key={step.id || index} className="flex items-center gap-2 text-xs p-2 hover:bg-muted/50 rounded">
+                  <span className="font-semibold text-muted-foreground w-6">{index + 1}.</span>
+                  <Badge variant="outline" className="text-xs font-mono">
+                    {step.type}
+                  </Badge>
+                  <span className="truncate flex-1">{step.description}</span>
+                  {step.selector && <code className="text-xs bg-muted px-1 rounded truncate max-w-[200px]">{step.selector}</code>}
+                </div>)}
+              </div>
+            </ScrollArea>
+          </div>
+        </div>}
+
+        <DialogFooter className="flex gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={() => {
             setShowAutoHealDialog(false);
             setAutoHealResult(null);
           }}>
-              Cancel
-            </Button>
-            <Button onClick={handleApplyAutoHealFix} disabled={isApplyingFix} className="gap-2">
-              {isApplyingFix ? <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Applying...
-                </> : <>
-                  <Check className="h-4 w-4" />
-                  Apply Fixes
-                </>}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            Cancel
+          </Button>
+          <Button onClick={handleApplyAutoHealFix} disabled={isApplyingFix} className="gap-2">
+            {isApplyingFix ? <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Applying...
+            </> : <>
+              <Check className="h-4 w-4" />
+              Apply Fixes
+            </>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Visual Comparison Dialog */}
-      <Dialog open={showVisualComparisonDialog} onOpenChange={setShowVisualComparisonDialog}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Visual Regression Comparison</DialogTitle>
-            <DialogDescription>
-              {visualComparisonData?.stepName} - {visualComparisonData?.mismatchPercentage}% difference (threshold:{" "}
-              {visualComparisonData?.threshold}%)
-            </DialogDescription>
-          </DialogHeader>
+    {/* Visual Comparison Dialog */}
+    <Dialog open={showVisualComparisonDialog} onOpenChange={setShowVisualComparisonDialog}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Visual Regression Comparison</DialogTitle>
+          <DialogDescription>
+            {visualComparisonData?.stepName} - {visualComparisonData?.mismatchPercentage}% difference (threshold:{" "}
+            {visualComparisonData?.threshold}%)
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="flex-1 overflow-auto">
-            <div className="grid grid-cols-2 gap-4">
-              {/* Baseline */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold flex items-center gap-2">
-                  <Image className="h-4 w-4" />
-                  Baseline
-                </Label>
-                {visualComparisonData?.baseline ? <img src={visualComparisonData.baseline} alt="Baseline screenshot" className="w-full border rounded-lg shadow-sm cursor-pointer" onClick={() => setFullscreenScreenshot(visualComparisonData?.baseline || null)} /> : <div className="h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground">
-                    No baseline available
-                  </div>}
-              </div>
+        <div className="flex-1 overflow-auto">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Baseline */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold flex items-center gap-2">
+                <Image className="h-4 w-4" />
+                Baseline
+              </Label>
+              {visualComparisonData?.baseline ? <img src={visualComparisonData.baseline} alt="Baseline screenshot" className="w-full border rounded-lg shadow-sm cursor-pointer" onClick={() => setFullscreenScreenshot(visualComparisonData?.baseline || null)} /> : <div className="h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground">
+                No baseline available
+              </div>}
+            </div>
 
-              {/* Current */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold flex items-center gap-2">
-                  <Eye className="h-4 w-4" />
-                  Current
-                </Label>
-                {visualComparisonData?.current ? <img src={visualComparisonData.current} alt="Current screenshot" className="w-full border rounded-lg shadow-sm cursor-pointer" onClick={() => setFullscreenScreenshot(visualComparisonData?.current || null)} /> : <div className="h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground">
-                    No current screenshot
-                  </div>}
-              </div>
+            {/* Current */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold flex items-center gap-2">
+                <Eye className="h-4 w-4" />
+                Current
+              </Label>
+              {visualComparisonData?.current ? <img src={visualComparisonData.current} alt="Current screenshot" className="w-full border rounded-lg shadow-sm cursor-pointer" onClick={() => setFullscreenScreenshot(visualComparisonData?.current || null)} /> : <div className="h-48 bg-muted rounded-lg flex items-center justify-center text-muted-foreground">
+                No current screenshot
+              </div>}
             </div>
           </div>
+        </div>
 
-          <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setShowVisualComparisonDialog(false)}>
-              Close
-            </Button>
-            {visualComparisonData && <Button onClick={() => {
+        <DialogFooter className="pt-4 border-t">
+          <Button variant="outline" onClick={() => setShowVisualComparisonDialog(false)}>
+            Close
+          </Button>
+          {visualComparisonData && <Button onClick={() => {
             if (visualComparisonData.current && visualComparisonData.stepId) {
               handleSaveBaseline(visualComparisonData.stepId, visualComparisonData.stepName, visualComparisonData.current);
               setShowVisualComparisonDialog(false);
             }
           }} disabled={isSavingBaseline} className="gap-2">
-                {isSavingBaseline ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Update Baseline
-              </Button>}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {isSavingBaseline ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Update Baseline
+          </Button>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Record Test Dialog */}
-      <Dialog open={showRecordDialog} onOpenChange={open => {
+    {/* Record Test Dialog */}
+    <Dialog open={showRecordDialog} onOpenChange={open => {
       if (!open && isRecording) {
         handleStopRecording();
       }
@@ -5342,326 +5446,326 @@ Example:
       }
       setShowRecordDialog(open);
     }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5" />
-              Record Test Script
-            </DialogTitle>
-            <DialogDescription>
-              Record your browser interactions to automatically generate test steps
-            </DialogDescription>
-          </DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Video className="h-5 w-5" />
+            Record Test Script
+          </DialogTitle>
+          <DialogDescription>
+            Record your browser interactions to automatically generate test steps
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-6">
-            {!isRecording && !showExtensionInstructions && recordedSteps.length === 0 && <>
-                {/* URL Input */}
-                <div>
-                  <Label>Starting URL *</Label>
-                  <Input value={recordingUrl} onChange={e => setRecordingUrl(e.target.value)} placeholder="https://example.com" />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Enter the URL where you want to start recording
-                  </p>
-                </div>
+        <div className="space-y-6">
+          {!isRecording && !showExtensionInstructions && recordedSteps.length === 0 && <>
+            {/* URL Input */}
+            <div>
+              <Label>Starting URL *</Label>
+              <Input value={recordingUrl} onChange={e => setRecordingUrl(e.target.value)} placeholder="https://example.com" />
+              <p className="text-xs text-muted-foreground mt-1">
+                Enter the URL where you want to start recording
+              </p>
+            </div>
 
-                {/* Folder Selection */}
-                <div>
-                  <Label>Save to Folder (Optional)</Label>
-                  <Select value={selectedFolderId || "none"} onValueChange={v => setSelectedFolderId(v === "none" ? null : v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a folder" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No folder (root level)</SelectItem>
-                      {folders.map(folder => <SelectItem key={folder.id} value={folder.id}>
-                          <div className="flex items-center gap-2">
-                            <Folder className="h-4 w-4" />
-                            {folder.name}
-                          </div>
-                        </SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+            {/* Folder Selection */}
+            <div>
+              <Label>Save to Folder (Optional)</Label>
+              <Select value={selectedFolderId || "none"} onValueChange={v => setSelectedFolderId(v === "none" ? null : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a folder" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No folder (root level)</SelectItem>
+                  {folders.map(folder => <SelectItem key={folder.id} value={folder.id}>
+                    <div className="flex items-center gap-2">
+                      <Folder className="h-4 w-4" />
+                      {folder.name}
+                    </div>
+                  </SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
 
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>How Recording Works</AlertTitle>
-                  <AlertDescription>
-                    <ul className="list-disc list-inside text-sm space-y-1 mt-2">
-                      <li>Download and install the browser extension (one-time setup)</li>
-                      <li>The target page will open in a new tab</li>
-                      <li>Click the extension icon to start recording</li>
-                      <li>Interact with the page - all actions will be captured</li>
-                      <li>Return here to import and save your recorded steps</li>
-                    </ul>
-                  </AlertDescription>
-                </Alert>
-              </>}
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>How Recording Works</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc list-inside text-sm space-y-1 mt-2">
+                  <li>Download and install the browser extension (one-time setup)</li>
+                  <li>The target page will open in a new tab</li>
+                  <li>Click the extension icon to start recording</li>
+                  <li>Interact with the page - all actions will be captured</li>
+                  <li>Return here to import and save your recorded steps</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          </>}
 
-            {/* Extension Instructions */}
-            {showExtensionInstructions && <div className="space-y-4">
-                <Alert className="border-primary bg-primary/5">
-                  <Video className="h-4 w-4 text-primary" />
-                  <AlertTitle>Browser Extension Recording</AlertTitle>
-                  <AlertDescription className="space-y-3">
-                    <p className="text-sm">Follow these steps to record your test:</p>
-                    <ol className="list-decimal list-inside text-sm space-y-2">
-                      <li>
-                        <strong>Install the browser extension (first time only):</strong>
-                        <div className="mt-2 mb-2">
-                          <Button onClick={handleDownloadExtension} disabled={isDownloadingExtension} size="sm" className="gap-2">
-                            {isDownloadingExtension ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                            Download Extension
-                          </Button>
-                        </div>
-                        <div className="text-xs text-muted-foreground space-y-1 bg-muted/50 p-2 rounded mt-2">
-                          <p><strong>Installation:</strong></p>
-                          <ol className="list-decimal list-inside ml-2 space-y-0.5">
-                            <li>Extract the downloaded ZIP file</li>
-                            <li>Open Chrome/Edge → Extensions (chrome://extensions)</li>
-                            <li>Enable "Developer mode" (toggle in top right)</li>
-                            <li>Click "Load unpacked" and select the extracted folder</li>
-                          </ol>
-                        </div>
-                      </li>
-                      <li>Go to the tab that opened with your target URL</li>
-                      <li>Click the Wispr extension icon in your browser toolbar</li>
-                      <li>Click "Start Recording" in the popup</li>
-                      <li>Interact with the page - all actions will be captured</li>
-                      <li>
-                        <div className="flex items-center gap-2">
-                          <span>Press</span>
-                          <Badge variant="outline" className="font-mono text-xs">Ctrl+Space</Badge>
-                          <span>to pause/resume,</span>
-                          <Badge variant="outline" className="font-mono text-xs">ESC</Badge>
-                          <span>or click "Stop" when done</span>
-                        </div>
-                      </li>
-                      <li>The recorded data will be copied to your clipboard</li>
-                      <li>Return here and paste the data below, then click "Import"</li>
-                    </ol>
-                  </AlertDescription>
-                </Alert>
-
-                <div className="space-y-2">
-                  <Label>Paste Recorded Data *</Label>
-                  <Textarea value={recordingPasteData} onChange={e => setRecordingPasteData(e.target.value)} placeholder='Paste the copied recording data here (e.g., [{"type":"click","selector":"#btn",...}])' className="font-mono text-xs min-h-[100px]" />
-                  <p className="text-xs text-muted-foreground">
-                    After stopping the recording, the data is automatically copied. Just paste it here (Ctrl+V / Cmd+V).
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center gap-4 p-4 border rounded-lg bg-muted/30">
-                  <div className="text-center">
-                    <p className="text-sm font-medium mb-2">Recording for:</p>
-                    <code className="text-xs bg-muted px-2 py-1 rounded break-all">{recordingUrl}</code>
-                  </div>
-                </div>
-
-                {/* Manual step entry option */}
-                <div className="border-t pt-4">
-                  <Button variant="outline" size="sm" onClick={() => setManualStepMode(!manualStepMode)} className="w-full">
-                    {manualStepMode ? "Hide Manual Entry" : "Or Add Steps Manually"}
-                  </Button>
-
-                  {manualStepMode && <div className="mt-4 space-y-3 p-4 border rounded-lg bg-muted/20">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs">Action Type</Label>
-                          <Select value={manualStepType} onValueChange={v => setManualStepType(v as TestStep["type"])}>
-                            <SelectTrigger className="h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="click">Click</SelectItem>
-                              <SelectItem value="type">Type</SelectItem>
-                              <SelectItem value="navigate">Navigate</SelectItem>
-                              <SelectItem value="selectOption">Select Option</SelectItem>
-                              <SelectItem value="wait">Wait</SelectItem>
-                              <SelectItem value="assertVisible">Assert Visible</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label className="text-xs">Selector</Label>
-                          <Input value={manualStepSelector} onChange={e => setManualStepSelector(e.target.value)} placeholder="#element-id" className="h-8 text-sm" />
-                        </div>
-                      </div>
-                      {(manualStepType === "type" || manualStepType === "navigate" || manualStepType === "selectOption") && <div>
-                          <Label className="text-xs">Value</Label>
-                          <Input value={manualStepValue} onChange={e => setManualStepValue(e.target.value)} placeholder={manualStepType === "navigate" ? "https://..." : "Enter value"} className="h-8 text-sm" />
-                        </div>}
-                      <div>
-                        <Label className="text-xs">Description *</Label>
-                        <Input value={manualStepDescription} onChange={e => setManualStepDescription(e.target.value)} placeholder="Click on login button" className="h-8 text-sm" />
-                      </div>
-                      <Button size="sm" onClick={handleAddManualStep} className="w-full">
-                        <Plus className="mr-2 h-3 w-3" />
-                        Add Step
+          {/* Extension Instructions */}
+          {showExtensionInstructions && <div className="space-y-4">
+            <Alert className="border-primary bg-primary/5">
+              <Video className="h-4 w-4 text-primary" />
+              <AlertTitle>Browser Extension Recording</AlertTitle>
+              <AlertDescription className="space-y-3">
+                <p className="text-sm">Follow these steps to record your test:</p>
+                <ol className="list-decimal list-inside text-sm space-y-2">
+                  <li>
+                    <strong>Install the browser extension (first time only):</strong>
+                    <div className="mt-2 mb-2">
+                      <Button onClick={handleDownloadExtension} disabled={isDownloadingExtension} size="sm" className="gap-2">
+                        {isDownloadingExtension ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        Download Extension
                       </Button>
-                    </div>}
-                </div>
-              </div>}
-
-            {recordedSteps.length > 0 && <>
-                {/* Test Details */}
-                {!showExtensionInstructions && <div className="space-y-4">
-                    <div>
-                      <Label>Test Name *</Label>
-                      <Input value={recordingTestName} onChange={e => setRecordingTestName(e.target.value)} placeholder="e.g., Login Flow Test" />
                     </div>
-                    <div>
-                      <Label>Description (Optional)</Label>
-                      <Textarea value={recordingTestDescription} onChange={e => setRecordingTestDescription(e.target.value)} placeholder="Describe what this test validates..." className="min-h-[60px]" />
+                    <div className="text-xs text-muted-foreground space-y-1 bg-muted/50 p-2 rounded mt-2">
+                      <p><strong>Installation:</strong></p>
+                      <ol className="list-decimal list-inside ml-2 space-y-0.5">
+                        <li>Extract the downloaded ZIP file</li>
+                        <li>Open Chrome/Edge → Extensions (chrome://extensions)</li>
+                        <li>Enable "Developer mode" (toggle in top right)</li>
+                        <li>Click "Load unpacked" and select the extracted folder</li>
+                      </ol>
                     </div>
-                  </div>}
+                  </li>
+                  <li>Go to the tab that opened with your target URL</li>
+                  <li>Click the Wispr extension icon in your browser toolbar</li>
+                  <li>Click "Start Recording" in the popup</li>
+                  <li>Interact with the page - all actions will be captured</li>
+                  <li>
+                    <div className="flex items-center gap-2">
+                      <span>Press</span>
+                      <Badge variant="outline" className="font-mono text-xs">Ctrl+Space</Badge>
+                      <span>to pause/resume,</span>
+                      <Badge variant="outline" className="font-mono text-xs">ESC</Badge>
+                      <span>or click "Stop" when done</span>
+                    </div>
+                  </li>
+                  <li>The recorded data will be copied to your clipboard</li>
+                  <li>Return here and paste the data below, then click "Import"</li>
+                </ol>
+              </AlertDescription>
+            </Alert>
 
-                {/* Recorded Steps */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <Label>Steps ({recordedSteps.length})</Label>
-                    {recordedSteps.length > 0 && <Button size="sm" variant="outline" onClick={() => setRecordedSteps([])}>
-                        <Trash2 className="mr-2 h-3 w-3" />
-                        Clear All
-                      </Button>}
+            <div className="space-y-2">
+              <Label>Paste Recorded Data *</Label>
+              <Textarea value={recordingPasteData} onChange={e => setRecordingPasteData(e.target.value)} placeholder='Paste the copied recording data here (e.g., [{"type":"click","selector":"#btn",...}])' className="font-mono text-xs min-h-[100px]" />
+              <p className="text-xs text-muted-foreground">
+                After stopping the recording, the data is automatically copied. Just paste it here (Ctrl+V / Cmd+V).
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-4 p-4 border rounded-lg bg-muted/30">
+              <div className="text-center">
+                <p className="text-sm font-medium mb-2">Recording for:</p>
+                <code className="text-xs bg-muted px-2 py-1 rounded break-all">{recordingUrl}</code>
+              </div>
+            </div>
+
+            {/* Manual step entry option */}
+            <div className="border-t pt-4">
+              <Button variant="outline" size="sm" onClick={() => setManualStepMode(!manualStepMode)} className="w-full">
+                {manualStepMode ? "Hide Manual Entry" : "Or Add Steps Manually"}
+              </Button>
+
+              {manualStepMode && <div className="mt-4 space-y-3 p-4 border rounded-lg bg-muted/20">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Action Type</Label>
+                    <Select value={manualStepType} onValueChange={v => setManualStepType(v as TestStep["type"])}>
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="click">Click</SelectItem>
+                        <SelectItem value="type">Type</SelectItem>
+                        <SelectItem value="navigate">Navigate</SelectItem>
+                        <SelectItem value="selectOption">Select Option</SelectItem>
+                        <SelectItem value="wait">Wait</SelectItem>
+                        <SelectItem value="assertVisible">Assert Visible</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <ScrollArea className="h-[200px] border rounded-lg p-3">
-                    <div className="space-y-2">
-                      {recordedSteps.map((step, index) => <Card key={step.id} className="border-l-4 border-l-primary/50">
-                          <CardContent className="p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-semibold text-muted-foreground w-6">
-                                  {index + 1}.
-                                </span>
-                                <Badge variant="outline">{step.type}</Badge>
-                                <span className="text-sm truncate max-w-[250px]">
-                                  {step.description}
-                                </span>
-                              </div>
-                              <Button size="sm" variant="ghost" onClick={() => handleRemoveRecordedStep(step.id)}>
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            {step.selector && <p className="text-xs text-muted-foreground mt-1 ml-9 font-mono">
-                                {step.selector}
-                              </p>}
-                          </CardContent>
-                        </Card>)}
-                    </div>
-                  </ScrollArea>
+                  <div>
+                    <Label className="text-xs">Selector</Label>
+                    <Input value={manualStepSelector} onChange={e => setManualStepSelector(e.target.value)} placeholder="#element-id" className="h-8 text-sm" />
+                  </div>
                 </div>
-              </>}
-          </div>
-
-          <DialogFooter className="gap-2">
-            {!isRecording && !showExtensionInstructions && recordedSteps.length === 0 && <>
-                <Button variant="outline" onClick={() => setShowRecordDialog(false)}>
-                  Cancel
+                {(manualStepType === "type" || manualStepType === "navigate" || manualStepType === "selectOption") && <div>
+                  <Label className="text-xs">Value</Label>
+                  <Input value={manualStepValue} onChange={e => setManualStepValue(e.target.value)} placeholder={manualStepType === "navigate" ? "https://..." : "Enter value"} className="h-8 text-sm" />
+                </div>}
+                <div>
+                  <Label className="text-xs">Description *</Label>
+                  <Input value={manualStepDescription} onChange={e => setManualStepDescription(e.target.value)} placeholder="Click on login button" className="h-8 text-sm" />
+                </div>
+                <Button size="sm" onClick={handleAddManualStep} className="w-full">
+                  <Plus className="mr-2 h-3 w-3" />
+                  Add Step
                 </Button>
-                <Button onClick={handleStartRecording} disabled={!recordingUrl.trim()}>
-                  <Video className="mr-2 h-4 w-4" />
-                  Start Recording
-                </Button>
-              </>}
+              </div>}
+            </div>
+          </div>}
 
-            {showExtensionInstructions && <>
-                <Button variant="outline" onClick={() => {
+          {recordedSteps.length > 0 && <>
+            {/* Test Details */}
+            {!showExtensionInstructions && <div className="space-y-4">
+              <div>
+                <Label>Test Name *</Label>
+                <Input value={recordingTestName} onChange={e => setRecordingTestName(e.target.value)} placeholder="e.g., Login Flow Test" />
+              </div>
+              <div>
+                <Label>Description (Optional)</Label>
+                <Textarea value={recordingTestDescription} onChange={e => setRecordingTestDescription(e.target.value)} placeholder="Describe what this test validates..." className="min-h-[60px]" />
+              </div>
+            </div>}
+
+            {/* Recorded Steps */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <Label>Steps ({recordedSteps.length})</Label>
+                {recordedSteps.length > 0 && <Button size="sm" variant="outline" onClick={() => setRecordedSteps([])}>
+                  <Trash2 className="mr-2 h-3 w-3" />
+                  Clear All
+                </Button>}
+              </div>
+              <ScrollArea className="h-[200px] border rounded-lg p-3">
+                <div className="space-y-2">
+                  {recordedSteps.map((step, index) => <Card key={step.id} className="border-l-4 border-l-primary/50">
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-semibold text-muted-foreground w-6">
+                            {index + 1}.
+                          </span>
+                          <Badge variant="outline">{step.type}</Badge>
+                          <span className="text-sm truncate max-w-[250px]">
+                            {step.description}
+                          </span>
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => handleRemoveRecordedStep(step.id)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {step.selector && <p className="text-xs text-muted-foreground mt-1 ml-9 font-mono">
+                        {step.selector}
+                      </p>}
+                    </CardContent>
+                  </Card>)}
+                </div>
+              </ScrollArea>
+            </div>
+          </>}
+        </div>
+
+        <DialogFooter className="gap-2">
+          {!isRecording && !showExtensionInstructions && recordedSteps.length === 0 && <>
+            <Button variant="outline" onClick={() => setShowRecordDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleStartRecording} disabled={!recordingUrl.trim()}>
+              <Video className="mr-2 h-4 w-4" />
+              Start Recording
+            </Button>
+          </>}
+
+          {showExtensionInstructions && <>
+            <Button variant="outline" onClick={() => {
               setShowExtensionInstructions(false);
               setRecordedSteps([]);
               setIsRecording(false);
               setRecordingPasteData("");
             }}>
-                  Cancel
-                </Button>
-                <Button onClick={handleImportRecordedSteps} disabled={!recordingPasteData.trim()}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Import Recorded Steps
-                </Button>
-              </>}
+              Cancel
+            </Button>
+            <Button onClick={handleImportRecordedSteps} disabled={!recordingPasteData.trim()}>
+              <Download className="mr-2 h-4 w-4" />
+              Import Recorded Steps
+            </Button>
+          </>}
 
-            {!showExtensionInstructions && recordedSteps.length > 0 && <>
-                <Button variant="outline" onClick={() => {
+          {!showExtensionInstructions && recordedSteps.length > 0 && <>
+            <Button variant="outline" onClick={() => {
               setRecordedSteps([]);
               setRecordingTestName("");
               setRecordingTestDescription("");
             }}>
-                  Start Over
-                </Button>
-                <Button onClick={handleSaveRecordedTest} disabled={!recordingTestName.trim()}>
-                  <Check className="mr-2 h-4 w-4" />
-                  Save Test
-                </Button>
-              </>}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              Start Over
+            </Button>
+            <Button onClick={handleSaveRecordedTest} disabled={!recordingTestName.trim()}>
+              <Check className="mr-2 h-4 w-4" />
+              Save Test
+            </Button>
+          </>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-      {/* Delete Test Confirmation Dialog */}
-      <AlertDialog open={!!testToDelete} onOpenChange={open => !open && setTestToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Test</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this test? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
+    {/* Delete Test Confirmation Dialog */}
+    <AlertDialog open={!!testToDelete} onOpenChange={open => !open && setTestToDelete(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Test</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this test? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => {
             if (testToDelete) {
               handleDeleteTest(testToDelete);
               setTestToDelete(null);
             }
           }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
-      {/* Delete Folder Confirmation Dialog */}
-      <AlertDialog open={!!folderToDelete} onOpenChange={open => !open && setFolderToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Folder</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this folder? Tests in this folder will be moved to the root level.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
+    {/* Delete Folder Confirmation Dialog */}
+    <AlertDialog open={!!folderToDelete} onOpenChange={open => !open && setFolderToDelete(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Folder</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this folder? Tests in this folder will be moved to the root level.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => {
             if (folderToDelete) {
               handleDeleteFolder(folderToDelete);
               setFolderToDelete(null);
             }
           }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
-      {/* Import Steps Dialog */}
-      <Dialog open={showImportStepsDialog} onOpenChange={open => {
+    {/* Import Steps Dialog */}
+    <Dialog open={showImportStepsDialog} onOpenChange={open => {
       setShowImportStepsDialog(open);
       if (!open) {
         setImportFromTestId("");
         setSelectedImportStepIds(new Set());
       }
     }}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Import Test Steps</DialogTitle>
-            <DialogDescription>
-              Select an existing test and choose which steps to import.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Select Test</Label>
-              <Select value={importFromTestId} onValueChange={value => {
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Import Test Steps</DialogTitle>
+          <DialogDescription>
+            Select an existing test and choose which steps to import.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Select Test</Label>
+            <Select value={importFromTestId} onValueChange={value => {
               setImportFromTestId(value);
               // Auto-select all steps when test is selected
               const test = tests.find(t => t.id === value);
@@ -5671,20 +5775,20 @@ Example:
                 setSelectedImportStepIds(new Set());
               }
             }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a test to import steps from" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tests.filter(t => importStepsTarget === "edit" ? t.id !== selectedTest?.id : true).map(test => <SelectItem key={test.id} value={test.id}>
-                        {test.name} ({Array.isArray(test.steps) ? test.steps.length : 0} steps)
-                      </SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {importFromTestId && <div className="border rounded-lg p-3 bg-muted/30">
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm font-medium">Steps Preview</Label>
-                  {(() => {
+              <SelectTrigger>
+                <SelectValue placeholder="Select a test to import steps from" />
+              </SelectTrigger>
+              <SelectContent>
+                {tests.filter(t => importStepsTarget === "edit" ? t.id !== selectedTest?.id : true).map(test => <SelectItem key={test.id} value={test.id}>
+                  {test.name} ({Array.isArray(test.steps) ? test.steps.length : 0} steps)
+                </SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {importFromTestId && <div className="border rounded-lg p-3 bg-muted/30">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium">Steps Preview</Label>
+              {(() => {
                 const selectedImportTest = tests.find(t => t.id === importFromTestId);
                 const steps = selectedImportTest?.steps;
                 if (!Array.isArray(steps) || steps.length === 0) return null;
@@ -5696,13 +5800,13 @@ Example:
                     setSelectedImportStepIds(new Set(steps.map((s: any, i: number) => s.id || `step-${i}`)));
                   }
                 }}>
-                        {allSelected ? "Deselect All" : "Select All"}
-                      </Button>;
+                  {allSelected ? "Deselect All" : "Select All"}
+                </Button>;
               })()}
-                </div>
-                <ScrollArea className="h-[200px]">
-                  <div className="space-y-2">
-                    {(() => {
+            </div>
+            <ScrollArea className="h-[200px]">
+              <div className="space-y-2">
+                {(() => {
                   const selectedImportTest = tests.find(t => t.id === importFromTestId);
                   const steps = selectedImportTest?.steps;
                   if (!Array.isArray(steps) || steps.length === 0) {
@@ -5720,7 +5824,7 @@ Example:
                       }
                       setSelectedImportStepIds(newSet);
                     }}>
-                            <Checkbox checked={isSelected} onCheckedChange={checked => {
+                      <Checkbox checked={isSelected} onCheckedChange={checked => {
                         const newSet = new Set(selectedImportStepIds);
                         if (checked) {
                           newSet.add(stepId);
@@ -5729,26 +5833,26 @@ Example:
                         }
                         setSelectedImportStepIds(newSet);
                       }} onClick={e => e.stopPropagation()} />
-                            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary font-medium text-xs">
-                              {index + 1}
-                            </span>
-                            <Badge variant="outline" className="text-xs">{step.type}</Badge>
-                            <span className="text-muted-foreground truncate flex-1">{step.description}</span>
-                          </div>;
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary font-medium text-xs">
+                        {index + 1}
+                      </span>
+                      <Badge variant="outline" className="text-xs">{step.type}</Badge>
+                      <span className="text-muted-foreground truncate flex-1">{step.description}</span>
+                    </div>;
                   });
                 })()}
-                  </div>
-                </ScrollArea>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {selectedImportStepIds.size} step{selectedImportStepIds.size !== 1 ? 's' : ''} selected
-                </p>
-              </div>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowImportStepsDialog(false)}>
-              Cancel
-            </Button>
-            <Button disabled={!importFromTestId || selectedImportStepIds.size === 0} onClick={() => {
+              </div>
+            </ScrollArea>
+            <p className="text-xs text-muted-foreground mt-2">
+              {selectedImportStepIds.size} step{selectedImportStepIds.size !== 1 ? 's' : ''} selected
+            </p>
+          </div>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowImportStepsDialog(false)}>
+            Cancel
+          </Button>
+          <Button disabled={!importFromTestId || selectedImportStepIds.size === 0} onClick={() => {
             const selectedImportTest = tests.find(t => t.id === importFromTestId);
             const steps = selectedImportTest?.steps;
             if (!Array.isArray(steps) || steps.length === 0) {
@@ -5781,10 +5885,10 @@ Example:
             setImportFromTestId("");
             setSelectedImportStepIds(new Set());
           }}>
-              Import Steps
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>;
+            Import Steps
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>;
 };

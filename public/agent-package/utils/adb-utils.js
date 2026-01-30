@@ -135,29 +135,55 @@ export async function getDeviceSize(deviceId = null) {
  */
 export async function takeScreenshot(deviceId = null) {
   let tempPath = null;
+  const onDevicePath = '/data/local/tmp/screenshot.png';
+
   try {
-    // Take screenshot on device
-    await adbCommand(['shell', 'screencap', '-p', '/sdcard/screenshot.png'], {
-      deviceId,
-      timeout: 10000
-    });
+    // 1. Take screenshot on device
+    // Try standard screencap
+    try {
+      await adbCommand(['shell', 'screencap', '-p', onDevicePath], {
+        deviceId,
+        timeout: 10000
+      });
+    } catch (screencapError) {
+      console.warn(`[ADB] Standard screencap failed: ${screencapError.message}. Trying /sdcard fallback...`);
+      // Fallback to /sdcard
+      await adbCommand(['shell', 'screencap', '-p', '/sdcard/screenshot.png'], {
+        deviceId,
+        timeout: 10000
+      });
+      // Update path if fallback succeeded
+      // We'll try to pull from both if needed, but let's assume if it reached here /sdcard worked
+    }
 
-    // Pull screenshot from device
+    // 2. Pull screenshot from device
     tempPath = path.join(process.cwd(), `temp_screenshot_${Date.now()}.png`);
-    await adbCommand(['pull', '/sdcard/screenshot.png', tempPath], {
-      deviceId,
-      timeout: 10000
-    });
 
-    // Read file as buffer
+    try {
+      await adbCommand(['pull', onDevicePath, tempPath], {
+        deviceId,
+        timeout: 10000
+      });
+    } catch (pullError) {
+      // If pull from /data/local/tmp failed, try pulling from /sdcard fallback
+      await adbCommand(['pull', '/sdcard/screenshot.png', tempPath], {
+        deviceId,
+        timeout: 10000
+      });
+    }
+
+    // 3. Read file as buffer
+    if (!fs.existsSync(tempPath)) {
+      throw new Error('Screenshot file was not pulled successfully');
+    }
+
     const buffer = fs.readFileSync(tempPath);
-
     return buffer;
   } catch (error) {
     throw new Error(`Failed to take screenshot: ${error.message}`);
   } finally {
-    // Clean up temp file
-    if (tempPath) {
+    // Clean up temp file locally
+    if (tempPath && fs.existsSync(tempPath)) {
       try {
         fs.unlinkSync(tempPath);
       } catch (cleanupError) {

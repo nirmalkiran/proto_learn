@@ -40,8 +40,8 @@ serve(async (req) => {
         .eq('api_key', agentKey)
         .maybeSingle()
       agent = data
-    } else if (body.agentId?.startsWith('browser-')) {
-      // For browser agents, we find or create a temporary record
+    } else if (body.agentId?.startsWith('browser-') || body.agentId?.startsWith('mobile-')) {
+      // For ephemeral local agents, we find or create a temporary record
       const { data } = await supabaseClient
         .from('self_hosted_agents')
         .select('*')
@@ -50,17 +50,22 @@ serve(async (req) => {
       agent = data
 
       if (!agent && action === 'heartbeat') {
-        // Auto-register browser agent
+        const isMobile = body.agentId.startsWith('mobile-')
+        // Auto-register ephemeral agent
         const { data: { user } } = await supabaseClient.auth.getUser(req.headers.get('Authorization')?.split(' ')[1] ?? '')
         const { data: newAgent } = await supabaseClient
           .from('self_hosted_agents')
           .insert({
-            name: 'Local Browser Agent',
+            name: isMobile ? 'Mobile Automation Helper' : 'Local Browser Agent',
             agent_id: body.agentId,
-            agent_type: 'browser',
+            agent_type: isMobile ? 'mobile' : 'browser',
             status: 'online',
-            project_id: body.projectId, // Should be passed from UI
+            project_id: body.projectId,
             user_id: user?.id,
+            capabilities: {
+              browsers: isMobile ? ['Android (ADB)'] : ['chrome'],
+              capacity: body.capacity || 1
+            },
             last_heartbeat: new Date().toISOString()
           })
           .select()
@@ -69,7 +74,7 @@ serve(async (req) => {
       }
     }
 
-    if (!agent && action !== 'register' && !body.agentId?.startsWith('browser-')) {
+    if (!agent && action !== 'register' && !body.agentId?.startsWith('browser-') && !body.agentId?.startsWith('mobile-')) {
       throw new Error(`Authentication failed for ${pathname} (Action: ${action})`)
     }
 
@@ -123,7 +128,13 @@ async function handleRegister(supabase: any, userId: string, body: any) {
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    if (error.code === '23505' && error.message.includes('agent_id')) {
+      throw new Error(`Agent ID "${agentId}" is already in use. Please choose a unique ID.`)
+    }
+    throw error
+  }
+
   return new Response(JSON.stringify({ agent: data, apiToken: apiKey }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,12 +35,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Server,
   Activity,
   Clock,
@@ -70,19 +63,10 @@ import {
   Monitor,
   Terminal,
   Zap,
-  ShieldCheck,
-  TrendingUp,
-  LayoutGrid,
-  Info,
-  AlertCircle,
-  PlusCircle,
-  ChevronRight,
-  ArrowRight,
-  CheckCircle,
-  ZapOff
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import JSZip from "jszip";
+import { useNavigate } from "react-router-dom";
 
 interface AgentManagementProps {
   projectId: string;
@@ -183,6 +167,41 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   const [browserAgentId] = useState(() => `browser-${Math.random().toString(36).substr(2, 9)}`);
   const [browserAgentStatus, setBrowserAgentStatus] = useState<string>("idle");
 
+  // Mobile Agent States (for background heartbeating to Supabase)
+  const [mobileAgentId] = useState(() => `mobile-${Math.random().toString(36).substr(2, 9)}`);
+
+  useEffect(() => {
+    let isMounted = true;
+    const mobileHeartbeat = async () => {
+      if (!isMounted || !mobileAgentStatus.running) return;
+      try {
+        await supabase.functions.invoke("agent-api", {
+          body: {
+            action: "heartbeat",
+            agentId: mobileAgentId,
+            projectId: projectId,
+            status: "online",
+            capacity: mobileDetails.devices.length || 1,
+            browsers: ["Android (ADB)"],
+            system_info: {
+              platform: navigator.platform,
+              devices: mobileDetails.devices.length,
+              port: 3001
+            }
+          },
+        });
+      } catch (err) {
+        console.error("Mobile Agent heartbeat failed:", err);
+      }
+    };
+
+    if (mobileAgentStatus.running) {
+      const hbInterval = setInterval(mobileHeartbeat, 30000);
+      mobileHeartbeat();
+      return () => { isMounted = false; clearInterval(hbInterval); };
+    }
+  }, [mobileAgentStatus.running, mobileAgentId, projectId, mobileDetails.devices.length]);
+
   useEffect(() => {
     if (!isBrowserAgentActive) return;
     let isMounted = true;
@@ -193,6 +212,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           body: {
             action: "heartbeat",
             agentId: browserAgentId,
+            projectId: projectId, // FIX: Pass projectId for auto-registration
             status: browserAgentStatus === "busy" ? "busy" : "online",
             capacity: 1,
             browsers: ["chrome"],
@@ -276,9 +296,42 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   };
 
   const loadAgents = async () => {
-    const localAgents: Agent[] = [];
+    const { data: dbAgents, error } = await supabase
+      .from("self_hosted_agents")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
 
-    if (isBrowserAgentActive) {
+    if (error) throw error;
+
+    const localAgents: Agent[] = (dbAgents || []).map(agent => ({
+      ...agent,
+      agent_name: agent.agent_name || agent.name || "Unnamed Agent",
+      browsers: agent.browsers || (agent.capabilities as any)?.browsers || [],
+      capacity: agent.capacity || (agent.capabilities as any)?.capacity || 1
+    }));
+
+    // Deduplicate ephemeral agents (don't push virtual ones if they are already in the DB)
+    const dbAgentIds = new Set(localAgents.map(a => a.agent_id));
+
+    // Add Mobile Agent if running and not in DB
+    if (mobileAgentStatus.running && !dbAgentIds.has(mobileAgentId)) {
+      localAgents.push({
+        id: mobileAgentId,
+        agent_id: mobileAgentId,
+        agent_name: "Mobile Automation Helper",
+        status: "online",
+        last_heartbeat: new Date().toISOString(),
+        capacity: mobileDetails.devices.length || 1,
+        running_jobs: 0,
+        browsers: ["Android (ADB)"],
+        config: { port: 3001 },
+        created_at: new Date().toISOString()
+      });
+    }
+
+    // Add Browser Agent if active and not in DB
+    if (isBrowserAgentActive && !dbAgentIds.has(browserAgentId)) {
       localAgents.push({
         id: browserAgentId,
         agent_id: browserAgentId,
@@ -297,13 +350,27 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   };
 
   const loadJobs = async () => {
-    // TODO: agent_job_queue table does not exist yet - using empty array
-    setJobs([]);
+    const { data, error } = await supabase
+      .from("agent_job_queue")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+    setJobs((data || []) as JobQueueItem[]);
   };
 
   const loadExecutionResults = async () => {
-    // TODO: agent_execution_results table does not exist yet - using empty array
-    setExecutionResults([]);
+    const { data, error } = await supabase
+      .from("agent_execution_results")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+    setExecutionResults((data || []) as ExecutionResult[]);
   };
 
   const checkMobileAgentStatus = async () => {
@@ -385,9 +452,18 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
       }
     } catch (error: any) {
       console.error("Registration error:", error);
+
+      // Attempt to extract meaningful error message from Edge Function
+      let errorMessage = "Failed to register agent";
+      if (error.context?.json?.error) {
+        errorMessage = error.context.json.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       toast({
         title: "Registration Failed",
-        description: error.message || "Failed to register agent",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -661,7 +737,8 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      {/* Header Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -676,603 +753,359 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-none shadow-lg bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
-          <div className="absolute top-0 right-0 p-4 opacity-20">
-            <Cpu className="h-16 w-16" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2 text-blue-100">
-              <Zap className="h-4 w-4" />
-              Operational Agents
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold tracking-tight">{onlineAgents.length}</div>
-            <p className="text-xs mt-1 text-blue-100/80 flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
-              {agents.length} agents total in cluster
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden border-none shadow-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
-          <div className="absolute top-0 right-0 p-4 opacity-20">
-            <ShieldCheck className="h-16 w-16" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2 text-emerald-100">
-              <Activity className="h-4 w-4" />
-              System Workload
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold tracking-tight">{runningJobs.length}</div>
-            <p className="text-xs mt-1 text-emerald-100/80">
-              {pendingJobs.length} jobs in queue waiting
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden border-none shadow-lg bg-gradient-to-br from-amber-500 to-orange-600 text-white">
-          <div className="absolute top-0 right-0 p-4 opacity-20">
-            <Activity className="h-16 w-16" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2 text-amber-100">
-              <History className="h-4 w-4" />
-              Execution Health
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold tracking-tight">
-              {executionResults.length > 0
-                ? `${Math.round((executionResults.filter(r => r.status === 'passed').length / executionResults.length) * 100)}%`
-                : '100%'}
-            </div>
-            <p className="text-xs mt-1 text-amber-100/80">
-              Success rate across recent runs
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Connectivity Hub & Onboarding Guide */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <Card className="lg:col-span-2 overflow-hidden border-primary/10 shadow-md">
-          <CardHeader className="bg-muted/30 pb-4">
-            <div className="flex items-center justify-between">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <Wifi className="h-5 w-5 text-green-500" />
+              </div>
               <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <PlayCircle className="h-5 w-5 text-primary" />
-                  Quick Start Guide
-                </CardTitle>
-                <CardDescription>Get your first agent up and running in minutes</CardDescription>
-              </div>
-              <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-                Hybrid Mode
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-6">
-              <div className="flex gap-4">
-                <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">1</div>
-                <div>
-                  <h4 className="font-semibold text-sm mb-1 text-foreground">Register your Agent</h4>
-                  <p className="text-xs text-muted-foreground mb-3">Create a unique identifier and security token for your instance.</p>
-                  <Button size="sm" onClick={() => setShowRegisterDialog(true)} className="h-8 gap-2">
-                    <PlusCircle className="h-3.5 w-3.5" />
-                    New Agent identity
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">2</div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-sm mb-1 text-foreground">Deploy locally</h4>
-                  <p className="text-xs text-muted-foreground mb-3">Use our frictionless one-liner to download and start the agent.</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 border-primary/20 hover:bg-primary/5 text-primary"
-                      onClick={() => {
-                        const origin = window.location.origin;
-                        const token = newAgentToken || 'YOUR_TOKEN';
-                        const cmd = `powershell -ExecutionPolicy ByPass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iwr ${origin}/setup.ps1 -OutFile setup.ps1; .\\setup.ps1 -Token ${token} -Url ${origin}"`;
-                        copyToClipboard(cmd);
-                        toast({ title: "Windows Command Copied", description: "Paste into PowerShell to start." });
-                      }}>
-                      <Terminal className="h-3.5 w-3.5 mr-2" />
-                      Windows Shell
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 border-primary/20 hover:bg-primary/5 text-primary"
-                      onClick={() => {
-                        const origin = window.location.origin;
-                        const token = newAgentToken || 'YOUR_TOKEN';
-                        const cmd = `curl -sSL ${origin}/setup.sh | bash -s -- ${token} ${origin}`;
-                        copyToClipboard(cmd);
-                        toast({ title: "Linux/macOS Command Copied", description: "Paste into Terminal to start." });
-                      }}
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5 mr-2" />
-                      Linux/macOS
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">3</div>
-                <div>
-                  <h4 className="font-semibold text-sm mb-1 text-foreground">Verify Connectivity</h4>
-                  <p className="text-xs text-muted-foreground">The agent will heartbeat to this dashboard. Status will turn green below.</p>
-                </div>
+                <p className="text-sm text-muted-foreground">Online</p>
+                <p className="text-2xl font-bold text-green-500">{agents.filter(a => (a.status === 'online' || a.status === 'busy') && !isHeartbeatStale(a.last_heartbeat)).length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-primary/10 shadow-md">
-          <CardHeader className="pb-3 border-b">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Info className="h-4 w-4 text-muted-foreground" />
-              Runtime Config
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4 space-y-4">
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Active Token</Label>
-              <div className="flex items-center justify-between p-2 rounded bg-muted/50 border">
-                <code className="text-[11px] truncate max-w-[150px]">{newAgentToken || '••••••••••••••••'}</code>
-                {newAgentToken && (
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(newAgentToken)}>
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                )}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-yellow-500/10">
+                <Clock className="h-5 w-5 text-yellow-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Jobs</p>
+                <p className="text-2xl font-bold text-yellow-500">{jobs.filter(j => j.status === 'pending').length}</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Server Protocol</Label>
-              <p className="text-xs font-medium flex items-center gap-2">
-                <ShieldCheck className="h-3.5 w-3.5 text-blue-500" />
-                Supabase Edge API (v1)
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <Smartphone className="h-4 w-4 text-primary" />
-              <div className="flex-1">
-                <p className="text-[11px] font-semibold leading-none mb-1">Mobile Native Support</p>
-                <p className="text-[10px] text-muted-foreground">ADB/Appium capability enabled.</p>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <Activity className="h-5 w-5 text-blue-500" />
               </div>
-            </div>
-
-            <div className="pt-2">
-              <Button variant="ghost" size="sm" className="w-full justify-start text-[11px] h-8 text-muted-foreground hover:text-primary" onClick={() => downloadAgentPackage()}>
-                <Download className="h-3 w-3 mr-2" />
-                Download Source Code (.zip)
-              </Button>
+              <div>
+                <p className="text-sm text-muted-foreground">Running</p>
+                <p className="text-2xl font-bold text-blue-500">{jobs.filter(j => j.status === 'running').length}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Main Content Area */}
-      <Tabs defaultValue={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="agents" className="gap-2">
-              <Server className="h-4 w-4" />
-              Infrastructure
-            </TabsTrigger>
-            <TabsTrigger value="jobs" className="gap-2">
-              <Activity className="h-4 w-4" />
-              Active Queue
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-2">
-              <History className="h-4 w-4" />
-              Execution History
-            </TabsTrigger>
-          </TabsList>
-
-          <div className="flex items-center gap-2">
-            <div className="hidden lg:flex items-center space-x-2 mr-2 px-3 py-1.5 rounded-full bg-primary/5 border border-primary/10">
-              <span className="text-[11px] font-medium text-primary">Local Browser Agent</span>
-              <Button
-                variant={isBrowserAgentActive ? "default" : "outline"}
-                size="sm"
-                className={`h-6 px-3 text-[10px] ${isBrowserAgentActive ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                onClick={() => setIsBrowserAgentActive(!isBrowserAgentActive)}
-              >
-                {isBrowserAgentActive ? "Active" : "Activate"}
+      {/* Main Content */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Server className="h-5 w-5" />
+                Self-Hosted Agents
+              </CardTitle>
+              <CardDescription>Manage your self-hosted test execution agents</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => downloadAgentPackage()}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Agent
+              </Button>
+              <Button variant="outline" size="sm" onClick={loadData} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button size="sm" onClick={() => setShowRegisterDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Register Agent
               </Button>
             </div>
-            <Button size="sm" variant="outline" className="h-8 gap-2" onClick={() => loadData()} disabled={isLoading}>
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              Sync
-            </Button>
           </div>
-        </div>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="agents" className="flex items-center gap-2">
+                <Server className="h-4 w-4" />
+                Agents ({agents.length})
+              </TabsTrigger>
+              <TabsTrigger value="jobs" className="flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Job Queue ({jobs.filter((j) => j.status === "pending" || j.status === "running").length})
+              </TabsTrigger>
+              <TabsTrigger value="history" className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Execution History
+              </TabsTrigger>
+            </TabsList>
 
-        {/* Agents Tab */}
-        <TabsContent value="agents">
-          <ScrollArea className="h-[500px]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Capacity</TableHead>
-                  <TableHead>Capabilities</TableHead>
-                  <TableHead>Last Activity</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Mobile Automation Helper (Built-in) */}
-                <TableRow className="bg-primary/5 hover:bg-primary/10 transition-colors">
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 rounded-md">
-                        <Smartphone className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-primary">Mobile Automation Helper</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">localhost:3001</p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">Built-in</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {mobileAgentStatus.running ? (
-                        <Badge className="bg-green-500/20 text-green-600 border-green-500/30 font-medium h-5">
-                          <Wifi className="h-3 w-3 mr-1" />
-                          Online
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="bg-muted text-muted-foreground font-medium grayscale h-5">
-                          <WifiOff className="h-3 w-3 mr-1" />
-                          Offline
-                        </Badge>
-                      )}
-                      {mobileAgentStatus.running && (
-                        <div className="flex gap-1 mt-1">
-                          <Badge variant="outline" className={`text-[8px] h-3 px-1 ${mobileDetails.appium ? 'text-green-600 border-green-200' : 'text-red-400 border-red-100 opacity-50'}`}>
-                            APPIUM
-                          </Badge>
-                          <Badge variant="outline" className={`text-[8px] h-3 px-1 ${mobileDetails.devices.length > 0 ? 'text-green-600 border-green-200' : 'text-red-400 border-red-100 opacity-50'}`}>
-                            ADB
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1 text-[10px]">
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <Smartphone className="h-3 w-3 text-muted-foreground" />
-                        <span>{mobileDetails.devices.length} Devices</span>
-                      </div>
-                      {mobileDetails.physicalDevice && (
-                        <span className="text-green-500 flex items-center gap-0.5">
-                          <CheckCircle2 className="h-2.5 w-2.5" /> Physical Connected
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1 flex-wrap">
-                      <Badge variant="outline" className="text-[9px] h-4 px-1.5 py-0">Android</Badge>
-                      <Badge variant="outline" className="text-[9px] h-4 px-1.5 py-0">ADB</Badge>
-                      {mobileDetails.emulator && <Badge variant="outline" className="text-[9px] h-4 px-1.5 py-0 bg-blue-50/50">Emulator</Badge>}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {mobileAgentStatus.lastChecked ? formatDistanceToNow(mobileAgentStatus.lastChecked, { addSuffix: true }) : "Never"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-xs gap-1"
-                        onClick={() => {
-                          setMobileWizardStep(1);
-                          setShowMobileWizard(true);
-                        }}
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        Configure
-                      </Button>
-                      {mobileAgentStatus.running && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 text-xs gap-1 text-primary"
-                          onClick={() => {
-                            navigate(`/project/${projectId}/mobile-no-code-automation`);
-                            toast({
-                              title: "Mobile Dashboard",
-                              description: "Opening real-time mobile automation dashboard...",
-                            });
-                          }}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          View
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-
-                {/* Self-hosted Agents */}
-                {agents.map((agent) => (
-                  <TableRow key={agent.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-muted rounded-md">
-                          <Server className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="font-medium">{agent.agent_name}</p>
-                          <p className="text-[10px] text-muted-foreground font-mono">{agent.agent_id}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px]">Self-Hosted</Badge>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(agent.status, agent.last_heartbeat)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 text-xs">
-                        <Cpu className="h-3 w-3 text-muted-foreground" />
-                        <span>
-                          {agent.running_jobs}/{agent.capacity}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        {(agent.browsers || []).map((browser) => (
-                          <Badge key={browser} variant="outline" className="text-[9px] h-4 px-1.5 py-0">
-                            {browser}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {agent.last_heartbeat ? (
-                        <span className="text-xs text-muted-foreground font-medium">
-                          {formatDistanceToNow(new Date(agent.last_heartbeat), { addSuffix: true })}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Never</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedAgent(agent);
-                            setShowAgentDetails(true);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setAgentToDelete(agent)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {agents.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-                <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center mb-6">
-                  <Monitor className="h-10 w-10 text-primary/40" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No Active Cluster Instances</h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-8">
-                  You haven't connected any self-hosted worker nodes yet.
-                  Follow the <span className="text-primary font-medium">Quick Start Guide</span> above to link your local infrastructure.
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setShowRegisterDialog(true)}>
+            <TabsContent value="agents">
+              {agents.length === 0 && !isLoading ? (
+                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/20">
+                  <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">No Agents Registered</h3>
+                  <p className="mb-4">Register a self-hosted agent to start running tests.</p>
+                  <Button onClick={() => setShowRegisterDialog(true)}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Register New Identity
+                    Register Agent
                   </Button>
                 </div>
+              ) : (
+                <ScrollArea className="h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Agent</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Capacity</TableHead>
+                        <TableHead>Browsers</TableHead>
+                        <TableHead>Last Heartbeat</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {agents.map((agent) => (
+                        <TableRow key={agent.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{agent.agent_name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{agent.agent_id}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(agent.status, agent.last_heartbeat)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Cpu className="h-4 w-4 text-muted-foreground" />
+                              {agent.agent_id.startsWith('mobile') ? (
+                                <Smartphone className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <Monitor className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <span>{agent.running_jobs}/{agent.capacity} {agent.agent_id.startsWith('mobile') ? 'Devices' : 'Slots'}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              {(agent.browsers || []).map((browser) => (
+                                <Badge key={browser} variant="outline" className="text-[10px]">
+                                  {browser}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {agent.last_heartbeat
+                                ? formatDistanceToNow(new Date(agent.last_heartbeat), { addSuffix: true })
+                                : "Never"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => {
+                                  setSelectedAgent(agent);
+                                  setShowAgentDetails(true);
+                                }}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                {agent.agent_id.startsWith('mobile') && (
+                                  <DropdownMenuItem onClick={() => {
+                                    setMobileWizardStep(1);
+                                    setShowMobileWizard(true);
+                                  }}>
+                                    <Settings className="h-4 w-4 mr-2" />
+                                    Mobile Setup
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:bg-destructive focus:text-destructive-foreground font-medium"
+                                  onClick={() => setAgentToDelete(agent)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Agent
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
+            </TabsContent>
 
-                <div className="mt-12 p-4 rounded-xl border border-dashed bg-muted/30 max-w-lg w-full flex items-start gap-4 text-left">
-                  <Zap className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Architecture Tip</p>
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
-                      Each worker node operates in an isolated environment. You can scale horizontally by adding more
-                      instances on different machines or containers.
-                    </p>
+            <TabsContent value="jobs">
+              <ScrollArea className="h-[400px]">
+                {jobs.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium mb-2">No Jobs in Queue</h3>
+                    <p>Jobs will appear here when tests are scheduled for execution.</p>
                   </div>
-                </div>
-              </div>
-            )}
-          </ScrollArea>
-        </TabsContent>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Run ID</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Retries</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Started</TableHead>
+                        <TableHead>Agent</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobs.map((job) => (
+                        <TableRow key={job.id}>
+                          <TableCell className="font-mono text-sm">{job.run_id}</TableCell>
+                          <TableCell>{getJobStatusBadge(job.status)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{job.priority}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {job.retries}/{job.max_retries}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {job.started_at ? formatDistanceToNow(new Date(job.started_at), { addSuffix: true }) : "-"}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {job.agent_id ? job.agent_id.slice(0, 8) : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {job.status === "pending" && (
+                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
+                                    <Ban className="h-4 w-4 mr-2" />
+                                    Cancel Job
+                                  </DropdownMenuItem>
+                                )}
+                                {job.status === "running" && (
+                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
+                                    <Ban className="h-4 w-4 mr-2" />
+                                    Cancel Job
+                                  </DropdownMenuItem>
+                                )}
+                                {(job.status === "failed" || job.status === "cancelled") && (
+                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
+                                    <RotateCcw className="h-4 w-4 mr-2" />
+                                    Retry Job
+                                  </DropdownMenuItem>
+                                )}
+                                {job.status === "completed" && (
+                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Re-run Job
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setJobToDelete(job)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Job
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </ScrollArea>
+            </TabsContent>
 
-        {/* Jobs Tab */}
-        <TabsContent value="jobs">
-          <ScrollArea className="h-[400px]">
-            {jobs.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No Jobs in Queue</h3>
-                <p>Jobs will appear here when tests are scheduled for execution.</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Run ID</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Retries</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Started</TableHead>
-                    <TableHead>Agent</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {jobs.map((job) => (
-                    <TableRow key={job.id}>
-                      <TableCell className="font-mono text-sm">{job.run_id}</TableCell>
-                      <TableCell>{getJobStatusBadge(job.status)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{job.priority}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {job.retries}/{job.max_retries}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {job.started_at ? formatDistanceToNow(new Date(job.started_at), { addSuffix: true }) : "-"}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {job.agent_id ? job.agent_id.slice(0, 8) : "-"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {job.status === "pending" && (
-                              <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
-                                <Ban className="h-4 w-4 mr-2" />
-                                Cancel Job
-                              </DropdownMenuItem>
-                            )}
-                            {job.status === "running" && (
-                              <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
-                                <Ban className="h-4 w-4 mr-2" />
-                                Cancel Job
-                              </DropdownMenuItem>
-                            )}
-                            {(job.status === "failed" || job.status === "cancelled") && (
-                              <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
-                                <RotateCcw className="h-4 w-4 mr-2" />
-                                Retry Job
-                              </DropdownMenuItem>
-                            )}
-                            {job.status === "completed" && (
-                              <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
-                                <Play className="h-4 w-4 mr-2" />
-                                Re-run Job
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setJobToDelete(job)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Job
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </ScrollArea>
-        </TabsContent>
+            <TabsContent value="history">
+              <ScrollArea className="h-[400px]">
+                {executionResults.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium mb-2">No Execution History</h3>
+                    <p>Test execution results will appear here.</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Steps</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Artifacts</TableHead>
+                        <TableHead>Executed</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {executionResults.map((result) => (
+                        <TableRow key={result.id}>
+                          <TableCell>{getJobStatusBadge(result.status)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-500">{result.passed_steps} passed</span>
+                              <span className="text-muted-foreground">/</span>
+                              <span className="text-red-500">{result.failed_steps} failed</span>
+                              <span className="text-muted-foreground">/</span>
+                              <span>{result.total_steps} total</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDuration(result.duration_ms)}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              {result.screenshots && result.screenshots.length > 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  {result.screenshots.length} screenshots
+                                </Badge>
+                              )}
+                              {result.video_url && (
+                                <Badge variant="outline" className="text-xs">
+                                  Video
+                                </Badge>
+                              )}
+                              {result.trace_url && (
+                                <Badge variant="outline" className="text-xs">
+                                  Trace
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDistanceToNow(new Date(result.created_at), { addSuffix: true })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
-        {/* History Tab */}
-        <TabsContent value="history">
-          <ScrollArea className="h-[400px]">
-            {executionResults.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No Execution History</h3>
-                <p>Test execution results will appear here.</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Steps</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Artifacts</TableHead>
-                    <TableHead>Executed</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {executionResults.map((result) => (
-                    <TableRow key={result.id}>
-                      <TableCell>{getJobStatusBadge(result.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="text-green-500">{result.passed_steps} passed</span>
-                          <span className="text-muted-foreground">/</span>
-                          <span className="text-red-500">{result.failed_steps} failed</span>
-                          <span className="text-muted-foreground">/</span>
-                          <span>{result.total_steps} total</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatDuration(result.duration_ms)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          {result.screenshots && result.screenshots.length > 0 && (
-                            <Badge variant="outline" className="text-xs">
-                              {result.screenshots.length} screenshots
-                            </Badge>
-                          )}
-                          {result.video_url && (
-                            <Badge variant="outline" className="text-xs">
-                              Video
-                            </Badge>
-                          )}
-                          {result.trace_url && (
-                            <Badge variant="outline" className="text-xs">
-                              Trace
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDistanceToNow(new Date(result.created_at), { addSuffix: true })}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
       {/* Register Agent Dialog */}
       <Dialog
         open={showRegisterDialog}
@@ -1354,6 +1187,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           )}
         </DialogContent>
       </Dialog>
+
       {/* Agent Details Dialog */}
       <Dialog open={showAgentDetails} onOpenChange={setShowAgentDetails}>
         <DialogContent className="max-w-2xl">
@@ -1423,6 +1257,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Mobile Setup Wizard */}
       <Dialog open={showMobileWizard} onOpenChange={setShowMobileWizard}>
         <DialogContent className="max-w-2xl">

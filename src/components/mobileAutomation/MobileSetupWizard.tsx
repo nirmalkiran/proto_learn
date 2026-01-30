@@ -31,6 +31,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Icons
 import {
@@ -55,6 +56,8 @@ import {
 
 // Utils
 import { toast } from "sonner";
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
 const AGENT_URL = "http://localhost:3001";
 
 // Status icon renderer
@@ -70,18 +73,20 @@ const icon = (status: CheckResult["status"]) => {
   }
   return <div className="h-5 w-5 rounded-full border border-muted-foreground/30" />;
 };
-
-
+const BOOT_DELAY_MS = 8000;
+const REFRESH_INTERVAL_MS = 5000;
+const TIMEOUT_MS = 5000;
+interface SetupState {
+  appium: boolean;
+  emulator: boolean;
+  device: boolean;
+}
 interface MobileSetupWizardProps {
-  setupState: {
-    appium: boolean;
-    emulator: boolean;
-    device: boolean;
-  };
-  setSetupState: (state: any) => void;
+  setupState: SetupState;
+  setSetupState: React.Dispatch<React.SetStateAction<SetupState>>;
   selectedDevice: SelectedDevice | null;
-  setSelectedDevice: (device: SelectedDevice | null) => void;
-  setActiveTab?: (tab: string) => void;
+  setSelectedDevice: React.Dispatch<React.SetStateAction<SelectedDevice | null>>;
+  setActiveTab?: React.Dispatch<React.SetStateAction<string>>;
 }
 
 export default function MobileSetupWizard({
@@ -144,6 +149,17 @@ export default function MobileSetupWizard({
       initializeDevices();
       checkAllServicesStatus();
     }
+
+    // Set up polling for continuous updates (Auto-refresh)
+    const pollInterval = setInterval(() => {
+      // Only poll if healthy/initialized to avoid constant errors if helper is down
+      if (devicesFetched) {
+        checkAllServicesStatus();
+        fetchAvailableDevices();
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
   }, [devicesFetched]);
 
   // Check Android Emulator Status
@@ -187,8 +203,8 @@ export default function MobileSetupWizard({
       const statusRes = await fetch(`${AGENT_URL}/setup/status`);
       const statusData = await statusRes.json();
 
-      if (statusData.emulator) {
-        toast.info("Emulator is already running");
+      if (statusData.emulator && statusData.currentAvd === avdToStart) {
+        // Only show if not specifically switching (handleDeviceChange handles switching message)
         update("emulator", {
           status: "success",
           message: "Emulator running",
@@ -198,11 +214,16 @@ export default function MobileSetupWizard({
       }
     } catch (statusError) {
       console.warn("[startEmulator] Could not check emulator status:", statusError);
-      // Continue with start attempt
     }
 
     const deviceName = availableDevices.find(d => d.id === avdToStart)?.name || avdToStart;
-    toast.info(`Starting emulator: ${deviceName}...`);
+
+    // Improved messaging
+    const isSwitching = selectedDevice?.real_mobile;
+    if (!isSwitching) {
+      toast.info(`Starting emulator: ${deviceName}...`);
+    }
+
     try {
       const res = await fetch(`${AGENT_URL}/emulator/start`, {
         method: "POST",
@@ -211,9 +232,7 @@ export default function MobileSetupWizard({
       });
 
       if (!res.ok) {
-        // Handle 500 error - check if emulator actually started despite error
         if (res.status === 500) {
-          console.warn("[startEmulator] Start returned 500, checking if emulator is actually running...");
           try {
             const verifyRes = await fetch(`${AGENT_URL}/emulator/status`);
             const verifyData = await verifyRes.json();
@@ -249,6 +268,7 @@ export default function MobileSetupWizard({
     try {
       const res = await fetch(`${AGENT_URL}/emulator/stop`, {
         method: "POST",
+        signal: AbortSignal.timeout(8000), // 8s timeout to prevent hanging
       });
       if (!res.ok) throw new Error("Failed to stop emulator");
       return true;
@@ -258,29 +278,63 @@ export default function MobileSetupWizard({
     }
   };
 
-  // Handle device change with sequential stop/start
-  const handleDeviceChange = async (device: DeviceInfo) => {
-    // Update UI state immediately for responsiveness
-    setSelectedDevice({
-      device: device.id,
-      name: device.name,
-      os_version: device.os_version || "13",
-      real_mobile: device.type === "real"
-    });
+  // Handle device change with mutual exclusion logic
+  const [isProcessing, setIsProcessing] = useState(false);
+  const handleDeviceChange = async (device: DeviceInfo, silent = false) => {
+    if (isProcessing) return; // Guard against rapid clicks
+    setIsProcessing(true);
+    try {
+      const isEmulator = device.type === "emulator";
+      const isPhysical = device.type === "real";
+      const newDevice = device.id;
+      const deviceName = device.name || device.id
+      const emulatorRunning = checks.emulator.status === "success";
+      const physicalActive = selectedDevice?.real_mobile && selectedDevice.device;
 
-    const newDevice = device.id;
-    const deviceName = device.name || device.id;
+      // Rule: If Physical Device becomes active -> Switch from Emulator
+      // We check if emulator is running OR if we had an emulator selected previously (to be safe)
+      const wasEmulatorSelected = selectedDevice && !selectedDevice.real_mobile;
+      if (isPhysical && (emulatorRunning || wasEmulatorSelected)) {
+        if (!silent) toast.info("Switching to physical device...");
 
-    // If there was a previous device, stop it first
-    if (selectedDevice?.device && selectedDevice.device !== newDevice) {
-      toast.info("Switching devices, stopping current emulator...");
-      await stopEmulator();
-      // Small delay for clean process teardown
-      await new Promise(resolve => setTimeout(resolve, 2000));
+        // Non-blocking stop to prevent UI freeze
+        stopEmulator().then(() => {
+          console.log("Emulator stopped in background");
+        }).catch(err => console.warn("Background stop failed:", err));
+
+        update("emulator", { status: "pending", message: "Standby" });
+        setSetupState((p: any) => ({ ...p, emulator: false }));
+      }
+
+      // Rule: If Emulator becomes active -> Switch from Physical
+      if (isEmulator && physicalActive) {
+        if (!silent) toast.info("Emulator started. Physical device disconnected.");
+        update("physicalDevice", { status: "pending", message: "Standby" });
+      }
+
+      // Update UI selection state immediately
+      setSelectedDevice({
+        device: device.id,
+        name: device.name,
+        os_version: device.os_version || "13",
+        real_mobile: isPhysical
+      });
+
+      // Start/Verify the specific device
+      if (isEmulator) {
+        await startEmulator(newDevice);
+      } else {
+        if (!silent) toast.success(`Active: ${deviceName}`);
+        update("device", { status: "success", message: `Connected: ${deviceName}` });
+        update("physicalDevice", { status: "success", message: "Connected" });
+        setSetupState((p: any) => ({ ...p, device: true }));
+      }
+    } catch (err) {
+      console.error("Error switching device:", err);
+      if (!silent) toast.error("Failed to switch device");
+    } finally {
+      setIsProcessing(false);
     }
-
-    // Start the new device
-    await startEmulator(newDevice);
   };
 
 
@@ -314,6 +368,9 @@ export default function MobileSetupWizard({
       // Add available emulators that might not be running yet
       if (availableData.success && availableData.avds?.length) {
         availableData.avds.forEach((avd: string) => {
+          // Filter out generic "default" emulators if they appear (phantom devices)
+          if (avd.toLowerCase() === "default" || avd.toLowerCase() === "placeholder") return;
+
           if (!allDevices.some(d => d.id === avd)) {
             allDevices.push({
               id: avd,
@@ -326,16 +383,35 @@ export default function MobileSetupWizard({
 
       setAvailableDevices(allDevices);
 
+      // Validation: If selected device is no longer in the list, clear it
+      if (selectedDevice && allDevices.length > 0) {
+        const stillPresent = allDevices.some(d => d.id === selectedDevice.device);
+        if (!stillPresent) {
+          console.log("[MobileSetupWizard] Selected device disconnected, clearing selection");
+          setSelectedDevice(null);
+          setSetupState((p: any) => ({ ...p, device: false, emulator: false }));
+          setChecks(prev => ({
+            ...prev,
+            device: { status: "pending", message: "Disconnected" },
+            emulator: { status: "pending", message: "Disconnected" }
+          }));
+
+        }
+      } else if (selectedDevice && allDevices.length === 0) {
+        setSelectedDevice(null);
+        setSetupState((p: any) => ({ ...p, device: false, emulator: false }));
+      }
+
       if (allDevices.length > 0) {
-        // Auto-select logic
+        // Auto-select logic: Only if NO device is currently selected
         const physical = allDevices.find((d) => d.type === "real");
 
-        if (physical && selectedDevice?.device !== physical.id) {
-          toast.success(`Physical device found: ${physical.name || physical.id}`);
-          handleDeviceChange(physical);
-        } else if (allDevices.length === 1 && !selectedDevice) {
-          toast.success(`Selected available device: ${allDevices[0].name || allDevices[0].id}`);
-          handleDeviceChange(allDevices[0]);
+        if (!selectedDevice) {
+          if (physical) {
+            handleDeviceChange(physical, true);
+          } else if (allDevices.length === 1) {
+            handleDeviceChange(allDevices[0], true);
+          }
         }
       }
     } catch (error) {
@@ -401,10 +477,11 @@ export default function MobileSetupWizard({
         update("appium", { status: "error", message: "Connect error" });
       }
 
-      // Start emulator if device is selected
+      // Start emulator ONLY if an emulator is selected
       const deviceToStart = selectedDevice?.device;
+      const isEmulator = selectedDevice && !selectedDevice.real_mobile;
 
-      if (deviceToStart) {
+      if (deviceToStart && isEmulator) {
         try {
           const emulatorRes = await fetch(`${AGENT_URL}/emulator/start`, {
             method: "POST",
@@ -453,9 +530,13 @@ export default function MobileSetupWizard({
           hasErrors = true;
           update("emulator", { status: "error", message: "Connect error" });
         }
+      } else if (deviceToStart && selectedDevice.real_mobile) {
+        // For physical device, we don't 'start' it, but we verify its connection
+        update("physicalDevice", { status: "success", message: "Connected" });
+        update("device", { status: "success", message: "Active" });
+        setSetupState((p: any) => ({ ...p, device: true }));
       } else {
         toast.error("Please select a device first to start services.");
-        // If no device selected, we don't return entirely but log error for emulator/device
         update("emulator", { status: "error", message: "No device selected" });
         update("physicalDevice", { status: "error", message: "No device selected" });
         update("device", { status: "error", message: "No device selected" });
@@ -510,21 +591,16 @@ export default function MobileSetupWizard({
       setStartingServices(false);
     }
   };
-
-
   // Check All Services Status via Aggregated API
   const checkAllServicesStatus = async () => {
-    // Set all to checking immediately
-    items.forEach(item => {
-      update(item.key, { status: "checking", message: `Checking ${item.label}...` });
-    });
+    // Note: We do NOT reset to "checking" here to avoid UI flickering during background polls
 
     try {
       const res = await fetch(`${AGENT_URL}/setup/status`, {
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      const data = await res.json();
 
+      const data = await res.json();
       if (!res.ok) throw new Error("Failed to get status");
 
       // Update individual checks based on aggregated status
@@ -558,15 +634,20 @@ export default function MobileSetupWizard({
         message: data.device ? "Device connected" : "No device connected",
       });
 
-      // Auto-detection logic for physical devices
-      if (data.physicalDevice && !devicesFetched && !devicesLoading) {
-        console.log("[MobileSetupWizard] Physical device detected in status, fetching details...");
-        fetchAvailableDevices();
+      if (data.physicalDevice && !devicesLoading) {
+        const hasRealDeviceInState = availableDevices.some(d => d.type === "real");
+        // Only trigger fetch if the state doesn't match the reality to prevent loops
+        if (!hasRealDeviceInState) {
+          console.log("[MobileSetupWizard] New physical device detected, fetching details...");
+          fetchAvailableDevices();
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("[checkAllServicesStatus] Error:", error);
 
-      const errorState = { status: "error" as const, message: "Helper unreachable" };
+      const isTimeout = error.name === 'TimeoutError';
+      const errorMessage = isTimeout ? "Helper timed out" : "Helper unreachable";
+      const errorState = { status: "error" as const, message: errorMessage };
       update("backend", errorState);
       update("agent", errorState);
       update("appium", errorState);
@@ -575,695 +656,653 @@ export default function MobileSetupWizard({
       update("device", errorState);
     }
   };
+  // Guided Tour Logic
+  const startTour = () => {
+    const driverObj = driver({
+      showProgress: true,
+      animate: true,
+      steps: [
+        {
+          element: '#setup-wizard-container',
+          popover: {
+            title: 'Mobile Setup Wizard',
+            description: 'Welcome! This wizard helps you connect your Android device and start mobile automation. Follow these steps to get everything ready.',
+            side: "bottom",
+            align: 'start'
+          }
+        },
+        {
+          element: '#prerequisites-guide',
+          popover: {
+            title: 'Journey Overview',
+            description: 'Start here to understand the 3-step process: Environment Preparation, Device Connection, and Recording your first script.',
+            side: "bottom",
+            align: 'start'
+          }
+        },
+        {
+          element: '#complete-installation-guide',
+          popover: {
+            title: 'Installation Guide',
+            description: 'Need help installing Node.js, Appium, or ADB? Expand this section for step-by-step commands and verification tips.',
+            side: "bottom",
+            align: 'start'
+          }
+        },
+        {
+          element: '#step-local-setup',
+          popover: {
+            title: '1. Local Services',
+            description: 'Click "Start Setup" to automatically launch the Appium server and Mobile Automation Helper on your machine.',
+            side: "top",
+            align: 'start'
+          }
+        },
+        {
+          element: '#step-system-status',
+          popover: {
+            title: '2. Connection Health',
+            description: 'Monitor your services here. If a service shows "Offline", use the Refresh button to check the status again.',
+            side: "top",
+            align: 'start'
+          }
+        },
+        {
+          element: '#status-refresh-btn',
+          popover: {
+            title: 'Status Refresh',
+            description: 'Use this button to manually poll the server and update the connection status of all services.',
+            side: "left",
+            align: 'start'
+          }
+        },
+        {
+          element: '#step-device-setup',
+          popover: {
+            title: '3. Device Connection',
+            description: 'Choose between a physical device (with USB debugging) or a virtual emulator to start automation.',
+            side: "top",
+            align: 'start'
+          }
+        },
+        {
+          element: '#device-scan-btn',
+          popover: {
+            title: 'Scan for Devices',
+            description: 'Connected a new phone? Click Scan to refresh the list of available physical and virtual devices.',
+            side: "left",
+            align: 'start'
+          }
+        },
+      ]
+    });
+
+    driverObj.drive();
+  };
+
+  // Auto-start tour on first visit
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem("mobile_setup_tour_seen");
+    if (!hasSeenTour) {
+      // Small timeout to ensure components are rendered
+      const timer = setTimeout(() => {
+        startTour();
+        localStorage.setItem("mobile_setup_tour_seen", "true");
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   return (
-    <div className="space-y-6 pb-10">
-      {/* NEW: Architecture & Prerequisites (Relocated and Expanded) */}
-      <Collapsible open={prerequisitesOpen} onOpenChange={setPrerequisitesOpen} className="w-full">
-        <Card className="border-primary/20 bg-primary/5">
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-primary/10 transition-colors pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
-                    <HelpCircle className="h-5 w-5 text-primary" />
+    <div className="w-full space-y-4 pb-10" id="setup-wizard-container">
+      {/* Tour Trigger Button */}
+      <div className="flex justify-end mb-[-1rem]">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={startTour}
+          className="text-xs text-primary hover:bg-primary/5 gap-1.5 h-7 font-bold"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+          Setup Tour Guide
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* REDESIGNED: Architecture & Prerequisites (Journey Style) */}
+        <Collapsible open={prerequisitesOpen} onOpenChange={setPrerequisitesOpen} className="w-full" id="prerequisites-guide">
+          <Card className="border-primary/20 bg-primary/5 shadow-sm overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-primary/10 transition-colors py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-lg border border-primary/20">
+                      <BookOpen className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold">Start Your Mobile Automation Journey</CardTitle>
+                      <CardDescription className="text-xs font-medium">
+                        Quick overview of the 3-step process to get your mobile app automated.
+                      </CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">Mobile No-Code Architecture & Prerequisites</CardTitle>
-                    <CardDescription>
-                      Understand how it works and what you need to get started.
-                    </CardDescription>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase tracking-wider font-bold text-primary/60 hidden sm:block">
+                      {prerequisitesOpen ? "Hide Guide" : "View Guide"}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${prerequisitesOpen ? "rotate-180" : ""}`} />
                   </div>
                 </div>
-                <ChevronDown className={`h-5 w-5 transition-transform ${prerequisitesOpen ? "rotate-180" : ""}`} />
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ScrollArea className="w-full border-t border-primary/10" style={{ maxHeight: 'calc(100vh - 450px)', minHeight: '350px' }}>
+                <div className="mx-6 mb-6 animate-in fade-in slide-in-from-top-2 duration-300 pt-6">
+                  <div className="relative">
+                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-primary/10 hidden sm:block" />
+
+                    <div className="space-y-8">
+                      {/* Step 1: Environment */}
+                      <div className="relative sm:pl-12">
+                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm shadow-md z-10 hidden sm:flex">1</div>
+                        <div>
+                          <h4 className="text-base font-bold text-primary flex items-center gap-2 mb-2">
+                            <span className="sm:hidden h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">1</span>
+                            Prepare Environment
+                          </h4>
+                          <p className="text-xs text-muted-foreground mb-3 max-w-2xl leading-relaxed">
+                            Ensure your system is ready for mobile automation. You'll need <strong>Node.js (v18+)</strong> and the <strong>Android SDK</strong> installed via Android Studio.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline" className="bg-background/50 text-[10px] font-medium border-primary/10 py-0 h-6">
+                              <Terminal className="h-3 w-3 mr-1 text-primary/60" /> npm start (Helper)
+                            </Badge>
+                            <Badge variant="outline" className="bg-background/50 text-[10px] font-medium border-primary/10 py-0 h-6">
+                              <Package className="h-3 w-3 mr-1 text-primary/60" /> Appium Server
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 2: Device */}
+                      <div className="relative sm:pl-12">
+                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm border border-primary/30 z-10 hidden sm:flex">2</div>
+                        <div>
+                          <h4 className="text-base font-bold text-primary flex items-center gap-2 mb-2">
+                            <span className="sm:hidden h-5 w-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs border border-primary/30">2</span>
+                            Connect Your Device
+                          </h4>
+                          <p className="text-xs text-muted-foreground mb-3 max-w-2xl leading-relaxed">
+                            Connect a physical Android phone via USB (with <strong>USB Debugging</strong> enabled) or start a virtual <strong>Android Emulator</strong>.
+                          </p>
+                          <div className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-lg flex items-start gap-2 max-w-lg">
+                            <Info className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 leading-normal">
+                              Tip: Use <code>adb devices</code> in your terminal to verify your connection if the device doesn't appear below.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 3: Recording */}
+                      <div className="relative sm:pl-12">
+                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-primary/10 text-primary/60 flex items-center justify-center font-bold text-sm border border-primary/10 z-10 hidden sm:flex">3</div>
+                        <div>
+                          <h4 className="text-base font-bold text-primary flex items-center gap-2 mb-2">
+                            <span className="sm:hidden h-5 w-5 rounded-full bg-primary/10 text-primary/60 flex items-center justify-center text-xs border border-primary/10">3</span>
+                            Record & Replay
+                          </h4>
+                          <p className="text-xs text-muted-foreground mb-3 max-w-2xl leading-relaxed">
+                            Select your device, launch your app, and start recording. We'll capture your actions and turn them into a <strong>No-Code Script</strong> you can replay anytime.
+                          </p>
+                          <div className="flex items-center gap-4 text-xs font-semibold text-primary/40">
+                            <div className="flex items-center gap-1.5"><Smartphone className="h-3.5 w-3.5" /> Record</div>
+                            <div className="h-px w-6 bg-primary/10" />
+                            <div className="flex items-center gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" /> Save</div>
+                            <div className="h-px w-6 bg-primary/10" />
+                            <div className="flex items-center gap-1.5"><RefreshCw className="h-3.5 w-3.5" /> Replay</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </ScrollArea>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+        <Collapsible open={installationGuideOpen} onOpenChange={setInstallationGuideOpen} className="w-full" id="complete-installation-guide">
+          <Card className="border-blue-500/20 bg-blue-500/5 shadow-sm overflow-hidden">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-blue-500/10 transition-colors py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                      <Download className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-semibold">Complete Your Installation</CardTitle>
+                      <CardDescription className="text-xs">
+                        Follow these 3 steps to install all required tools on your machine.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase tracking-wider font-bold text-blue-600/60 hidden sm:block">
+                      {installationGuideOpen ? "Hide Details" : "View Details"}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-300 ${installationGuideOpen ? "rotate-180" : ""}`} />
+                  </div>
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ScrollArea className="h-[460px] w-full border-t border-blue-500/10">
+                <div className="mx-6 mb-6 animate-in fade-in slide-in-from-top-2 duration-300 pt-6">
+                  <div className="relative">
+                    {/* Vertical Line for Journey */}
+                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-blue-500/10 hidden sm:block" />
+
+                    <div className="space-y-8">
+                      {/* Step 1: Node.js */}
+                      <div className="relative sm:pl-12">
+                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-md z-10 hidden sm:flex">1</div>
+                        <div>
+                          <h4 className="text-base font-bold text-blue-600 flex items-center gap-2 mb-2">
+                            <span className="sm:hidden h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">1</span>
+                            Install Node.js
+                          </h4>
+                          <p className="text-xs text-muted-foreground mb-3 max-w-2xl leading-relaxed">
+                            Download the <strong>LTS version</strong> from <a href="https://nodejs.org/" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">nodejs.org</a>. This is the runtime required for all automation tools.
+                          </p>
+                          <div className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex items-center justify-between max-w-md">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                              <span className="text-[10px] font-mono mt-0.5">node --version</span>
+                            </div>
+                            <span className="text-xs text-green-600 font-medium uppercase tracking-tighter">Verify (v18+)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 2: Automation Tools */}
+                      <div className="relative sm:pl-12">
+                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-blue-500/20 text-blue-600 flex items-center justify-center font-bold text-sm border border-blue-500/30 z-10 hidden sm:flex">2</div>
+                        <div>
+                          <h4 className="text-base font-bold text-blue-600 flex items-center gap-2 mb-2">
+                            <span className="sm:hidden h-5 w-5 rounded-full bg-blue-500/20 text-blue-600 flex items-center justify-center text-xs border border-blue-500/30">2</span>
+                            Setup Appium & ADB
+                          </h4>
+                          <p className="text-xs text-muted-foreground mb-3 max-w-2xl leading-relaxed">
+                            Install the Appium server globally and ensure the Android Debug Bridge (ADB) is accessible from your path.
+                          </p>
+                          <div className="space-y-2 max-w-lg">
+                            <div className="p-2.5 bg-muted/40 rounded-lg border border-muted-foreground/10 flex items-center justify-between">
+                              <code className="text-[10px] font-mono text-blue-600/80">npm install -g appium</code>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-[10px] hover:bg-blue-500/10"
+                                onClick={() => {
+                                  navigator.clipboard.writeText('npm install -g appium');
+                                  toast.success('Copied Appium command');
+                                }}
+                              >
+                                <Copy className="h-3 w-3 mr-1" /> Copy
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="p-2 bg-background/50 rounded border border-muted-foreground/5 text-center">
+                                <p className="text-xs font-bold text-muted-foreground uppercase">Verify ADB</p>
+                                <code className="text-[10px] font-mono">adb version</code>
+                              </div>
+                              <div className="p-2 bg-background/50 rounded border border-muted-foreground/5 text-center">
+                                <p className="text-xs font-bold text-muted-foreground uppercase">Verify Appium</p>
+                                <code className="text-[10px] font-mono">appium -v</code>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 3: Local Helper */}
+                      <div className="relative sm:pl-12">
+                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-blue-500/10 text-blue-600/60 flex items-center justify-center font-bold text-sm border border-blue-500/10 z-10 hidden sm:flex">3</div>
+                        <div>
+                          <h4 className="text-base font-bold text-blue-600 flex items-center gap-2 mb-2">
+                            <span className="sm:hidden h-5 w-5 rounded-full bg-blue-500/10 text-blue-600/60 flex items-center justify-center text-xs border border-blue-500/10">3</span>
+                            Start Local Helper
+                          </h4>
+                          <p className="text-xs text-muted-foreground mb-3 max-w-2xl leading-relaxed">
+                            Navigate to the helper directory, install dependencies, and start the service to connect this UI.
+                          </p>
+                          <div className="space-y-2 max-w-lg">
+                            {[
+                              { label: "1. Open Folder", cmd: "cd public/agent-package" },
+                              { label: "2. Install", cmd: "npm install" },
+                              { label: "3. Start Service", cmd: "npm start" }
+                            ].map((step, i) => (
+                              <div key={i} className="flex items-center gap-3">
+                                <div className="flex-1 p-2 bg-muted/40 rounded border border-muted-foreground/5 flex items-center justify-between">
+                                  <span className="text-xs font-bold text-muted-foreground/50 w-20">{step.label}</span>
+                                  <code className="text-[10px] font-mono text-primary/80 truncate flex-1 px-2">{step.cmd}</code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 px-1.5"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(step.cmd);
+                                      toast.success(`Copied: ${step.cmd}`);
+                                    }}
+                                  >
+                                    <Copy className="h-2.5 w-2.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Troubleshooting Footer */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                    <div className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-lg">
+                      <h5 className="text-xs font-bold text-amber-600 uppercase mb-2 flex items-center gap-1.5">
+                        <Info className="h-3 w-3" /> Platform Tip
+                      </h5>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        On <strong>Windows</strong>, use PowerShell as Admin. On <strong>macOS</strong>, ensure you've accepted Xcode license terms.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-lg">
+                      <h5 className="text-xs font-bold text-red-600 uppercase mb-2 flex items-center gap-1.5">
+                        <AlertCircle className="h-3 w-3" /> Stuck?
+                      </h5>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        If <code>adb</code> isn't found, add the platform-tools folder to your system PATH and restart your terminal.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </ScrollArea>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+
+      </div>
+
+      {/* REDESIGNED: Steps Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Step 1: Local Setup */}
+        <div id="step-local-setup">
+          <Card className={`h-full ${checks.backend.status === "success" && checks.agent.status === "success" ? "border-green-500/30 shadow-sm" : ""} overflow-hidden flex flex-col`}>
+            <CardHeader className="py-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs h-5 px-1.5 uppercase font-bold tracking-tight">Step 1</Badge>
+                  <CardTitle className="text-base font-bold">Local Setup</CardTitle>
+                </div>
+                {checks.backend.status === "success" && checks.agent.status === "success" && (
+                  <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-200 text-xs py-0.5 h-6">
+                    Ready
+                  </Badge>
+                )}
               </div>
             </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mx-6 mt-4 mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="space-y-6">
-                {/* Architecture Section */}
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
-                    <BookOpen className="h-4 w-4" />
-                    How It Works (End-to-End)
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-                    {[
-                      { title: "1. Recorder", desc: "Captures your taps and swipes on the device." },
-                      { title: "2. Device", desc: "The physical or virtual phone being controlled." },
-                      { title: "3. Script", desc: "Your actions saved as a simple step-by-step list." },
-                      { title: "4. Replay", desc: "Runs your script automatically on the device." },
-                      { title: "5. History", desc: "Reuse scripts for testing and bug tracking." }
-                    ].map((step, i) => (
-                      <div key={i} className="flex flex-col gap-2 p-3 bg-background rounded-lg border border-primary/10 hover:border-primary/30 transition-all group relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-1 opacity-5 font-black text-5xl -mr-2 -mt-3 group-hover:scale-110 transition-transform">
-                          {i + 1}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-sm flex-shrink-0">
-                            {i + 1}
-                          </div>
-                          <span className="text-xs font-bold text-primary/90">{step.title}</span>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed">
-                          {step.desc}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Prerequisites Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Checklist */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                      <ClipboardCheck className="h-4 w-4" />
-                      Readiness Checklist
-                    </h3>
-                    <div className="p-4 bg-green-500/5 border border-green-500/20 rounded-lg">
-                      <div className="space-y-2">
-                        {[
-                          { item: "Android Emulator or Physical Phone", reason: "The target for your tests." },
-                          { item: "USB Debugging Enabled", reason: "Allows computer to talk to your phone." },
-                          { item: "Android SDK & ADB Installed", reason: "Standard tools for mobile control." },
-                          { item: "Local Helper Running (npm start)", reason: "Connects this UI to your machine." }
-                        ].map((check, i) => (
-                          <div key={i} className="flex items-start gap-2">
-                            <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                            <div>
-                              <p className="text-xs font-medium">{check.item}</p>
-                              <p className="text-[10px] text-muted-foreground">{check.reason}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Setup Commands */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                      <Terminal className="h-4 w-4" />
-                      Setup & Troubleshooting
-                    </h3>
-                    <div className="space-y-2">
-                      <div className="p-3 bg-muted/30 rounded-lg border border-muted/50 font-mono text-[10px] space-y-1">
-                        <p className="text-primary/70"># List connected devices</p>
-                        <p>adb devices</p>
-                        <div className="h-px bg-muted-foreground/10 my-2" />
-                        <p className="text-primary/70"># Check Appium version</p>
-                        <p>appium -v</p>
-                      </div>
-                      <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                        <div className="flex items-start gap-2">
-                          <span className="text-amber-500 text-xs mt-0.5">💡</span>
-                          <div>
-                            <p className="text-xs font-medium text-amber-600">Still stuck?</p>
-                            <p className="text-[10px] text-muted-foreground">Ensure your device screen is ON and unlocked. If using a physical phone, use a high-quality data cable.</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* What You Need Section */}
-                <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg">
-                  <h3 className="text-xs font-bold text-primary mb-3 flex items-center gap-2">
-                    <Package className="h-4 w-4" />
-                    Required Software
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px]">
-                    <div>
-                      <p className="font-bold mb-1">Node.js</p>
-                      <p className="text-muted-foreground">v18+ required</p>
-                      <p className="text-muted-foreground">Runtime environment</p>
-                    </div>
-                    <div>
-                      <p className="font-bold mb-1">Appium</p>
-                      <p className="text-muted-foreground">npm install -g appium</p>
-                      <p className="text-muted-foreground">Automation framework</p>
-                    </div>
-                    <div>
-                      <p className="font-bold mb-1">Android SDK</p>
-                      <p className="text-muted-foreground">Via Android Studio</p>
-                      <p className="text-muted-foreground">Device communication</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Tips */}
-                <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                  <h3 className="text-xs font-bold text-amber-600 mb-3 flex items-center gap-2">
-                    <HelpCircle className="h-4 w-4" />
-                    Quick Tips
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { tip: "First Time Setup", desc: "Click 'Start Local Setup' button below to initialize all services automatically." },
-                      { tip: "Physical Device", desc: "Enable USB Debugging in Developer Options and connect via USB cable." },
-                      { tip: "Emulator Setup", desc: "Create an AVD in Android Studio, then select it from the device list." },
-                      { tip: "Connection Issues", desc: "Try 'adb kill-server && adb start-server' to reset ADB connection." }
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="text-amber-500 text-xs mt-0.5">💡</span>
-                        <div>
-                          <p className="text-xs font-medium">{item.tip}</p>
-                          <p className="text-[10px] text-muted-foreground">{item.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
-      {/* INSTALLATION GUIDE SECTION */}
-      <Collapsible open={installationGuideOpen} onOpenChange={setInstallationGuideOpen} className="w-full">
-        <Card className="border-blue-500/20 bg-blue-500/5">
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-blue-500/10 transition-colors pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                    <Download className="h-5 w-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg">Installation Guide</CardTitle>
-                    <CardDescription>
-                      Step-by-step commands to install all required tools and dependencies.
-                    </CardDescription>
-                  </div>
-                </div>
-                <ChevronDown className={`h-5 w-5 transition-transform ${installationGuideOpen ? "rotate-180" : ""}`} />
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mx-6 mt-4 mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="space-y-6">
-                {/* Installation Steps */}
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 flex items-center gap-2 mb-4">
-                    <Package className="h-4 w-4" />
-                    Required Software Installation
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    {/* Node.js */}
-                    <div className="p-4 bg-background rounded-lg border border-blue-500/20">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="h-8 w-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">
-                          1
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold mb-1">Node.js (v18 or higher)</h4>
-                          <p className="text-[10px] text-muted-foreground mb-2">Required runtime for running the local helper and Appium server.</p>
-                          <div className="space-y-2">
-                            <div className="p-3 bg-muted/30 rounded-lg border border-muted/50">
-                              <p className="text-[9px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">Download & Install</p>
-                              <p className="text-[10px] text-blue-600 font-medium">Visit: https://nodejs.org/</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">Download the LTS version and run the installer.</p>
-                            </div>
-                            <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-                              <p className="text-[9px] font-bold text-green-600 mb-1 uppercase tracking-wider">Verify Installation</p>
-                              <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded">node --version</code>
-                              <p className="text-[10px] text-muted-foreground mt-1">Should show v18.0.0 or higher</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Appium */}
-                    <div className="p-4 bg-background rounded-lg border border-blue-500/20">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="h-8 w-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">
-                          2
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold mb-1">Appium</h4>
-                          <p className="text-[10px] text-muted-foreground mb-2">Mobile automation framework that controls your device.</p>
-                          <div className="space-y-2">
-                            <div className="p-3 bg-muted/30 rounded-lg border border-muted/50">
-                              <p className="text-[9px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">Install Command</p>
-                              <div className="flex items-center gap-2">
-                                <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded flex-1">npm install -g appium</code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 text-[10px]"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText('npm install -g appium');
-                                    toast.success('Copied to clipboard!');
-                                  }}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-                              <p className="text-[9px] font-bold text-green-600 mb-1 uppercase tracking-wider">Verify Installation</p>
-                              <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded">appium -v</code>
-                              <p className="text-[10px] text-muted-foreground mt-1">Should show version number</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Android SDK */}
-                    <div className="p-4 bg-background rounded-lg border border-blue-500/20">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="h-8 w-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">
-                          3
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold mb-1">Android SDK & ADB</h4>
-                          <p className="text-[10px] text-muted-foreground mb-2">Tools to communicate with Android devices and emulators.</p>
-                          <div className="space-y-2">
-                            <div className="p-3 bg-muted/30 rounded-lg border border-muted/50">
-                              <p className="text-[9px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">Installation Options</p>
-                              <div className="space-y-2">
-                                <div>
-                                  <p className="text-[10px] font-bold mb-1">Option 1: Android Studio (Recommended)</p>
-                                  <p className="text-[10px] text-blue-600 font-medium">Visit: https://developer.android.com/studio</p>
-                                  <p className="text-[10px] text-muted-foreground">Includes SDK, ADB, and Emulator Manager</p>
-                                </div>
-                                <div className="h-px bg-muted-foreground/10" />
-                                <div>
-                                  <p className="text-[10px] font-bold mb-1">Option 2: Command Line Tools Only</p>
-                                  <p className="text-[10px] text-blue-600 font-medium">Visit: https://developer.android.com/studio#command-tools</p>
-                                  <p className="text-[10px] text-muted-foreground">Lighter download, no IDE</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-                              <p className="text-[9px] font-bold text-green-600 mb-1 uppercase tracking-wider">Verify Installation</p>
-                              <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded">adb version</code>
-                              <p className="text-[10px] text-muted-foreground mt-1">Should show Android Debug Bridge version</p>
-                            </div>
-                            <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                              <div className="flex items-start gap-2">
-                                <span className="text-amber-500 text-xs mt-0.5">💡</span>
-                                <div>
-                                  <p className="text-xs font-medium text-amber-600">Add to PATH</p>
-                                  <p className="text-[10px] text-muted-foreground">Make sure Android SDK platform-tools are added to your system PATH so 'adb' command works globally.</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Local Helper */}
-                    <div className="p-4 bg-background rounded-lg border border-blue-500/20">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="h-8 w-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0">
-                          4
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold mb-1">Local Helper (Mobile Automation Helper)</h4>
-                          <p className="text-[10px] text-muted-foreground mb-2">Backend service that connects this UI to your device.</p>
-                          <div className="space-y-2">
-                            <div className="p-3 bg-muted/30 rounded-lg border border-muted/50">
-                              <p className="text-[9px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">Setup Commands</p>
-                              <div className="space-y-2">
-                                <div>
-                                  <p className="text-[10px] font-bold mb-1">1. Navigate to helper directory</p>
-                                  <div className="flex items-center gap-2">
-                                    <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded flex-1">cd public\mobile-automation</code>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 px-2 text-[10px]"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText('cd public\\mobile-automation');
-                                        toast.success('Copied to clipboard!');
-                                      }}
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-bold mb-1">2. Install dependencies</p>
-                                  <div className="flex items-center gap-2">
-                                    <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded flex-1">npm install</code>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 px-2 text-[10px]"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText('npm install');
-                                        toast.success('Copied to clipboard!');
-                                      }}
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-bold mb-1">3. Start the helper</p>
-                                  <div className="flex items-center gap-2">
-                                    <code className="text-[10px] font-mono bg-muted/50 px-2 py-1 rounded flex-1">npm start</code>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 px-2 text-[10px]"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText('npm start');
-                                        toast.success('Copied to clipboard!');
-                                      }}
-                                    >
-                                      <Copy className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-                              <p className="text-[9px] font-bold text-green-600 mb-1 uppercase tracking-wider">Verify Running</p>
-                              <p className="text-[10px] text-muted-foreground">Helper should be running on http://localhost:3001</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">Click "Start Local Setup" button below to test connection.</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Platform-Specific Notes */}
-                <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg">
-                  <h3 className="text-xs font-bold text-primary mb-3 flex items-center gap-2">
-                    <Info className="h-4 w-4" />
-                    Platform-Specific Notes
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[10px]">
-                    <div>
-                      <p className="font-bold mb-1">Windows</p>
-                      <p className="text-muted-foreground mb-1">• Use PowerShell or Command Prompt</p>
-                      <p className="text-muted-foreground mb-1">• May need to run as Administrator</p>
-                      <p className="text-muted-foreground">• Add Android SDK to System PATH</p>
-                    </div>
-                    <div>
-                      <p className="font-bold mb-1">macOS / Linux</p>
-                      <p className="text-muted-foreground mb-1">• Use Terminal</p>
-                      <p className="text-muted-foreground mb-1">• May need 'sudo' for global installs</p>
-                      <p className="text-muted-foreground">• Add SDK to ~/.bashrc or ~/.zshrc</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Troubleshooting */}
-                <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-lg">
-                  <h3 className="text-xs font-bold text-red-600 mb-3 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />
-                    Common Installation Issues
-                  </h3>
-                  <div className="space-y-2">
-                    {[
-                      { issue: "Command not found", fix: "Make sure the tool is added to your system PATH. Restart terminal after installation." },
-                      { issue: "Permission denied", fix: "On macOS/Linux, try using 'sudo' before the command. On Windows, run as Administrator." },
-                      { issue: "Port already in use", fix: "Another service is using port 3001. Stop it or change the helper port in config." },
-                      { issue: "ADB not detecting device", fix: "Enable USB Debugging on device, try different USB cable, or run 'adb kill-server && adb start-server'." }
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-start gap-2 p-2 bg-background rounded border border-red-500/10">
-                        <XCircle className="h-3 w-3 text-red-500 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-medium">{item.issue}</p>
-                          <p className="text-[10px] text-muted-foreground">{item.fix}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
-      {/* Step 1: Local Setup */}
-      <Card className={checks.backend.status === "success" && checks.agent.status === "success" ? "border-green-500/30" : ""}>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">Step 1</Badge>
-              <CardTitle className="text-xl">Local Setup</CardTitle>
-            </div>
-            {checks.backend.status === "success" && checks.agent.status === "success" && (
-              <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-200">
-                <CheckCircle2 className="mr-1 h-3 w-3" /> Setup Done
-              </Badge>
-            )}
-          </div>
-          <CardDescription>
-            Start all required background services (Appium, Emulator, Agent) with one click.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button onClick={() => startAllServices()} className="bg-primary hover:bg-primary/90" disabled={startingServices}>
-            {startingServices ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Starting Services...
-              </>
-            ) : (
-              <>
-                <Power className="mr-2 h-4 w-4" />
-                Start Local Setup
-              </>
-            )}
-          </Button>
-
-          {checks.backend.status === "success" && checks.agent.status === "success" && (
-            <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary font-medium animate-in fade-in slide-in-from-top-1 duration-500">
-              <Smartphone className="h-4 w-4" />
-              <span>Local Setup ready! Choose a device below to start recording.</span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Step 2: System Status */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Badge variant="outline" className="text-xs">Step 2</Badge>
-                <CardTitle>System Status</CardTitle>
-              </div>
-              <CardDescription>
-                All indicators should show GREEN before proceeding to device selection.
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => checkAllServicesStatus()}
-              className="gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${items.some(item => checks[item.key].status === 'checking') ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {items.map(({ key, label, icon: Icon }) => (
-              <div
-                key={key}
-                className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-muted/50"
+            <CardContent className="pb-5 px-4 pt-1 space-y-4 flex-1 flex flex-col">
+              <Button
+                onClick={() => startAllServices()}
+                className="w-full h-10 text-xs font-bold shadow-sm"
+                disabled={startingServices}
               >
-                <div className="flex-shrink-0">
-                  {icon(checks[key].status)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{label}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {checks[key].message}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Step 3: Device Selection */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">Step 3</Badge>
-            <CardTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              Device Setup
-            </CardTitle>
-          </div>
-          <CardDescription>
-            Select an Android emulator or physical device to continue.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {devicesFetched ? "Select an Emulator or a Physical Device below." : "Click refresh to scan for devices."}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchAvailableDevices}
-              disabled={devicesLoading}
-              className="gap-2"
-            >
-              <RefreshCw className={`h-3 w-3 ${devicesLoading ? 'animate-spin' : ''}`} />
-              Refresh Device List
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Physical Devices List */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Smartphone className="h-3 w-3" />
-                Physical Devices
-              </h4>
-              <div className="space-y-2">
-                {availableDevices.filter(d => d.type === "real").length > 0 ? (
-                  availableDevices.filter(d => d.type === "real").map((device) => (
-                    <button
-                      key={device.id}
-                      onClick={() => handleDeviceChange(device)}
-                      className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedDevice?.device === device.id
-                        ? "bg-primary/10 border-primary text-primary"
-                        : "bg-muted/30 border-muted-foreground/10 hover:border-primary/50"
-                        }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <Smartphone className="h-4 w-4 flex-shrink-0" />
-                        <div className="text-left min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate" title={device.name || device.id}>{device.name || device.id}</p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">ID: {device.id}</p>
-                            <Badge variant="outline" className="text-[9px] py-0 h-3.5 bg-green-500/10 text-green-600 border-green-200">Connected</Badge>
-                          </div>
-                        </div>
-                      </div>
-                      {selectedDevice?.device === device.id && <CheckCircle2 className="h-4 w-4 flex-shrink-0 ml-2" />}
-                    </button>
-                  ))
+                {startingServices ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Initializing...
+                  </>
                 ) : (
-                  <div className="p-4 border border-dashed rounded-lg text-center bg-muted/10">
-                    <p className="text-xs text-muted-foreground italic">No physical devices detected.</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">Connect via USB and enable debugging.</p>
-                  </div>
+                  <>
+                    <Power className="mr-2 h-4 w-4" />
+                    Start Setup
+                  </>
                 )}
-              </div>
-            </div>
+              </Button>
 
-            {/* Emulators List */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Terminal className="h-3 w-3" />
-                Available Emulators
-              </h4>
-              <div className="space-y-2">
-                {availableDevices.filter(d => d.type === "emulator").length > 0 ? (
-                  availableDevices.filter(d => d.type === "emulator").map((device) => (
-                    <button
-                      key={device.id}
-                      onClick={() => handleDeviceChange(device)}
-                      className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedDevice?.device === device.id
-                        ? "bg-primary/10 border-primary text-primary"
-                        : "bg-muted/30 border-muted-foreground/10 hover:border-primary/50"
-                        }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <Terminal className="h-4 w-4 flex-shrink-0" />
-                        <div className="text-left min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate" title={device.name || device.id}>{device.name || device.id}</p>
-                          {device.name && <p className="text-[10px] text-muted-foreground truncate">ID: {device.id}</p>}
-                        </div>
+              <div className="space-y-2 pt-2">
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">What's Included</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {[
+                    { icon: Server, label: "Appium Server", desc: "Mobile automation engine" },
+                    { icon: Terminal, label: "ADB Helper", desc: "Android bridge & control" },
+                    { icon: Smartphone, label: "Device Agent", desc: "Real-time interaction" }
+                  ].map((feat, i) => (
+                    <div key={i} className="flex items-center gap-2.5 p-2 bg-muted/20 rounded-lg border border-transparent hover:border-primary/10 transition-colors">
+                      <div className="p-1.5 bg-background rounded-md shadow-sm">
+                        <feat.icon className="h-3.5 w-3.5 text-primary/70" />
                       </div>
-                      {selectedDevice?.device === device.id && <CheckCircle2 className="h-4 w-4 flex-shrink-0 ml-2" />}
-                    </button>
-                  ))
-                ) : (
-                  <div className="p-4 border border-dashed rounded-lg text-center bg-muted/10">
-                    <p className="text-xs text-muted-foreground italic">No emulators found.</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">Create one in Android Studio AVD Manager.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {availableDevices.length === 0 && (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <span className="font-medium text-amber-500">Detection Hint</span>
-                  <p className="mt-1 text-muted-foreground text-xs">
-                    Connect a device or start an emulator, then click <strong>Refresh Device List</strong> above.
-                  </p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold leading-tight">{feat.label}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{feat.desc}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {checks.device.status === "success" && setActiveTab && (
-                <div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Device detected by ADB</p>
-                    <p className="text-xs text-muted-foreground">We see a connection, but the name is still loading. You can proceed if you're ready.</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => setActiveTab("recorder")}
-                    className="gap-2"
-                  >
-                    Continue to Recorder anyway
-                    <ChevronDown className="h-4 w-4 -rotate-90" />
-                  </Button>
+              {checks.backend.status === "success" && checks.agent.status === "success" && (
+                <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/10 rounded-lg text-xs font-bold text-primary/80 animate-in fade-in slide-in-from-top-1 duration-500">
+                  <Smartphone className="h-4 w-4" />
+                  <span>Services are active!</span>
                 </div>
               )}
-            </div>
-          )}
+            </CardContent>
+          </Card>
+        </div>
 
-          {selectedDevice && (
-            <div className="p-6 border-2 border-primary/20 bg-primary/5 rounded-xl text-center space-y-4 animate-in zoom-in-95 duration-500">
-              <div className="flex flex-col items-center gap-2">
-                <div className="h-12 w-12 bg-primary/20 rounded-full flex items-center justify-center mb-2">
-                  <Smartphone className="h-6 w-6 text-primary" />
+        {/* Step 2: System Status */}
+        <div id="step-system-status">
+          <Card className="h-full overflow-hidden flex flex-col">
+            <CardHeader className="py-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs h-5 px-1.5 uppercase font-bold tracking-tight">Step 2</Badge>
+                  <CardTitle className="text-base font-bold">System Status</CardTitle>
                 </div>
-                <h3 className="text-xl font-bold text-primary">
-                  {selectedDevice.name || selectedDevice.device} is ready!
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => checkAllServicesStatus()}
+                  className="h-8 px-2.5 text-xs font-medium gap-1.5"
+                  id="status-refresh-btn"
+                >
+                  <RefreshCw className={`h-3 w-3 ${items.some(item => checks[item.key].status === 'checking') ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-5 px-4 pt-1 flex-1 flex flex-col">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {items.map(({ key, label, icon: Icon }) => (
+                  <TooltipProvider key={key}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2 p-2 bg-muted/20 rounded-lg border border-muted/30 transition-all hover:bg-muted/40 cursor-default">
+                          <div className="flex-shrink-0 scale-90 origin-left">
+                            {icon(checks[key].status)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold truncate leading-none mb-1.5">{label}</p>
+                            <p className={`text-[11px] truncate font-medium ${checks[key].status === 'success' ? 'text-green-600' : checks[key].status === 'error' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                              {checks[key].status === 'success' ? 'Active' : checks[key].status === 'error' ? 'Offline' : checks[key].status === 'checking' ? 'Checking' : 'Pending'}
+                            </p>
+                          </div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="text-[10px] p-2">
+                        {checks[key].message}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
+              </div>
+
+              <div className="mt-auto pt-4">
+                <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl flex items-start gap-3">
+                  <div className={`p-2 rounded-lg ${items.every(i => checks[i.key].status === 'success') ? 'bg-green-500/20' : 'bg-primary/10'}`}>
+                    <Info className={`h-4 w-4 ${items.every(i => checks[i.key].status === 'success') ? 'text-green-600' : 'text-primary'}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold">Connection Summary</p>
+                    <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                      {items.every(i => checks[i.key].status === 'success')
+                        ? "All systems online. You can now start recording your mobile automation script."
+                        : "Some services are pending or offline. Click 'Start Setup' or 'Refresh' to update."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Step 3: Device Selection */}
+        <div id="step-device-setup">
+          <Card className="h-full overflow-hidden flex flex-col">
+            <CardHeader className="py-3 px-4 pb-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs h-5 px-1.5 uppercase font-bold tracking-tight">Step 3</Badge>
+                  <CardTitle className="text-base font-bold flex items-center gap-1.5">
+                    Device Setup
+                  </CardTitle>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={fetchAvailableDevices}
+                  disabled={devicesLoading}
+                  className="h-8 px-2.5 text-xs font-medium gap-1.5 text-primary hover:bg-primary/5"
+                  id="device-scan-btn"
+                >
+                  <RefreshCw className={`h-2.5 w-2.5 ${devicesLoading ? 'animate-spin' : ''}`} />
+                  Scan
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-5 px-4 pt-1 space-y-4 flex-1">
+              {/* Physical Devices List - Compact */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between px-0.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">
+                    Physical
+                  </h4>
+                </div>
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                  {availableDevices.filter(d => d.type === "real").length > 0 ? (
+                    availableDevices.filter(d => d.type === "real").map((device) => {
+                      const isActive = selectedDevice?.device === device.id && selectedDevice.real_mobile;
+                      return (
+                        <button
+                          key={device.id}
+                          onClick={() => handleDeviceChange(device)}
+                          className={`w-full flex items-center justify-between p-1.5 rounded-md border text-left transition-all ${isActive
+                            ? "bg-primary/5 border-primary ring-1 ring-primary/10"
+                            : "bg-muted/10 border-muted-foreground/10 hover:border-primary/20"
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Smartphone className={`h-3 w-3 flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                            <p className={`text-xs font-bold truncate leading-tight ${isActive ? "text-primary" : ""}`}>
+                              {device.name || device.id}
+                            </p>
+                          </div>
+                          {isActive && <CheckCircle2 className="h-3 w-3 text-primary flex-shrink-0 ml-1" />}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="p-2 border border-dashed rounded-md text-center bg-muted/5">
+                      <p className="text-xs text-muted-foreground italic">None found</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Emulators List - Compact */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between px-0.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">
+                    Emulators
+                  </h4>
+                </div>
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                  {availableDevices.filter(d => d.type === "emulator").length > 0 ? (
+                    availableDevices.filter(d => d.type === "emulator").map((device) => {
+                      const isActive = selectedDevice?.device === device.id && !selectedDevice.real_mobile;
+                      const isRunning = isActive && checks.emulator.status === "success";
+                      return (
+                        <button
+                          key={device.id}
+                          onClick={() => handleDeviceChange(device)}
+                          className={`w-full flex items-center justify-between p-1.5 rounded-md border text-left transition-all ${isActive
+                            ? "bg-primary/5 border-primary ring-1 ring-primary/10"
+                            : "bg-muted/10 border-muted-foreground/10 hover:border-primary/20"
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Terminal className={`h-3 w-3 flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                            <p className={`text-xs font-bold truncate leading-tight ${isActive ? "text-primary" : ""}`}>
+                              {device.name || device.id}
+                            </p>
+                          </div>
+                          {isActive && <CheckCircle2 className="h-3 w-3 text-primary flex-shrink-0 ml-1" />}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="p-2 border border-dashed rounded-md text-center bg-muted/5">
+                      <p className="text-xs text-muted-foreground italic">None found</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Selected Device Status & Next Steps */}
+      {
+        selectedDevice && (
+          <div className="p-4 border-2 border-primary/20 bg-primary/5 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in zoom-in-95 duration-500 shadow-sm">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0 border border-primary/20 shadow-inner">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-primary truncate leading-tight">
+                  {selectedDevice.name || selectedDevice.device} ready
                 </h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  Your device is connected and all services are running. You can now start recording your mobile automation script.
+                <p className="text-sm text-muted-foreground font-medium mt-1">
+                  Select a package or upload APK in the next step and start now
                 </p>
               </div>
-              {setActiveTab && (
-                <Button
-                  onClick={() => setActiveTab("recorder")}
-                  size="lg"
-                  className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg shadow-green-500/20"
-                >
-                  Start Recording
-                  <ChevronDown className="h-4 w-4 -rotate-90" />
-                </Button>
-              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-    </div>
+            {setActiveTab && (
+              <Button
+                onClick={() => setActiveTab("recorder")}
+                size="lg"
+                className="w-full md:w-auto h-11 px-8 bg-primary text-white font-bold gap-2 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all hover:-translate-y-0.5"
+              >
+                Start Recording
+                <ChevronDown className="h-4 w-4 -rotate-90" />
+              </Button>
+            )}
+          </div>
+        )
+      }
+    </div >
   );
 }

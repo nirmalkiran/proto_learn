@@ -108,7 +108,7 @@ export default function DeviceSelector({
     onSelect({
       device: d.id,
       name: d.name,
-      os_version: d.os_version || "13",
+      os_version: d.os_version,
       real_mobile: d.type === "real",
     });
 

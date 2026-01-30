@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { createClient } from "@supabase/supabase-js";
-import { Play, Pause, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Upload, Package, CheckCircle, XCircle, Type, MousePointer2, Move, ChevronRight, Settings, Settings2, Info, AlertCircle, Circle, Keyboard, ChevronUp, ChevronDown, BookOpen, CheckCircle2, HelpCircle } from "lucide-react";
+import { Play, Pause, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Upload, Package, CheckCircle, XCircle, Type, MousePointer2, Move, ChevronRight, Settings, Settings2, Info, AlertCircle, Circle, Keyboard, ChevronUp, ChevronDown, BookOpen, CheckCircle2, HelpCircle, ExternalLink, X, Zap } from "lucide-react";
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +17,6 @@ import DeviceSelector from "./DeviceSelector";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-
 import { ActionType, RecordedAction, SelectedDevice } from "./types";
 import { ExecutionHistoryService } from "./ExecutionHistoryService";
 import { ScenarioService, RecordedScenario } from "./ScenarioService";
@@ -27,7 +28,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 );
-const DEVICE_WIDTH = 320;
+const DEVICE_WIDTH = 310;
 const DEVICE_HEIGHT = 568;
 
 const retryDeviceAction = async <T,>(
@@ -113,6 +114,8 @@ export default function MobileRecorder({
   selectedDeviceFromSetup,
 }: MobileRecorderProps) {
   // Recorder state moved from index.tsx
+  // Cache generated script so it is NOT tied to Script tab rendering
+  const [generatedScriptCache, setGeneratedScriptCache] = useState<string>("");
   const [recording, setRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [actions, setActions] = useState<RecordedAction[]>([]);
@@ -141,6 +144,66 @@ export default function MobileRecorder({
   const [showInputPanel, setShowInputPanel] = useState(false);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [activeTab, setActiveTab] = useState<"actions" | "script" | "history">("actions");
+  const previewDimensions = useMemo(() => {
+    const fixedHeight = 700;
+    if (deviceSize && deviceSize.width > 0 && deviceSize.height > 0) {
+      const aspectRatio = deviceSize.width / deviceSize.height;
+      return {
+        width: Math.round(fixedHeight * aspectRatio),
+        height: fixedHeight
+      };
+    }
+
+    return { width: 350, height: fixedHeight };
+  }, [deviceSize]);
+
+  // FOCUS MONITOR: Detect focused input fields in background during recording
+  useEffect(() => {
+    let focusInterval: ReturnType<typeof setInterval> | null = null;
+    let burstTimeout1: ReturnType<typeof setTimeout> | null = null;
+    let burstTimeout2: ReturnType<typeof setTimeout> | null = null;
+    const checkInputFocus = async () => {
+      if (showInputPanel || inputPending) return;
+      try {
+        const res = await fetch(`${AGENT_URL}/device/focus`);
+        if (res.ok) {
+          const data = await res.json();
+          console.debug("[FocusMonitor] Check result:", data);
+          if (data.success && data.isInputCandidate && data.focusedElement) {
+            let x = 500, y = 500;
+            if (data.focusedElement.bounds) {
+              const match = data.focusedElement.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+              if (match) {
+                x = Math.round((parseInt(match[1]) + parseInt(match[3])) / 2);
+                y = Math.round((parseInt(match[2]) + parseInt(match[4])) / 2);
+              }
+            }
+
+            setInputText("");
+            setInputCoords({ x, y });
+            setShowInputPanel(true);
+            toast.info("Input focus detected", {
+              description: `Automatically opened panel for ${data.focusedElement.resourceId || 'input field'}`
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[FocusMonitor] Poll failed", err);
+      }
+    };
+    if (recording && !isPaused && mirrorActive) {
+      checkInputFocus();
+      burstTimeout1 = setTimeout(checkInputFocus, 500);
+      burstTimeout2 = setTimeout(checkInputFocus, 1200);
+      focusInterval = setInterval(checkInputFocus, 3500);
+    }
+
+    return () => {
+      if (focusInterval) clearInterval(focusInterval);
+      if (burstTimeout1) clearTimeout(burstTimeout1);
+      if (burstTimeout2) clearTimeout(burstTimeout2);
+    };
+  }, [recording, isPaused, mirrorActive, showInputPanel, inputPending]);
   const [executionLogs, setExecutionLogs] = useState<{
     id: string;
     description: string;
@@ -197,6 +260,7 @@ export default function MobileRecorder({
       .join(' ');
   }, []);
   const pressCoordsRef = useRef<{ x: number, y: number } | null>(null);
+  const isDraggingRef = useRef(false);
   const longPressHappenedRef = useRef(false);
   const [apkUploading, setApkUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -587,7 +651,15 @@ export default function MobileRecorder({
 
     // Ensure we clear loop when mirror is deactivated elsewhere
     return () => stopLoop();
-  }, []);
+  }, [advancedConfig.screenshotMaxFails, advancedConfig.screenshotTimeoutMs]);
+
+  // Reset mirror state when device changes
+  useEffect(() => {
+    setMirrorActive(false);
+    setMirrorImage(null);
+    setCaptureMode(false);
+    setMirrorError(null);
+  }, [selectedDevice?.id, selectedDevice?.device]);
 
   /* =====================================================
    * 📱 STOP EMULATOR
@@ -758,7 +830,7 @@ export default function MobileRecorder({
       }
 
       toast.success("Device connected", {
-        description: "Live preview active - interact with your device",
+        description: "Live preview active. Tap, type, or navigate on the device to record actions",
       });
     } catch (err: any) {
       console.error("[connectDevice] Error:", err);
@@ -779,7 +851,7 @@ export default function MobileRecorder({
       clearTimeout(screenshotIntervalRef.current);
       screenshotIntervalRef.current = null;
     }
-    toast.info("Device disconnected");
+    toast.info("Device Disconnected");
   }, [mirrorImage]);
 
   /* =====================================================
@@ -844,11 +916,13 @@ export default function MobileRecorder({
       }
 
       setActions([]);
+      setGeneratedScriptCache("");
       setRecording(true);
 
       toast.success("Recording started", {
         description: `Connected to ${selectedDevice.name || selectedDevice.device}`,
       });
+      setCaptureMode(true);
     } catch (err) {
       console.error("[MobileRecorder] Start recording error:", err);
       toast.error("Failed to start recording", {
@@ -870,6 +944,7 @@ export default function MobileRecorder({
       const data = await response.json();
       setRecording(false);
       setIsPaused(false);
+      setCaptureMode(false);
 
       // Merge any steps from server that we might have missed
       if (data.steps && data.steps.length > 0) {
@@ -993,10 +1068,12 @@ export default function MobileRecorder({
       }
 
       setReplaying(false);
+      setReplayIndex(null);
 
     } catch (err: any) {
       console.error("Single step replay error", err);
       setReplaying(false);
+
       toast.error(`Step failed: ${err.message}`);
       setExecutionLogs(prev => prev.map(log =>
         log.id === action.id ? { ...log, status: "error", error: err.message } : log
@@ -1042,27 +1119,53 @@ export default function MobileRecorder({
     setExecutionLogs(prev => prev.map(log => ({ ...log, error: undefined })));
 
     try {
-      const res = await fetch(`${AGENT_URL}/recording/replay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deviceId: selectedDevice?.id || selectedDevice?.device,
-          steps: enabledActions,
-          startIndex: startIndex,
-          screenSettleDelayMs: advancedConfig.screenSettleDelayMs
-        }),
-      });
+      for (let i = startIndex; i < enabledActions.length; i++) {
+        const action = enabledActions[i];
+        setReplayIndex(i);
 
-      const data = await res.json();
+        // Update step status to running
+        setExecutionLogs(prev => prev.map((log, idx) =>
+          idx === i ? { ...log, status: "running" } : log
+        ));
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Replay execution failed");
+        const startStepTime = Date.now();
+        const res = await fetch(`${AGENT_URL}/recording/replay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId: selectedDevice.id || selectedDevice.device,
+            steps: [action],
+            startIndex: 0,
+            screenSettleDelayMs: advancedConfig.screenSettleDelayMs
+          }),
+        });
+
+        const data = await res.json();
+        const duration = Date.now() - startStepTime;
+
+        if (!res.ok || !data.success) {
+          const errorMsg = data.error || "Action failed";
+          // Update step status to error
+          setExecutionLogs(prev => prev.map((log, idx) =>
+            idx === i ? { ...log, status: "error", error: errorMsg } : log
+          ));
+          throw new Error(errorMsg);
+        }
+
+        // Update step status to success
+        setExecutionLogs(prev => prev.map((log, idx) =>
+          idx === i ? { ...log, status: "success", duration } : log
+        ));
+
+        // Add a small delay between steps for visual clarity and device settling
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       setLastReplayStatus("PASS");
       setReplaying(false);
       setReplayIndex(null);
       await saveExecutionToHistory("SUCCESS");
+      toast.success("Replay completed successfully!");
 
     } catch (err: any) {
       console.error("[MobileRecorder] Replay error:", err);
@@ -1103,13 +1206,15 @@ export default function MobileRecorder({
     }
   };
 
+  //FORCE real-time script generation during recording
+
   const generatedScript = useMemo(() => {
     if (savedManualScript) return savedManualScript;
 
     const enabledActions = actions.filter(a => a.enabled !== false);
-    if (!enabledActions.length)
+    if (!enabledActions.length) return null;
 
-      return `import io.appium.java_client.AppiumBy;
+    return `import io.appium.java_client.AppiumBy;
 import io.appium.java_client.android.AndroidDriver;
 import io.appium.java_client.android.options.UiAutomator2Options;
 import org.openqa.selenium.WebElement;
@@ -1117,123 +1222,171 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.Duration;
 
-/**
- * Auto-generated by Mobile Recorder
- * Platform: Android (Appium Java)
- * Generated: ${new Date().toISOString()}
- */
-public class RecordedMobileTest {
-    public static void main(String[] args) throws MalformedURLException, InterruptedException {
+    /**
+     * Auto-generated by Mobile Recorder
+     * Platform: Android (Appium Java)
+     * Generated: ${new Date().toISOString()}
+     */
+    public class RecordedMobileTest {
+      public static void main(String[] args) throws MalformedURLException, InterruptedException {
         UiAutomator2Options options = new UiAutomator2Options();
-        options.setPlatformName("Android");
-        options.setAutomationName("UiAutomator2");
-        options.setDeviceName("${selectedDevice?.device || "your-device-id"}");
-        options.setAppPackage("com.example.app"); // Replace with your app package
-        options.setAppActivity(".MainActivity");  // Replace with your app activity
-        options.setNoReset(true);
-        options.setEnsureWebviewsHavePages(true);
+      options.setPlatformName("Android");
+      options.setAutomationName("UiAutomator2");
+      options.setDeviceName("${selectedDevice?.device || "your-device-id"}");
+      options.setAppPackage("com.example.app"); // Replace with your app package
+      options.setAppActivity(".MainActivity");  // Replace with your app activity
+      options.setNoReset(true);
+      options.setEnsureWebviewsHavePages(true);
 
         AndroidDriver driver = new AndroidDriver(
-            new URL("http://127.0.0.1:4723"), options
-        );
-        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+        new URL("http://127.0.0.1:4723"), options
+      );
+      driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
 
-        try {
+      try {
 ${enabledActions
-          .map((a, index) => {
-            const stepNum = index + 1;
-            const comment = `            // Step ${stepNum}: ${a.description}`;
-            let javaCode = "";
+        .map((a, index) => {
+          const stepNum = index + 1;
+          const comment = `            // Step ${stepNum}: ${a.description}`;
+          let javaCode = "";
 
-            switch (a.type) {
-              case "tap":
-                if (a.elementId) {
-                  javaCode = `driver.findElement(AppiumBy.id("${a.elementId}")).click();`;
-                } else if (a.elementContentDesc) {
-                  javaCode = `driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}")).click();`;
-                } else if (a.elementText) {
-                  javaCode = `driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")")).click();`;
-                } else if (a.coordinates) {
-                  javaCode = `// Coordinate tap at (${a.coordinates.x}, ${a.coordinates.y})
+          switch (a.type) {
+            case "tap":
+              if (a.elementId) {
+                javaCode = `driver.findElement(AppiumBy.id("${a.elementId}")).click();`;
+              } else if (a.elementContentDesc) {
+                javaCode = `driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}")).click();`;
+              } else if (a.elementText) {
+                javaCode = `driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")")).click();`;
+              } else if (a.coordinates) {
+                javaCode = `// Coordinate tap at (${a.coordinates.x}, ${a.coordinates.y})
             // Use W3C Actions for coordinates if needed
             driver.executeScript("mobile: clickGesture", java.util.Map.of(
                 "x", ${a.coordinates.x},
                 "y", ${a.coordinates.y}
             ));`;
-                } else {
-                  javaCode = `driver.findElement(AppiumBy.xpath("${a.locator}")).click();`;
-                }
-                break;
+              } else {
+                javaCode = `driver.findElement(AppiumBy.xpath("${a.locator}")).click();`;
+              }
+              break;
 
-              case "input":
-                const value = a.value || `System.getenv("INPUT_${stepNum}")`;
-                const valueStr = a.value ? `"${a.value}"` : value;
-                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`;
-                break;
+            case "input":
+              const value = a.value || `System.getenv("INPUT_${stepNum}")`;
+              const valueStr = a.value ? `"${a.value}"` : value;
+              javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`;
+              break;
 
-              case "longPress":
-                if (a.coordinates) {
-                  javaCode = `// Long Press action
+            case "longPress":
+              if (a.coordinates) {
+                javaCode = `// Long Press action
             driver.executeScript("mobile: longClickGesture", java.util.Map.of(
                 "x", ${a.coordinates.x},
                 "y", ${a.coordinates.y},
                 "duration", 1000
             ));`;
-                } else {
-                  javaCode = `// longPress action (coordinates not captured)`;
-                }
-                break;
+              } else {
+                javaCode = `// longPress action (coordinates not captured)`;
+              }
+              break;
 
-              case "scroll":
-                if (a.coordinates) {
-                  javaCode = `// Scroll/Swipe action
+            case "scroll":
+              if (a.coordinates) {
+                javaCode = `// Coordinate Scroll/Swipe action
             driver.executeScript("mobile: swipeGesture", java.util.Map.of(
                 "left", ${a.coordinates.x}, "top", ${a.coordinates.y},
                 "width", 200, "height", 200,
-                "direction", "${a.coordinates.y > a.coordinates.endY ? 'up' : 'down'}",
+                "direction", "${a.coordinates.y > (a.coordinates.endY || 0) ? 'up' : 'down'}",
                 "percent", 1.0
             ));`;
-                } else {
-                  javaCode = `// scroll action (coordinates not captured)`;
-                }
-                break;
+              } else {
+                javaCode = `// Directional Scroll action
+            driver.executeScript("mobile: scrollGesture", java.util.Map.of(
+                "left", 100, "top", 100, "width", 200, "height", 200,
+                "direction", "${a.value || 'down'}",
+                "percent", 1.0
+            ));`;
+              }
+              break;
 
-              case "pressKey":
-                javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.VIRTUAL_KEY_${a.description.split(': ').pop()}));`;
-                if (a.value === "4") javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.BACK));`;
-                if (a.value === "3") javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.HOME));`;
-                if (a.value === "187") javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.APP_SWITCH));`;
-                break;
+            case "pressKey":
+              javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.VIRTUAL_KEY_${a.description.split(': ').pop()}));`;
+              if (a.value === "4") javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.BACK));`;
+              if (a.value === "3") javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.HOME));`;
+              if (a.value === "187") javaCode = `driver.pressKey(new io.appium.java_client.android.nativekey.KeyEvent(io.appium.java_client.android.nativekey.AndroidKey.APP_SWITCH));`;
+              break;
 
-              case "hideKeyboard":
-                javaCode = `driver.hideKeyboard();`;
-                break;
+            case "hideKeyboard":
+              javaCode = `driver.hideKeyboard();`;
+              break;
 
-              case "wait":
-                javaCode = `Thread.sleep(${a.value || 1000});`;
-                break;
+            case "wait":
+              javaCode = `Thread.sleep(${a.value || 1000});`;
+              break;
 
-              case "assert":
+            case "doubleTap":
+              javaCode = `// Double Tap action
+            driver.executeScript("mobile: doubleClickGesture", java.util.Map.of(
+                "x", ${a.coordinates?.x},
+                "y", ${a.coordinates?.y}
+            ));`;
+              break;
+
+
+            case "swipe":
+              javaCode = `// Swipe action
+            driver.executeScript("mobile: swipeGesture", java.util.Map.of(
+                "left", 100, "top", 100, "width", 200, "height", 200,
+                "direction", "up",
+                "percent", 1.0
+            ));`;
+              break;
+
+            case "clearCache":
+              javaCode = `driver.executeScript("mobile: shell", java.util.Map.of("command", "pm clear ${a.value}"));`;
+              break;
+
+            case "assert":
+              if (a.assertionType === "visible") {
                 javaCode = `assert driver.findElement(AppiumBy.xpath("${a.locator}")).isDisplayed();`;
-                break;
+              } else if (a.assertionType === "text_equals") {
+                javaCode = `assert driver.findElement(AppiumBy.xpath("${a.locator}")).getText().equals("${a.value}");`;
+              } else if (a.assertionType === "enabled") {
+                javaCode = `assert driver.findElement(AppiumBy.xpath("${a.locator}")).isEnabled();`;
+              } else if (a.assertionType === "disabled") {
+                javaCode = `assert !driver.findElement(AppiumBy.xpath("${a.locator}")).isEnabled();`;
+              } else {
+                javaCode = `// Manual Assertion: ${a.description}`;
+              }
+              break;
 
-              case "openApp":
-                javaCode = `driver.activateApp("${a.value}");`;
-                break;
+            default:
+              return "";
+          }
 
-              default:
-                return "";
-            }
-
-            return `${comment}\n            ${javaCode}`;
-          })
-          .join("\n\n")}
-        } finally {
-            driver.quit();
-        }
+          return `${comment}\n            ${javaCode}`;
+        })
+        .join("\n\n")
+      }
+      } finally {
+        driver.quit();
+      }
     }
-}`;
-  }, [actions]);
+  }`;
+  }, [actions, savedManualScript, selectedDevice]);
+
+  useEffect(() => {
+    if (generatedScript !== generatedScriptCache) {
+      setGeneratedScriptCache(generatedScript);
+    }
+  }, [
+    generatedScript,
+    generatedScriptCache,
+  ]);
+  // Always prefer live cached script
+  const liveGeneratedScript = useMemo(() => {
+    if (savedManualScript) return savedManualScript;
+    return generatedScriptCache || generatedScript;
+  }, [savedManualScript, generatedScriptCache, generatedScript]);
 
   const handleSaveScript = () => {
     try {
@@ -1357,6 +1510,8 @@ ${enabledActions
       }
 
       setSavedManualScript(null);
+
+
     } catch (err: any) {
       console.error("Input failed after retries:", err);
       toast.error(err.message || "Failed to input text");
@@ -1490,23 +1645,51 @@ ${enabledActions
   };
 
   const installApk = async () => {
-    if (!uploadedApk) return;
+    if (!uploadedApk) {
+      toast.error("No APK uploaded to install");
+      return;
+    }
+
+    const deviceId = selectedDevice?.id || selectedDevice?.device;
+    if (!deviceId) {
+      toast.error("Please select or connect a device first");
+      return;
+    }
+
     setApkInstalling(true);
+    const toastId = toast.loading(`Installing ${uploadedApk.name} on ${selectedDevice.name || deviceId}...`, {
+      description: "This may take a minute for physical devices."
+    });
+
     try {
+      // Step 1: Trigger installation
       const res = await fetch(`${AGENT_URL}/app/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apkPath: uploadedApk.path }),
+        body: JSON.stringify({
+          apkPath: uploadedApk.path,
+          deviceId: deviceId
+        }),
       });
+
       const data = await res.json();
+
       if (res.ok && data.success) {
-        toast.success("APK installed successfully");
+        toast.success("Installation successful", {
+          id: toastId,
+          description: `${uploadedApk.name} is now ready to use.`
+        });
         setIsAppInstalled(true);
+        refreshAppPackages();
       } else {
-        throw new Error(data.error || "Install failed");
+        throw new Error(data.error || "ADB installation failed");
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to install APK");
+      console.error("[installApk] Error:", err);
+      toast.error("Installation failed", {
+        id: toastId,
+        description: err.message || "Failed to install APK. Check device connection and storage."
+      });
     } finally {
       setApkInstalling(false);
     }
@@ -1540,6 +1723,7 @@ ${enabledActions
       if (res.ok && data.success) {
         setUploadedApk({ path: data.path, name: file.name });
         toast.success("APK uploaded successfully. Ready to install.", { id: toastId });
+        refreshAppPackages();
       } else {
         throw new Error(data.error || "Upload failed");
       }
@@ -1562,6 +1746,18 @@ ${enabledActions
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(`Cleared data for ${appPackage}`);
+
+        if (recording && !isPaused) {
+          setActions(prev => [...prev, {
+            id: crypto.randomUUID(),
+            type: "clearCache",
+            description: `Clear Data: ${getAppFriendlyName(appPackage)}`,
+            locator: "system",
+            value: appPackage,
+            timestamp: Date.now(),
+            enabled: true
+          }]);
+        }
       } else {
         throw new Error(data.error || "Failed to clear app data");
       }
@@ -1579,7 +1775,19 @@ ${enabledActions
         body: JSON.stringify({ packageName: appPackage }),
       });
       if (res.ok) {
-        toast.success(`Stopped ${appPackage}`);
+        toast.success(`Stopped ${appPackage} `);
+
+        if (recording && !isPaused) {
+          setActions(prev => [...prev, {
+            id: crypto.randomUUID(),
+            type: "stopApp",
+            description: `Force Stop: ${getAppFriendlyName(appPackage)}`,
+            locator: "system",
+            value: appPackage,
+            timestamp: Date.now(),
+            enabled: true
+          }]);
+        }
       }
     } catch (err: any) {
       toast.error(err.message);
@@ -1621,7 +1829,7 @@ ${enabledActions
     try {
       const res = await fetch(`${AGENT_URL}/app/installed-packages`);
       if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
+        throw new Error(`Server error: ${res.status} `);
       }
       const data = await res.json();
       if (data.success && data.packages) {
@@ -1635,6 +1843,103 @@ ${enabledActions
     } finally {
       setLoadingPackages(false);
     }
+  };
+
+  const handleDoubleTap = async (x: number, y: number) => {
+    try {
+      await retryDeviceAction(async () => {
+        const res = await fetch(`${AGENT_URL}/device/tap`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ x, y, count: 2 }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error(data.error || "Failed to double tap");
+        }
+        return data;
+      }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
+    } catch (err: any) {
+      console.error("Double tap failed after retries:", err);
+      toast.error(err.message || "Failed to double tap");
+    }
+  };
+
+  const handleScroll = async (direction: "up" | "down" | "left" | "right") => {
+    try {
+      const res = await fetch(`${AGENT_URL}/device/scroll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, duration: 800 }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to scroll");
+      }
+      toast.success(`Scrolled ${direction} `);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to scroll");
+    }
+  };
+
+  const handleUndo = () => {
+    if (actions.length === 0) {
+      toast.info("No actions to undo");
+      return;
+    }
+    const lastAction = actions[actions.length - 1];
+    setActions(prev => prev.slice(0, -1));
+    toast.success(`Removed: ${lastAction.description} `);
+  };
+
+  const handleClearCache = async () => {
+    if (!appPackage) {
+      toast.error("Select an app first");
+      return;
+    }
+
+    toast.promise(
+      (async () => {
+        const success = await runAdbCommand(`pm clear ${appPackage} `);
+        if (!success) throw new Error("ADB command failed");
+        return true;
+      })(),
+      {
+        loading: `Wiping app state for ${appPackage}...`,
+        success: `Successfully wiped ${getAppFriendlyName(appPackage)} `,
+        error: "Failed to clear app cache/data",
+      }
+    );
+  };
+
+  const handleAssertion = (type: "visible" | "text_equals" | "enabled" | "disabled" | "toast" | "screen_loaded") => {
+    if (!recording || isPaused) {
+      toast.warning("Start recording to add assertions");
+      return;
+    }
+
+    const descriptionMap = {
+      visible: "Assert Element Visible",
+      text_equals: "Assert Text Equals",
+      enabled: "Assert Element Enabled",
+      disabled: "Assert Element Disabled",
+      toast: "Assert Toast Message",
+      screen_loaded: "Assert Screen Loaded"
+    };
+
+    const newAction: RecordedAction = {
+      id: crypto.randomUUID(),
+      type: "assert",
+      assertionType: type,
+      description: descriptionMap[type],
+      locator: selectedNode?.xpath || "system",
+      value: selectedNode?.text || "",
+      timestamp: Date.now(),
+      enabled: true
+    };
+
+    setActions(prev => [...prev, newAction]);
+    toast.success(`Added Assertion: ${descriptionMap[type]} `);
   };
 
   const handleLongPress = async (x: number, y: number) => {
@@ -1657,22 +1962,19 @@ ${enabledActions
     }
   };
 
-  const handleSwipe = async () => {
+  const handleSwipe = async (coords?: { x1: number, y1: number, x2: number, y2: number, description?: string }) => {
     try {
-      if (!recording || isPaused) {
-        // No toast warning here because Swipe is often used for navigation even when not recording
-        // But we want to ensure it's not captured (server-side handles this)
-      }
-
+      const payload = coords || { x1: 500, y1: 1500, x2: 500, y2: 500, duration: 500 };
       const res = await fetch(`${AGENT_URL}/device/swipe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ x1: 500, y1: 1500, x2: 500, y2: 500, duration: 500 }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!data.success) {
         throw new Error(data.error || "Failed to swipe");
       }
+      toast.success(payload.description || "Swiped successfully");
     } catch (err) {
       toast.error("Failed to swipe");
     }
@@ -1696,10 +1998,11 @@ ${enabledActions
         }
         return data;
       }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
-      toast.success(`Pressed ${keyName}`);
+
+      toast.success(`Pressed ${keyName} `);
     } catch (err: any) {
-      console.error(`Key press failed after retries:`, err);
-      toast.error(err.message || `Failed to press ${keyName}`);
+      console.error(`Key press failed after retries: `, err);
+      toast.error(err.message || `Failed to press ${keyName} `);
     }
   };
 
@@ -1712,7 +2015,19 @@ ${enabledActions
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        toast.success(`Launched ${appPackage}`);
+        toast.success(`Launched ${appPackage} `);
+
+        if (recording && !isPaused) {
+          setActions(prev => [...prev, {
+            id: crypto.randomUUID(),
+            type: "openApp",
+            description: `Launch App: ${getAppFriendlyName(appPackage)}`,
+            locator: "system",
+            value: appPackage,
+            timestamp: Date.now(),
+            enabled: true
+          }]);
+        }
       } else {
         throw new Error(data.error || "Failed to launch app");
       }
@@ -1742,7 +2057,7 @@ ${enabledActions
         toast.info("Selected app is no longer installed. Selection reset.");
       }
 
-      toast.success(`App list refreshed (${packages.length} apps found)`);
+      toast.success(`App list refreshed(${packages.length} apps found)`);
     } catch (err) {
       toast.error("Failed to refresh apps");
     } finally {
@@ -1757,7 +2072,7 @@ ${enabledActions
     }
 
     const confirm = window.confirm(
-      `Are you sure you want to uninstall?\n\n${appPackage}`
+      `Are you sure you want to uninstall ?\n\n${appPackage} `
     );
 
     if (!confirm) return;
@@ -1784,771 +2099,859 @@ ${enabledActions
       toast.error(err.message || "Failed to uninstall app");
     }
   };
+  // Guided Tour Logic
+  const startTour = () => {
+    const driverObj = driver({
+      showProgress: true,
+      animate: true,
+      steps: [
+        {
+          element: '#device-selector-header',
+          popover: {
+            title: 'Device Selection',
+            description: 'Choose your target device here. The status indicator shows if the device is connected and ready for automation.',
+            side: "bottom",
+            align: 'start'
+          }
+        },
+        {
+          element: '#device-preview-card',
+          popover: {
+            title: 'Live Device Preview',
+            description: 'Interact directly with this screen! <br/>• <b>Tap</b>: Click anywhere to tap <br/>• <b>Swipe</b>: Click and drag to swipe <br/>• <b>Input</b>: Click a text field to open the input panel',
+            side: "right",
+            align: 'start'
+          }
+        },
+        {
+          element: '#system-navigation-tools',
+          popover: {
+            title: 'System Navigation',
+            description: 'Essential Android keys:<br/>• <b>Back</b>: Go to previous screen<br/>• <b>Home</b>: Return to home screen<br/>• <b>Recents</b>: View running apps<br/>• <b>Hide KB</b>: Dismiss the on-screen keyboard',
+            side: "left",
+            align: 'start'
+          }
+        },
+        {
+          element: '#interaction-tools',
+          popover: {
+            title: 'Interaction Tools',
+            description: 'Advanced controls:<br/>• <b>Capture Mode</b>: Record taps without executing them immediately<br/>• <b>Undo</b>: Revert the last recorded action<br/>• <b>Swipe/Wait</b>: Manually add specific swipe or wait steps',
+            side: "left",
+            align: 'start'
+          }
+        },
+        {
+          element: '#app-control-section',
+          popover: {
+            title: 'App Management',
+            description: 'Manage your target app:<br/>• <b>Launch/Stop</b>: Start or force-stop the selected app<br/>• <b>Clear Data</b>: Reset app state fully<br/>• <b>Upload APK</b>: Install new apps if none are found',
+            side: "left",
+            align: 'start'
+          }
+        },
+        {
+          element: '#recording-dashboard',
+          popover: {
+            title: 'Recording Controls',
+            description: '• <b>Start</b>: Begin recording your session<br/>• <b>Replay</b>: Play back recorded actions immediately<br/>• <b>Pause/Resume</b>: Temporarily halt recording without stopping',
+            side: "top",
+            align: 'start'
+          }
+        },
+        {
+          element: '#actions-tabs',
+          popover: {
+            title: 'Data & History',
+            description: '• <b>Actions</b>: View and edit the list of recorded steps<br/>• <b>Script</b>: Get the generated code for your automation<br/>• <b>History</b>: See logs of past executions',
+            side: "top",
+            align: 'start'
+          }
+        }
+      ]
+    });
+
+    driverObj.drive();
+  };
+
+  // Auto-start tour on first visit - only when device is connected
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem("mobile_recorder_tour_seen");
+    if (!hasSeenTour && mirrorActive) {
+      const timer = setTimeout(() => {
+        startTour();
+        localStorage.setItem("mobile_recorder_tour_seen", "true");
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [mirrorActive]);
+  /* =====================================================
+     * HANDLE DEVICE SWITCHING
+     * Stops active recording before changing device
+     * ===================================================== */
+  const handleDeviceSelection = async (device: SelectedDevice) => {
+    if (recording) {
+      try {
+        await stopRecording();
+        toast.info("Previous recording stopped due to device switch");
+      } catch (err) {
+        console.error("Failed to auto-stop recording:", err);
+      }
+    }
+    setSelectedDevice(device);
+  };
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-lg font-bold">Mobile Recorder</h2>
-          <p className="text-xs text-muted-foreground">
-            Record actions on local emulator or device
-          </p>
+    <div className="space-y-4" id="recorder-container">
+      {/* NEW PREMIUM HEADER ROW */}
+      <div className="relative z-50 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 mb-4" id="device-selector-header">
+        {/* LEFT: Title & Device Selector Grouped Tightly */}
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Title Block with subtle gradient and icon */}
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 shadow-inner">
+              <Smartphone className="h-5 w-5 text-primary" />
+            </div>
+            <div className="space-y-0.5">
+              <h2 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                Mobile Recorder
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-70 leading-none">
+                  Live interaction & logic recording
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Vertical Divider (Visual separation) */}
+          <div className="hidden md:block h-10 w-px bg-white/[0.08] mx-1" />
+          {/* DEVICE SELECTOR PILL - GLASSMORPHIC DESIGN */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 py-1.5 pl-3 pr-2 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-md shadow-xl transition-all duration-300 hover:bg-white/[0.06] group">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hidden lg:block">
+                  Device
+                </span>
+                <div className="h-3 w-px bg-white/[0.1] hidden lg:block" />
+              </div>
+
+              <div className="flex items-center">
+                {/* Scaled down slightly to fit compact row */}
+                <div className="scale-95 origin-left">
+                  <DeviceSelector
+                    onSelect={handleDeviceSelection}
+                    selectedDeviceFromSetup={selectedDeviceFromSetup}
+                    disabled={!!selectedDeviceFromSetup}
+                    refreshKey={deviceRefreshKey}
+                  />
+                </div>
+
+                {selectedDevice && (
+                  <div className="ml-2 flex items-center justify-center">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                  </div>
+                )}
+
+                {!selectedDeviceFromSetup && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 ml-1 transition-all"
+                    onClick={() => {
+                      setDeviceRefreshKey(prev => prev + 1);
+                      toast.info("Refreshing device list...");
+                    }}
+                    title="Refresh device list"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-muted/50">
-            <span className="text-xs font-medium whitespace-nowrap text-muted-foreground">Device:</span>
-            <div className="flex items-center gap-2">
-              <DeviceSelector
-                onSelect={setSelectedDevice}
-                selectedDeviceFromSetup={selectedDeviceFromSetup}
-                disabled={!!selectedDeviceFromSetup}
-                refreshKey={deviceRefreshKey}
-              />
-              {!selectedDeviceFromSetup && (
+        {/* RIGHT: Status Badge & Recording Guide */}
+        <div className="flex items-center gap-4">
+          {mirrorActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={startTour}
+              className="h-9 px-4 text-sm font-bold text-primary hover:bg-primary/5 gap-2 rounded-full border border-primary/20 shadow-sm transition-all group"
+            >
+              <HelpCircle className="h-4 w-4 group-hover:rotate-12 transition-transform" />
+              Recording Guide
+            </Button>
+          )}
+
+          {/* Recording Status Badge */}
+          {recording && (
+            <Badge
+              variant={isPaused ? "secondary" : (connectionStatus === "connected" ? "default" : "destructive")}
+              className={`h-8 px-4 rounded-full text-[10px] font-black tracking-widest shadow-sm ${!isPaused && "animate-pulse"}`}
+            >
+              {isPaused ? "PAUSED" : (connectionStatus === "connected" ? "REC" : "RECORDING")}
+            </Badge>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* MAESTRO-STYLE EMULATOR WINDOW */}
+        {/* FIXED SIZE MAESTRO-STYLE EMULATOR WINDOW */}
+        <div
+          className="lg:col-span-1 h-fit lg:sticky lg:top-24 flex flex-col rounded-xl overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-950/50 backdrop-blur-sm mx-auto transition-all duration-500"
+          style={{ width: `${previewDimensions.width}px` }}
+          id="device-preview-card"
+        >
+
+          {/* 1. EMULATOR HEADER BAR */}
+          <div className="relative z-20 flex items-center justify-between px-4 py-3 bg-[#18181b] border-b border-zinc-800 select-none h-[52px]">
+            <div className="flex items-center gap-3">
+              {/* Device Name */}
+              <div className="flex items-center gap-2 overflow-hidden">
+                <Smartphone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                <span className="text-xs font-bold text-zinc-200 tracking-wide font-mono truncate max-w-[120px]" title={selectedDevice?.name || selectedDevice?.device}>
+                  {selectedDevice?.name || selectedDevice?.device || "No Device"}
+                </span>
+              </div>
+            </div>
+
+            {/* Header Actions */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md"
+                onClick={connectDevice}
+                title="Refresh Connection"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${mirrorLoading ? "animate-spin" : ""}`} />
+              </Button>
+              {mirrorActive && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 hover:bg-primary/10"
-                  onClick={() => {
-                    setDeviceRefreshKey(prev => prev + 1);
-                    toast.info("Refreshing device list...");
-                  }}
-                  title="Refresh device list"
+                  className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md"
+                  onClick={disconnectDevice}
+                  title="Disconnect Device"
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  <X className="h-4 w-4" />
                 </Button>
               )}
             </div>
           </div>
-          {recording && (
-            <Badge
-              variant={isPaused ? "secondary" : (connectionStatus === "connected" ? "default" : "secondary")}
-              className={`${isPaused ? "" : "animate-pulse"} text-[10px] px-2 h-6`}
-            >
-              {isPaused ? "Paused" : (connectionStatus === "connected" ? "Recording" : "Connecting...")}
-            </Badge>
-          )}
 
-        </div>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1 h-fit lg:sticky lg:top-24">
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-xl font-bold text-zinc-800 dark:text-zinc-100">
-                  <Smartphone className="h-5 w-5 text-primary" />
-                  Device Preview
-                </CardTitle>
-              </div>
+          {/* 2. EMULATOR VIEWPORT (FIXED HEIGHT, DYNAMIC WIDTH) */}
+          <div
+            className="relative bg-[#09090b] flex flex-col items-center justify-center overflow-hidden group transition-all duration-500"
+            style={{ width: `${previewDimensions.width}px`, height: `${previewDimensions.height}px` }}
+          >
 
-              {mirrorActive && (
-                <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 bg-muted/40 rounded-xl border border-muted-foreground/10 animate-in fade-in slide-in-from-top-2 duration-500 shadow-sm">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className="p-2 bg-primary/10 rounded-lg border border-primary/20 mt-0.5 flex-shrink-0">
-                      <Smartphone className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1.5 opacity-70">Target Device</span>
-                      <span className="text-sm font-bold leading-tight break-words" title={selectedDevice?.name || selectedDevice?.device}>
-                        {selectedDevice?.name || selectedDevice?.device}
-                      </span>
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-[10px] font-bold text-green-600 dark:text-green-400 tracking-wider uppercase">Connected</span>
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive transition-all px-3 flex-shrink-0 border border-destructive/10"
-                    onClick={disconnectDevice}
-                  >
-                    <WifiOff className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-tight">Disconnect</span>
-                  </Button>
+            {/* FLOATING BADGE: INSPECT MODE */}
+            {captureMode && mirrorActive && (
+              <div className="absolute top-4 left-4 z-50 animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-none">
+                <div className="bg-[#18181b]/90 backdrop-blur-md border border-zinc-700 text-zinc-100 px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-pink-400 animate-pulse shadow-[0_0_8px_rgba(236,72,153,0.6)]" />
+                  <span className="text-[10px] font-bold tracking-wide">Inspect Mode</span>
                 </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0 flex flex-col items-center">
-            <div className="relative mx-auto transition-all duration-500 ease-in-out group" style={{
-              width: 'clamp(260px, 35vw, 400px)',
-              maxWidth: '100%',
-              filter: 'drop-shadow(0 25px 50px -12px rgb(0 0 0 / 0.5))'
-            }}>
+              </div>
+            )}
 
-              <div className="absolute left-[-2px] top-24 w-[3px] h-16 bg-gradient-to-b from-zinc-700 to-zinc-900 rounded-l-sm z-0" />
-              <div className="absolute left-[-2px] top-44 w-[4px] h-24 bg-gradient-to-b from-zinc-600 to-zinc-800 rounded-l-sm z-0" />
+            {/* --- STATUS OVERLAYS (Loading / Preparing) --- */}
+            {(mirrorLoading || isPreparingDevice) && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-300">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative">
+                    <div className="h-12 w-12 border-[3px] border-zinc-800 border-t-pink-500 rounded-full animate-spin" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-bold text-zinc-200">{isPreparingDevice ? 'Booting Agent...' : 'Connecting...'}</p>
+                    <p className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">Please Wait</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-              <div className="absolute right-[-2px] top-32 w-[3px] h-12 bg-gradient-to-b from-zinc-700 to-zinc-900 rounded-r-sm z-0" />
-
-
-              <div
-                className="relative bg-[#0a0a0a] rounded-[3rem] p-[10px] border-[1px] border-zinc-800 shadow-[inset_0_0_2px_1px_rgba(255,255,255,0.1)] overflow-hidden"
-                style={{
-                  aspectRatio: deviceSize ? `${deviceSize.width} / ${deviceSize.height}` : '9 / 18',
-                }}
-              >
-
-                <div className="absolute inset-0 rounded-[2.8rem] border-[4px] border-black pointer-events-none z-10" />
-
-
-                <div
-                  className="w-full h-full rounded-[2.2rem] bg-black overflow-hidden relative shadow-[inset_0_0_20px_rgba(0,0,0,0.8)]"
+            {/* --- MAIN CONTENT --- */}
+            {!mirrorActive ? (
+              // EMPTY STATE
+              <div className="flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 opacity-60 hover:opacity-100 transition-opacity p-6">
+                <div className="w-24 h-40 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center bg-zinc-900/20">
+                  <Smartphone className="h-8 w-8 text-zinc-700" />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-zinc-400">No Active Session</p>
+                  <p className="text-[10px] text-zinc-600 max-w-[200px] mx-auto leading-relaxed">Select a device from the toolbar to initialize the system view.</p>
+                </div>
+                <Button
+                  onClick={connectDevice}
+                  className="h-9 px-6 text-[11px] font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-full shadow-[0_0_15px_rgba(236,72,153,0.3)] hover:shadow-[0_0_20px_rgba(236,72,153,0.5)] transition-all duration-300 gap-2 group"
                 >
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1a1a1a] rounded-full border border-zinc-800/50 z-50 flex items-center justify-center">
-                    <div className="w-1.5 h-1.5 bg-indigo-950/30 rounded-full" />
-                  </div>
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-1 bg-zinc-900 rounded-b-sm z-50 opacity-40" />
-                  <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden rounded-[2.2rem]">
-                    <div className="absolute -top-[150%] -left-[50%] w-[200%] h-[200%] bg-gradient-to-br from-white/5 via-transparent to-transparent rotate-[35deg] opacity-50" />
-                  </div>
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-muted/10 overflow-hidden relative">
-                    {mirrorActive && (
-                      <div className="absolute top-8 left-0 right-0 z-40 px-4 pointer-events-none flex flex-col gap-2">
-                        <div className={`mx-auto px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tight shadow-md animate-in fade-in slide-in-from-top-2 duration-500 flex items-center gap-1.5 ${captureMode ? 'bg-primary text-primary-foreground' : 'bg-zinc-800 text-zinc-300'}`}>
-                          <div className={`h-1 w-1 rounded-full ${captureMode ? 'bg-white animate-pulse' : 'bg-zinc-500'}`} />
-                          {captureMode ? "Interaction Active" : "View Only Mode"}
-                        </div>
-
-                        {recording && !isPaused && (
-                          <div className="mx-auto px-2.5 py-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold uppercase tracking-tight shadow-md animate-pulse flex items-center gap-1.5">
-                            <div className="h-1 w-1 rounded-full bg-white" />
-                            Recording
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {isPreparingDevice && (
-                      <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-                        <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl">
-                          <div className="relative">
-                            <div className="h-10 w-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <RefreshCw className="h-4 w-4 text-primary animate-pulse" />
-                            </div>
-                          </div>
-                          <div className="text-center space-y-1">
-                            <p className="text-sm font-bold text-white">Preparing Device...</p>
-                            <p className="text-[10px] text-zinc-400">Ensuring a clean fresh state</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {mirrorLoading ? (
-                      <div className="text-center p-4 space-y-3">
-                        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
-                        <p className="text-sm text-muted-foreground">Connecting...</p>
-                      </div>
-                    ) : !mirrorActive ? (
-                      <div className="text-center p-4 space-y-4">
-                        <Smartphone className="h-16 w-16 text-muted-foreground mx-auto opacity-50" />
-                        <p className="text-sm text-muted-foreground">
-                          Connect to see live device screen
-                        </p>
-                        <Button onClick={connectDevice} className="gap-2">
-                          <Wifi className="h-4 w-4" />
-                          Connect Device
-                        </Button>
-                      </div>
-                    ) : mirrorError ? (
-                      <div className="text-center p-4 space-y-3">
-                        <WifiOff className="h-8 w-8 text-destructive mx-auto" />
-                        <div className="text-destructive text-sm">{mirrorError}</div>
-                        <Button variant="outline" size="sm" onClick={connectDevice}>
-                          Retry
-                        </Button>
-                      </div>
-                    ) : mirrorImage ? (
-                      <>
-                        <img
-                          src={mirrorImage}
-                          alt="Device screen"
-                          className={`w-full h-full object-contain bg-black ${captureMode ? 'cursor-pointer ring-2 ring-inset ring-primary/40' : ''}`}
-                          onLoad={() => {
-                          }}
-                          onMouseDown={(e) => {
-                            if (!captureMode) return;
-                            const el = e.currentTarget as HTMLImageElement;
-                            const rect = el.getBoundingClientRect();
-                            const clickX = e.clientX - rect.left;
-                            const clickY = e.clientY - rect.top;
-                            const finalDev = deviceSize || { width: 1080, height: 1920 };
-                            const deviceX = Math.round((clickX / rect.width) * finalDev.width);
-                            const deviceY = Math.round((clickY / rect.height) * finalDev.height);
-
-                            pressCoordsRef.current = { x: deviceX, y: deviceY };
-                            longPressHappenedRef.current = false;
-
-                            longPressTimerRef.current = setTimeout(() => {
-                              handleLongPress(deviceX, deviceY);
-                              longPressHappenedRef.current = true;
-                              longPressTimerRef.current = null;
-                            }, 600);
-                          }}
-                          onMouseUp={() => {
-                            if (longPressTimerRef.current) {
-                              clearTimeout(longPressTimerRef.current);
-                              longPressTimerRef.current = null;
-                            }
-                          }}
-                          onMouseLeave={() => {
-                            if (longPressTimerRef.current) {
-                              clearTimeout(longPressTimerRef.current);
-                              longPressTimerRef.current = null;
-                            }
-                          }}
-                          onClick={async (e) => {
-                            if (!captureMode) return;
-
-                            if (longPressHappenedRef.current) {
-                              longPressHappenedRef.current = false;
-                              return;
-                            }
-
-                            const el = e.currentTarget as HTMLImageElement;
-                            const rect = el.getBoundingClientRect();
-                            const clickX = e.clientX - rect.left;
-                            const clickY = e.clientY - rect.top;
-
-                            const finalDev = deviceSize || { width: 1080, height: 1920 };
-                            const deviceX = Math.round((clickX / rect.width) * finalDev.width);
-                            const deviceY = Math.round((clickY / rect.height) * finalDev.height);
-
-                            try {
-                              const { res, json } = await retryDeviceAction(async () => {
-                                const response = await fetch(`${AGENT_URL}/device/tap`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ x: deviceX, y: deviceY }),
-                                });
-
-                                const data = await response.json().catch(() => ({}));
-
-                                if (!response.ok) {
-                                  throw new Error(data.error || "Tap failed");
-                                }
-
-                                return { res: response, json: data };
-                              }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
-
-                              if (res.ok) {
-                                if (json.step?.elementMetadata) {
-                                  setSelectedNode(json.step.elementMetadata);
-                                }
-
-                                if (json.step?.isInputCandidate) {
-                                  setInputText("");
-                                  setInputCoords({ x: deviceX, y: deviceY });
-                                  setInputPending(false);
-                                  setShowInputPanel(true);
-                                }
-                              }
-                            } catch (err: any) {
-                              console.error("Tap failed after retries:", err);
-                              toast.error(err.message || "Failed to send interaction to device");
-                            }
-                          }}
-                        />
-
-                        {debugMode && (
-                          <div className="absolute bottom-4 left-4 right-4 bg-black/80 backdrop-blur-md border border-yellow-500/50 p-4 rounded-lg z-50 text-white animate-in slide-in-from-bottom-4 duration-300">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
-                                <span className="text-xs font-bold text-yellow-500 uppercase tracking-wider">Step Replay Mode</span>
-                              </div>
-                              <Badge variant="outline" className="text-[10px] border-yellow-500/30 text-yellow-200">
-                                Step {replayIndex !== null ? replayIndex + 1 : 0} of {actions.length}
-                              </Badge>
-                            </div>
-
-                            {replayIndex !== null && actions[replayIndex] && (
-                              <div className="mb-4">
-                                <p className="text-sm font-medium line-clamp-1">{actions[replayIndex].description}</p>
-                                <p className="text-[10px] text-zinc-400 font-mono mt-0.5 truncate italic">
-                                  {actions[replayIndex].locator}
-                                </p>
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <Button
-                                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold h-9"
-                                onClick={() => nextStepTrigger?.()}
-                                disabled={!nextStepTrigger}
-                              >
-                                Execute Next Step
-                              </Button>
-                              <Button
-                                variant="outline"
-                                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9"
-                                onClick={() => {
-                                  setDebugMode(false);
-                                  setReplaying(false);
-                                  setReplayIndex(null);
-                                }}
-                              >
-                                Cancel Replay
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-center p-4 text-muted-foreground">
-                        <p className="text-sm">Waiting for screen...</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  <Zap className="h-3.5 w-3.5 fill-current group-hover:animate-pulse" />
+                  Initialize System
+                </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            ) : mirrorError ? (
+              // ERROR STATE
+              <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
+                <div className="p-3 bg-red-500/10 rounded-full">
+                  <WifiOff className="h-8 w-8 text-red-500/50" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-red-500">Signal Lost</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono max-w-[220px] mx-auto">{mirrorError}</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={connectDevice} className="border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white mt-2">
+                  Retry Connection
+                </Button>
+              </div>
+            ) : (
+              // ACTIVE SCREEN STREAM
+              <div className="relative w-full h-full flex items-center justify-center bg-[#000]">
+
+                {/* CAPTURE MODE OVERLAY (PINK THEME) */}
+                {captureMode && (
+                  <div className="absolute inset-4 pointer-events-none z-20 border-[2px] border-dashed border-pink-500/60 rounded-lg shadow-[0_0_30px_rgba(236,72,153,0.15)] animate-in fade-in duration-300">
+                    {/* Corner Markers */}
+                    <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-pink-500 bg-transparent" />
+                    <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-pink-500 bg-transparent" />
+                    <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-pink-500 bg-transparent" />
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-pink-500 bg-transparent" />
+                  </div>
+                )}
+
+                {mirrorImage && (
+                  <img
+                    src={mirrorImage}
+                    alt="Device Screen"
+                    className={`w-full h-full object-contain select-none transition-all duration-200 ${captureMode ? 'cursor-pointer opacity-90' : 'cursor-default'}`}
+                    // --- INTERACTION LOGIC ---
+                    onMouseDown={(e) => {
+                      if (!captureMode) return;
+                      const el = e.currentTarget as HTMLImageElement;
+                      const rect = el.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left;
+                      const clickY = e.clientY - rect.top;
+                      const finalDev = deviceSize || { width: 1080, height: 1920 };
+
+                      const deviceX = Math.round((clickX / rect.width) * finalDev.width);
+                      const deviceY = Math.round((clickY / rect.height) * finalDev.height);
+
+                      pressCoordsRef.current = { x: deviceX, y: deviceY };
+                      isDraggingRef.current = true;
+                      longPressHappenedRef.current = false;
+
+                      longPressTimerRef.current = setTimeout(() => {
+                        if (isDraggingRef.current) {
+                          handleLongPress(deviceX, deviceY);
+                          longPressHappenedRef.current = true;
+                          isDraggingRef.current = false;
+                        }
+                      }, 700);
+                    }}
+                    onMouseUp={async (e) => {
+                      if (!captureMode || !pressCoordsRef.current) return;
+
+                      if (longPressTimerRef.current) {
+                        clearTimeout(longPressTimerRef.current);
+                        longPressTimerRef.current = null;
+                      }
+
+                      const el = e.currentTarget as HTMLImageElement;
+                      const rect = el.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left;
+                      const clickY = e.clientY - rect.top;
+                      const finalDev = deviceSize || { width: 1080, height: 1920 };
+
+                      const deviceX = Math.round((clickX / rect.width) * finalDev.width);
+                      const deviceY = Math.round((clickY / rect.height) * finalDev.height);
+
+                      const startX = pressCoordsRef.current.x;
+                      const startY = pressCoordsRef.current.y;
+
+                      const dist = Math.sqrt(Math.pow(deviceX - startX, 2) + Math.pow(deviceY - startY, 2));
+
+                      if (dist > 30) {
+                        isDraggingRef.current = false;
+                        const description = Math.abs(deviceX - startX) > Math.abs(deviceY - startY)
+                          ? (deviceX > startX ? "Swipe Right" : "Swipe Left")
+                          : (deviceY > startY ? "Swipe Down" : "Swipe Up");
+
+                        handleSwipe({ x1: startX, y1: startY, x2: deviceX, y2: deviceY, description });
+                        pressCoordsRef.current = null;
+                        return;
+                      }
+
+                      if (longPressHappenedRef.current) {
+                        isDraggingRef.current = false;
+                        pressCoordsRef.current = null;
+                        return;
+                      }
+
+                      isDraggingRef.current = false;
+                      try {
+                        const { res, json } = await retryDeviceAction(async () => {
+                          const response = await fetch(`${AGENT_URL}/device/tap`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ x: deviceX, y: deviceY }),
+                          });
+                          const data = await response.json().catch(() => ({}));
+                          if (!response.ok) throw new Error(data.error || "Tap failed");
+                          return { res: response, json: data };
+                        }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
+
+                        if (res.ok) {
+                          if (json.step?.elementMetadata) {
+                            setSelectedNode(json.step.elementMetadata);
+                          }
+
+                          // RECORD TAP ACTION
+                          if (recording && !isPaused) {
+                            const node = json.step?.elementMetadata;
+                            setActions(prev => [...prev, {
+                              id: crypto.randomUUID(),
+                              type: "tap",
+                              description: node ? `Tap on ${node.text || node.contentDesc || node.className.split('.').pop()}` : `Tap at (${deviceX}, ${deviceY})`,
+                              locator: node?.xpath || "coordinate",
+                              timestamp: Date.now(),
+                              enabled: true,
+                              coordinates: { x: deviceX, y: deviceY },
+                              elementId: node?.resourceId,
+                              elementText: node?.text,
+                              elementContentDesc: node?.contentDesc
+                            }]);
+                          }
+
+                          if (json.step?.isInputCandidate) {
+                            setInputText("");
+                            setInputCoords({ x: deviceX, y: deviceY });
+                            if (recording && !isPaused) {
+                              setInputPending(false);
+                              setShowInputPanel(true);
+                              toast.info("Input field detected");
+                            }
+                          }
+                        }
+                      } catch (err: any) {
+                        toast.error(err.message || "Interaction failed");
+                      }
+                      pressCoordsRef.current = null;
+                    }}
+                    onMouseLeave={() => {
+                      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                      isDraggingRef.current = false;
+                      pressCoordsRef.current = null;
+                    }}
+                    draggable={false}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
         <div className="lg:col-span-2 space-y-6">
           {mirrorActive && (
             <Collapsible open={showQuickStart} onOpenChange={setShowQuickStart} className="w-full">
               <Card className="border-primary/20 shadow-sm animate-in fade-in slide-in-from-right-4 duration-500">
                 <CollapsibleTrigger asChild>
-                  <CardHeader className="pb-3 border-b border-muted/20 flex flex-row items-center justify-between cursor-pointer hover:bg-primary/5 transition-colors">
-                    <div className="flex flex-col flex-1">
-                      <CardTitle className="flex items-center gap-2">
-                        <Terminal className="h-5 w-5 text-primary" />
+                  <CardHeader className="py-2.5 px-4 border-b border-secondary/20 flex flex-row items-center justify-between cursor-pointer hover:bg-primary/[0.03] transition-colors">
+                    <div className="flex flex-row items-baseline gap-2 flex-1 min-w-0">
+                      <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+                        <Terminal className="h-4 w-4 text-primary" />
                         Device Control
                       </CardTitle>
-                      <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest mt-1 truncate" title={selectedDevice?.name || selectedDevice?.device || "No Device Selected"}>
-                        Active Agent: {selectedDevice?.name || selectedDevice?.device || "No Device Selected"}
+                      <span className="text-[12px] font-mono text-muted-foreground truncate opacity-70" title={selectedDevice?.name || selectedDevice?.device || "No Device Selected"}>
+                        {selectedDevice?.name || selectedDevice?.device || "No Device Selected"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-primary">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 text-[12px] font-bold uppercase tracking-wider text-primary">
                         <Wand2 className="h-3 w-3" />
-                        {showQuickStart ? "Hide Guide" : "Quick Guide"}
+                        {showQuickStart ? "Hide" : "Guide"}
                       </div>
-                      <ChevronDown className={`h-4 w-4 text-primary transition-transform ${showQuickStart ? "rotate-180" : ""}`} />
+                      <ChevronDown className={`h-3.5 w-3.5 text-primary transition-transform ${showQuickStart ? "rotate-180" : ""}`} />
                     </div>
                   </CardHeader>
                 </CollapsibleTrigger>
 
                 {showQuickStart && (
                   <CollapsibleContent>
-                    <div className="mx-6 mt-4 mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="space-y-6">
-                        <div>
-                          <h3 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
-                            <BookOpen className="h-4 w-4" />
-                            Recording Workflow
-                          </h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {[
-                              { step: 1, title: "Connect Device", desc: "Click 'Connect Device' and wait for live preview to appear." },
-                              { step: 2, title: "Prepare App (NOT Recorded)", desc: "Use Device Controls to launch app, clear data, or navigate - these actions are NOT saved." },
-                              { step: 3, title: "Turn ON Interaction Mode", desc: "Click 'Mode: OFF' to enable it. Device taps will now work." },
-                              { step: 4, title: "Start Recording", desc: "Click 'Start Recording' - now every action you do will be saved!" },
-                              { step: 5, title: "Interact", desc: "Tap, long press, swipe, or use Input Panel for text." },
-                              { step: 6, title: "Stop & Review", desc: "Click 'Stop Recording' to finish. Review and edit steps in Actions tab." }
-                            ].map(s => (
-                              <div key={s.step} className="flex flex-col gap-2 p-3 bg-background rounded-lg border border-primary/10 hover:border-primary/30 transition-all group relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-1 opacity-5 font-black text-5xl -mr-2 -mt-3 group-hover:scale-110 transition-transform">
-                                  {s.step}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-sm flex-shrink-0">
-                                    {s.step}
-                                  </div>
-                                  <span className="text-xs font-bold text-primary/90">{s.title}</span>
-                                </div>
-                                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                                  {s.desc}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-3">
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                              <MousePointer2 className="h-4 w-4" />
-                              Interaction Modes
-                            </h3>
-                            <div className="space-y-2">
-                              <div className="p-3 bg-muted/30 rounded-lg border border-muted/50">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary border-primary/30">MODE: ON</Badge>
-                                  <span className="text-xs font-bold">Interactive</span>
-                                </div>
-                                <p className="text-[10px] text-muted-foreground">Taps, swipes, and inputs work on device screen.</p>
-                              </div>
-                              <div className="p-3 bg-muted/30 rounded-lg border border-muted/50">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Badge variant="outline" className="text-[9px]">MODE: OFF</Badge>
-                                  <span className="text-xs font-bold">View Only</span>
-                                </div>
-                                <p className="text-[10px] text-muted-foreground">Can only watch - taps do nothing.</p>
-                              </div>
-                            </div>
-                          </div>
+                    <div className="mx-4 mt-3 mb-6 space-y-6 animate-in fade-in slide-in-from-top-2 duration-500">
+                      <div className="relative space-y-5">
+                        {/* Vertical line connecting steps */}
+                        <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-primary/30 via-primary/10 to-transparent" />
 
-                          <div className="space-y-3">
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                              <Type className="h-4 w-4" />
-                              Text Input
-                            </h3>
-                            <div className="p-3 bg-primary/5 border border-primary/10 rounded-lg space-y-2">
-                              <div className="flex items-start gap-2">
-                                <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-xs font-medium">Use Input Panel</p>
-                                  <p className="text-[10px] text-muted-foreground">Click 'Input Panel' button, tap field on device, type text, click Send.</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start gap-2">
-                                <XCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-xs font-medium">Don't use browser pop-ups</p>
-                                  <p className="text-[10px] text-muted-foreground">They won't work - always use the Input Panel.</p>
-                                </div>
-                              </div>
+                        {/* Step 1: Ready Your App */}
+                        <div className="relative flex items-start gap-4 group">
+                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
+                            1
+                          </div>
+                          <div className="flex-1 space-y-1.5 pb-2">
+                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Ready Your App</h4>
+                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                Use <b>Package Control</b> to select your app. If it's missing, upload the APK and install it. Use <span className="text-primary/80 font-medium">Wipe Data</span> for a clean test state.
+                              </p>
                             </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="p-4 bg-green-500/5 border border-green-500/20 rounded-lg">
-                            <h3 className="text-xs font-bold text-green-600 mb-3 flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4" />
-                              What Gets Recorded
-                            </h3>
-                            <div className="space-y-1.5">
-                              {[
-                                "Actions AFTER clicking 'Start Recording'",
-                                "Taps when Interaction Mode is ON",
-                                "Long presses (hold 600ms)",
-                                "Swipes and scrolls",
-                                "Text input via Input Panel",
-                                "System keys (Back, Home, Recents)"
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-2">
-                                  <span className="text-green-500 text-xs mt-0.5">✓</span>
-                                  <p className="text-[10px] text-muted-foreground">{item}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
 
-                          <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-lg">
-                            <h3 className="text-xs font-bold text-red-600 mb-3 flex items-center gap-2">
-                              <XCircle className="h-4 w-4" />
-                              What Does NOT Get Recorded
-                            </h3>
-                            <div className="space-y-1.5">
-                              {[
-                                "Actions BEFORE 'Start Recording'",
-                                "Actions when Mode is OFF",
-                                "Device Controls (Launch, Stop, Clear)",
-                                "System Navigation buttons",
-                                "App selection or upload",
-                                "Keyboard hide/show"
-                              ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-2">
-                                  <span className="text-red-500 text-xs mt-0.5">✗</span>
-                                  <p className="text-[10px] text-muted-foreground">{item}</p>
-                                </div>
-                              ))}
+                        {/* Step 2: Start Capturing */}
+                        <div className="relative flex items-start gap-4 group">
+                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
+                            2
+                          </div>
+                          <div className="flex-1 space-y-1.5 pb-2">
+                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Start Capturing</h4>
+                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                Toggle <span className="text-primary font-bold">Start Capture: ON</span> to enable interaction. Click <span className="text-primary font-bold">Initiate Recording</span>—every tap, scroll, and key press will be captured in real-time.
+                              </p>
                             </div>
                           </div>
                         </div>
-                        <div>
-                          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-3">
-                            <Info className="h-4 w-4" />
-                            Understanding Results
-                          </h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-                              <div className="flex items-center gap-2 mb-2">
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                <span className="text-xs font-bold text-green-600">PASS</span>
-                              </div>
-                              <p className="text-[10px] text-muted-foreground mb-2">All steps completed successfully with green checkmarks.</p>
-                            </div>
-                            <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
-                              <div className="flex items-center gap-2 mb-2">
-                                <XCircle className="h-4 w-4 text-red-500" />
-                                <span className="text-xs font-bold text-red-600">FAIL</span>
-                              </div>
-                              <p className="text-[10px] text-muted-foreground mb-2">One or more steps couldn't complete. Common reasons:</p>
-                              <ul className="text-[9px] text-muted-foreground space-y-0.5 ml-3">
-                                <li>• Element not found</li>
-                                <li>• Timeout (app too slow)</li>
-                                <li>• Wrong screen</li>
-                              </ul>
+
+                        {/* Step 3: Validate & Finish */}
+                        <div className="relative flex items-start gap-4 group">
+                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
+                            3
+                          </div>
+                          <div className="flex-1 space-y-1.5">
+                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Validate & Finish</h4>
+                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                Add <b>Assertions</b> to verify screen state. Click <span className="text-destructive font-bold">Stop Test</span> when done to review your sequence, edit the script, or save the scenario to history.
+                              </p>
                             </div>
                           </div>
                         </div>
-                        <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                          <h3 className="text-xs font-bold text-amber-600 mb-3 flex items-center gap-2">
-                            <HelpCircle className="h-4 w-4" />
-                            Tips for Better Recordings
-                          </h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {[
-                              { tip: "Start Fresh", desc: "Use 'Clear Data' before recording for reliable replays." },
-                              { tip: "Add Wait Steps", desc: "If app is slow, add Wait actions between steps." },
-                              { tip: "Test Small Flows", desc: "Record 3-5 actions at a time, test replay before adding more." },
-                              { tip: "Use Input Panel", desc: "Always use Input Panel for text - never browser pop-ups." }
-                            ].map((item, i) => (
-                              <div key={i} className="flex items-start gap-2">
-                                <span className="text-amber-500 text-xs mt-0.5"></span>
-                                <div>
-                                  <p className="text-xs font-medium">{item.tip}</p>
-                                  <p className="text-[10px] text-muted-foreground">{item.desc}</p>
-                                </div>
-                              </div>
-                            ))}
+                      </div>
+
+                      {/* Pro Tips Section */}
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Wand2 className="h-3.5 w-3.5 text-amber-600" />
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Pro Tip</span>
                           </div>
+                          <p className="text-[10px] text-muted-foreground leading-snug">
+                            Use the <b>Undo</b> button to instantly remove accidental actions without stopping the recording.
+                          </p>
                         </div>
-                        <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg">
-                          <h3 className="text-xs font-bold text-primary mb-3">🎓 Quick Reference</h3>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px]">
-                            <div>
-                              <p className="font-bold mb-1">Interaction Modes</p>
-                              <p className="text-muted-foreground">OFF = View only</p>
-                              <p className="text-muted-foreground">ON = Can interact</p>
-                            </div>
-                            <div>
-                              <p className="font-bold mb-1">What's Recorded</p>
-                              <p className="text-muted-foreground">✓ After "Start Recording"</p>
-                              <p className="text-muted-foreground">✗ Device Controls</p>
-                            </div>
-                            <div>
-                              <p className="font-bold mb-1">Pass/Fail</p>
-                              <p className="text-muted-foreground">Pass = All steps worked</p>
-                              <p className="text-muted-foreground">Fail = Check failed step</p>
-                            </div>
+                        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Terminal className="h-3.5 w-3.5 text-indigo-600" />
+                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700">Shortcuts</span>
                           </div>
+                          <p className="text-[10px] text-muted-foreground leading-snug">
+                            The <b>Input Panel</b> is the best way to send verified text—avoid using the device keyboard when recording.
+                          </p>
                         </div>
                       </div>
                     </div>
                   </CollapsibleContent>
                 )}
 
-                <CardContent className="pt-6 space-y-6">
-                  <CardContent className="pt-6 space-y-6">
-                    {/* --- APP MANAGEMENT --- */}
-                    <div className="space-y-3 p-4 bg-muted/20 rounded-xl border border-muted/30 hover:bg-muted/40 transition-all">
-                      <div className="flex items-center justify-between px-1">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-                          <Smartphone className="h-3.5 w-3.5 text-primary/60" />
-                          App Control
-                        </span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={refreshAppPackages} disabled={loadingPackages}>
-                          <RefreshCw className={`h-3 w-3 ${loadingPackages ? "animate-spin" : ""}`} />
-                        </Button>
-                      </div>
-
-                      <Select value={appPackage} onValueChange={setAppPackage}>
-                        <SelectTrigger className="h-10 bg-background/50 border-muted/40 rounded-lg shadow-sm">
-                          <div className="flex flex-col items-start text-left truncate">
-                            <span className="text-xs font-bold truncate w-full">
-                              {appPackage ? getAppFriendlyName(appPackage) : "Select Application"}
-                            </span>
-                            {appPackage && <span className="text-[8px] font-mono opacity-40 truncate w-full">{appPackage}</span>}
-                          </div>
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[250px]">
-                          {installedPackages.map((pkg) => (
-                            <SelectItem key={pkg} value={pkg} className="py-2 text-xs">
-                              <div className="flex flex-col">
-                                <span className="font-bold">{getAppFriendlyName(pkg)}</span>
-                                <span className="text-[9px] opacity-40 font-mono italic">{pkg}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button variant="default" className="h-10 text-xs font-bold gap-2 shadow-md hover:translate-y-[-1px] transition-all" onClick={handleOpenApp}>
-                          <Play className="h-3.5 w-3.5 fill-current" /> Launch
-                        </Button>
-                        <Button variant="outline" className="h-10 text-xs font-bold gap-2 border-muted-foreground/10 hover:bg-destructive/10 hover:text-destructive transition-all" onClick={handleStopApp}>
-                          <Square className="h-3.5 w-3.5" /> Stop
-                        </Button>
-                        <Button variant="secondary" className="h-10 text-xs font-bold gap-2 transition-all" onClick={handleClearApp}>
-                          <Trash2 className="h-3.5 w-3.5 opacity-70" /> Clear
-                        </Button>
-                        <Button variant="destructive" className="h-10 text-xs font-bold gap-2 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground border-none transition-all" onClick={uninstallApp}>
-                          <XCircle className="h-3.5 w-3.5 opacity-80" /> Uninstall
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* --- INTERACTION & INPUT --- */}
-                    <div className="space-y-3 p-4 bg-primary/5 rounded-xl border border-primary/20 hover:bg-primary/10 transition-all">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/70 flex items-center gap-2 px-1">
-                        <MousePointer2 className="h-3.5 w-3.5" />
-                        Interaction
-                      </span>
-                      <div className="space-y-2">
-                        <Button
-                          variant={captureMode ? "default" : "outline"}
-                          className={`h-11 w-full font-bold transition-all shadow-sm ${captureMode ? 'ring-2 ring-primary/20 bg-primary' : 'bg-background hover:bg-primary/5'}`}
-                          onClick={() => setCaptureMode(!captureMode)}
-                        >
-                          <MousePointer2 className={`mr-2 h-4 w-4 ${captureMode ? 'animate-pulse' : ''}`} />
-                          {captureMode ? "Interactions: ON" : "Interactions: OFF"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className={`h-11 w-full font-bold transition-all border-primary/20 hover:bg-primary/10 ${showInputPanel ? "bg-primary/20 border-primary/40 text-primary shadow-inner" : "bg-background shadow-sm"}`}
-                          onClick={() => setShowInputPanel(!showInputPanel)}
-                        >
-                          <Type className="mr-2 h-4 w-4" /> Input Panel
-                        </Button>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground px-1 italic opacity-70 leading-relaxed">
-                        {captureMode ? "Every tap on the device will be recorded as a step." : "Visual-only mode: Tap to inspect elements without recording steps."}
-                      </p>
-                    </div>
-
-                    {/* --- NAVIGATION & ACTIONS --- */}
-                    <div className="grid grid-cols-1 gap-4">
-                      {/* Navigation */}
-                      <div className="space-y-3 p-4 bg-indigo-500/5 rounded-xl border border-indigo-500/10 transition-all">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700/60 flex items-center gap-2 px-1">
-                          <Smartphone className="h-3.5 w-3.5" />
-                          Navigation
-                        </span>
-                        <div className="grid grid-cols-4 gap-2">
-                          <Button variant="outline" className="h-10 flex flex-col items-center justify-center p-0 bg-background hover:bg-indigo-50 border-indigo-500/10" onClick={() => handleKeyPress(4, "Back")} title="Back">
-                            <RotateCcw className="h-4 w-4" />
-                            <span className="text-[9px] font-bold mt-0.5">Back</span>
-                          </Button>
-                          <Button variant="outline" className="h-10 flex flex-col items-center justify-center p-0 bg-background hover:bg-indigo-50 border-indigo-500/10" onClick={() => handleKeyPress(3, "Home")} title="Home">
-                            <Circle className="h-4 w-4" />
-                            <span className="text-[9px] font-bold mt-0.5">Home</span>
-                          </Button>
-                          <Button variant="outline" className="h-10 flex flex-col items-center justify-center p-0 bg-background hover:bg-indigo-50 border-indigo-500/10" onClick={() => handleKeyPress(187, "Recents")} title="Recents">
-                            <ListChecks className="h-4 w-4" />
-                            <span className="text-[9px] font-bold mt-0.5">Tasks</span>
-                          </Button>
-                          <Button variant="outline" className="h-10 flex flex-col items-center justify-center p-0 bg-background border-amber-500/10 text-amber-600 hover:bg-amber-50" onClick={hideKeyboard} title="Hide Keyboard">
-                            <Keyboard className="h-4 w-4" />
-                            <span className="text-[9px] font-bold mt-0.5 text-amber-600">Hide</span>
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Quick Steps */}
-                      <div className="space-y-3 p-4 bg-muted/30 rounded-xl border border-muted/40 transition-all">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2 px-1">
-                          <Move className="h-3.5 w-3.5" />
-                          Quick Steps
-                        </span>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Button variant="outline" className="h-10 text-xs font-bold gap-2 border-muted-foreground/10 hover:bg-muted/50" onClick={handleSwipe}>
-                            <ChevronUp className="h-4 w-4 text-purple-600" /> Swipe
-                          </Button>
-                          <Button variant="outline" className="h-10 text-xs font-bold gap-2 border-muted-foreground/10 hover:bg-muted/50" onClick={() => {
-                            if (!recording || isPaused) {
-                              toast.warning("Start recording first");
-                              return;
-                            }
-                            setActions(prev => [...prev, { id: crypto.randomUUID(), type: 'wait', description: 'Wait (2s)', locator: 'system', value: '2000', timestamp: Date.now(), enabled: true }]);
-                            toast.info("Added Wait (2s)");
-                          }}>
-                            <Clock className="h-4 w-4 text-amber-600" /> Wait
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* --- SESSION CONTROL --- */}
-                    <div className="space-y-4 pt-4 border-t border-muted/40">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2 px-1">
-                        <Circle className="h-3.5 w-3.5" />
-                        Session Status
-                      </span>
-                      {!recording ? (
-                        <div className="space-y-3">
-                          <Button onClick={startRecording} disabled={!mirrorActive} className="w-full h-12 text-sm font-black shadow-lg shadow-primary/20 bg-primary hover:scale-[1.01] transition-all" variant="default">
-                            <Play className="mr-2 h-5 w-5 fill-current" /> START RECORDING
-                          </Button>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button variant="outline" onClick={() => replayActions(0)} disabled={actions.length === 0 || replaying} className="h-11 font-bold border-green-500/20 text-green-600 hover:bg-green-50">
-                              <Play className="mr-2 h-4 w-4" /> Replay
-                            </Button>
-                            <Button variant="outline" disabled={true} className="h-11 font-bold opacity-30 cursor-not-allowed grayscale">
-                              <Smartphone className="mr-2 h-4 w-4" /> Step Replay
+                <CardContent className="p-0">
+                  {/* --- TOP ROW: PACKAGE SELECTION & STATUS --- */}
+                  <div className="p-3 border-b border-border/40 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        {installedPackages.length === 0 ? (
+                          <div className="h-9 flex items-center justify-between px-3 border border-dashed border-muted-foreground/30 rounded-md bg-background/50 text-[10px] text-muted-foreground">
+                            <span>No apps detected</span>
+                            <Button
+                              variant="link"
+                              className="h-auto p-0 text-[10px] text-primary font-bold"
+                              onClick={() => fileInputRef.current?.click()}
+                            >
+                              Upload APK
                             </Button>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 gap-3">
-                          <Button
-                            variant={isPaused ? "default" : "secondary"}
-                            onClick={async () => {
-                              try {
-                                const endpoint = isPaused ? "/recording/resume" : "/recording/pause";
-                                const res = await fetch(`${AGENT_URL}${endpoint}`, { method: "POST" });
-                                if (res.ok) {
-                                  setIsPaused(!isPaused);
-                                  toast.info(isPaused ? "Recording resumed" : "Recording paused");
-                                } else {
-                                  const data = await res.json();
-                                  toast.error(data.error || `Failed to ${isPaused ? 'resume' : 'pause'} recording`);
-                                }
-                              } catch (err) { toast.error("Connection error"); }
-                            }}
-                            className="w-full h-11 font-bold shadow-sm"
-                          >
-                            {isPaused ? <><Play className="mr-2 h-4 w-4 fill-current" /> Resume</> : <><Pause className="mr-2 h-4 w-4 text-amber-600" /> Pause Recording</>}
-                          </Button>
-                          <Button variant="destructive" onClick={stopRecording} className="w-full h-11 font-bold shadow-lg shadow-destructive/10">
-                            <Square className="mr-2 h-4 w-4" /> STOP RECORDING
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Permissions & Help */}
-                    <div className="space-y-3 p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
-                      <div className="flex flex-col gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700/60 flex items-center gap-2">
-                          <Settings className="h-3.5 w-3.5" />
-                          System Utils
-                        </span>
-                        <p className="text-[10px] text-muted-foreground leading-snug px-1 italic">
-                          Missing permissions? Configure them manually in device settings.
-                        </p>
+                        ) : (
+                          <div className="relative group">
+                            <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/70 group-hover:text-primary transition-colors" />
+                            <Select value={appPackage} onValueChange={setAppPackage}>
+                              <SelectTrigger className="h-9 text-[11px] font-medium bg-background pl-9 border-border/60 shadow-sm focus:ring-1 focus:ring-primary/20">
+                                <SelectValue placeholder="Select Target Application..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {installedPackages.map((pkg) => (
+                                  <SelectItem key={pkg} value={pkg} className="text-[11px]">
+                                    <span className="font-semibold">{getAppFriendlyName(pkg)}</span>
+                                    <span className="text-muted-foreground/50 text-[9px] ml-2 font-mono opacity-70">{pkg}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                       </div>
                       <Button
                         variant="outline"
-                        size="sm"
-                        onClick={handleOpenAppSettings}
-                        disabled={!appPackage || !mirrorActive}
-                        className="w-full h-10 text-xs font-bold border-amber-500/10 text-amber-700 hover:bg-amber-500/10 transition-all"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 border-border/60 hover:bg-background hover:text-primary shadow-sm transition-colors"
+                        onClick={refreshAppPackages}
+                        disabled={loadingPackages}
+                        title="Refresh App List"
                       >
-                        <Settings2 className="mr-2 h-4 w-4" />
-                        Open App Settings
+                        <RefreshCw className={`h-4 w-4 text-muted-foreground ${loadingPackages ? "animate-spin" : ""}`} />
                       </Button>
                     </div>
-                  </CardContent>
+                  </div>
+
+                  {/* --- MIDDLE: TABBED CONTROL CENTER --- */}
+                  {/* --- MIDDLE: UNIFIED CONTROL CENTER (No Tabs) --- */}
+                  <div className="p-3 space-y-4">
+
+                    {/* 1. SYSTEM NAVIGATION (Top Row) */}
+                    {/* 1. SYSTEM NAVIGATION (Top Row) */}
+                    <div className="space-y-3" id="system-navigation-tools">
+                      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
+                        <Smartphone className="h-3.5 w-3.5" /> System Navigation
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        <Button
+                          variant="outline"
+                          className="h-9 text-[10px] font-bold gap-1 bg-background hover:bg-accent/50 hover:text-primary group px-0 transition-colors"
+                          onClick={() => handleKeyPress(4, "Back")}
+                          title="Back Button"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
+                          Back
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-9 text-[10px] font-bold gap-1.5 bg-background hover:bg-accent/50 hover:text-primary px-0 transition-colors"
+                          onClick={() => handleKeyPress(3, "Home")}
+                          title="Home Button"
+                        >
+                          <Circle className="h-3.5 w-3.5" />
+                          Home
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-9 text-[10px] font-bold gap-1.5 bg-background hover:bg-accent/50 hover:text-primary px-0 transition-colors"
+                          onClick={() => handleKeyPress(187, "Recents")}
+                          title="Recent Apps"
+                        >
+                          <ListChecks className="h-3.5 w-3.5" />
+                          Tasks
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-9 text-[10px] font-bold gap-1.5 bg-background hover:bg-accent/50 text-amber-600 hover:text-amber-700 px-0 transition-colors"
+                          onClick={hideKeyboard}
+                          title="Hide Soft Keyboard"
+                        >
+                          <Keyboard className="h-3.5 w-3.5" />
+                          Hide KB
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-border/40 w-full" />
+
+                    {/* 2. CAPTURE & INTERACTION (Prominent) */}
+                    <div id="interaction-tools" className="space-y-3">
+                      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
+                        <MousePointer2 className="h-3.5 w-3.5" /> Interaction Tools
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant={captureMode ? "default" : "secondary"}
+                          className={`h-10 flex-1 text-[11px] font-black tracking-widest gap-2 transition-all shadow-md ${captureMode ? 'bg-primary text-primary-foreground ring-1 ring-primary/20' : 'bg-secondary/80 text-secondary-foreground hover:bg-secondary border border-transparent'}`}
+                          onClick={() => setCaptureMode(!captureMode)}
+                        >
+                          <MousePointer2 className={`h-4 w-4 ${captureMode ? 'animate-pulse' : ''}`} />
+                          {captureMode ? "CAPTURE ON" : "START CAPTURE"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-10 flex-1 text-[11px] font-black tracking-widest gap-2 border-border/40 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-muted-foreground shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+                          onClick={handleUndo}
+                          title="Undo Last Action"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          UNDO LAST
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-blue-500/5 hover:text-blue-600 hover:border-blue-200" onClick={() => setShowInputPanel(!showInputPanel)}>
+                          <Type className="h-3.5 w-3.5 mr-1.5 text-blue-500" /> Input
+                        </Button>
+                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-purple-500/5 hover:text-purple-600 hover:border-purple-200" onClick={handleSwipe}>
+                          <Move className="h-3.5 w-3.5 mr-1.5 text-purple-500" /> Swipe
+                        </Button>
+                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-amber-500/5 hover:text-amber-600 hover:border-amber-200" onClick={() => {
+                          if (!recording || isPaused) { toast.warning("Start recording first"); return; }
+                          setActions(prev => [...prev, { id: crypto.randomUUID(), type: 'wait', description: 'Wait (2s)', locator: 'system', value: '2000', timestamp: Date.now(), enabled: true }]);
+                          toast.info("Added Wait (2s)");
+                        }}>
+                          <Clock className="h-3.5 w-3.5 mr-1.5 text-amber-500" /> Wait 2s
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <Button variant="ghost" className="h-7 text-[10px] border border-border/30 hover:bg-accent hover:text-primary" onClick={() => handleScroll("up")}>
+                          <ChevronUp className="h-3.5 w-3.5 mr-1" /> Scroll Up
+                        </Button>
+                        <Button variant="ghost" className="h-7 text-[10px] border border-border/30 hover:bg-accent hover:text-primary" onClick={() => handleScroll("down")}>
+                          <ChevronDown className="h-3.5 w-3.5 mr-1" /> Scroll Down
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-border/40 w-full" />
+
+                    {/* 3. APP MANAGEMENT */}
+                    <div id="app-control-section" className="space-y-3">
+                      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
+                        <Package className="h-3.5 w-3.5" /> App Management
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          className="h-8 text-[10px] font-bold justify-start px-3 gap-2 border-primary/20 text-primary hover:bg-primary/5 hover:text-primary transition-colors"
+                          onClick={handleOpenApp}
+                          disabled={!appPackage}
+                          title="Launch the selected app"
+                        >
+                          <Play className="h-3.5 w-3.5 fill-current" /> Launch App
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-8 text-[10px] font-bold justify-start px-3 gap-2 border-destructive/20 text-destructive/80 hover:bg-destructive/5 hover:text-destructive transition-colors"
+                          onClick={handleStopApp}
+                          disabled={!appPackage}
+                          title="Force stop the selected app"
+                        >
+                          <Square className="h-3.5 w-3.5 fill-current" /> Force Stop
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          className="h-8 text-[10px] font-bold justify-start px-3 gap-2 hover:bg-amber-500/10 hover:text-amber-700 hover:border-amber-500/30"
+                          onClick={handleClearApp}
+                          disabled={!appPackage}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 opacity-70" /> Clear Data
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-8 text-[10px] font-bold justify-start px-3 gap-2 hover:bg-blue-500/10 hover:text-blue-700 hover:border-blue-500/30"
+                          onClick={handleClearCache}
+                          disabled={!appPackage}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 opacity-70" /> Clear Cache
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <Button
+                          variant="ghost"
+                          className="h-8 text-[10px] font-bold justify-start px-2 gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive border border-transparent hover:border-destructive/20"
+                          onClick={uninstallApp}
+                          disabled={!appPackage}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Uninstall
+                        </Button>
+                        <Button variant="ghost" className="h-8 text-[10px] justify-start text-muted-foreground hover:text-foreground px-2" onClick={handleOpenAppSettings} disabled={!appPackage}>
+                          <Settings className="h-3.5 w-3.5 mr-2" /> App Info
+                        </Button>
+                      </div>
+
+                      {/* APK Upload (Conditional) */}
+                      {installedPackages.length === 0 && (
+                        <div className="mt-2 pt-2 border-t border-dashed border-border/50">
+                          <Button
+                            variant="outline"
+                            className="w-full h-8 text-[10px] font-bold border-dashed"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={apkUploading}
+                          >
+                            <Upload className="mr-2 h-3.5 w-3.5" /> Upload APK
+                          </Button>
+                          {uploadedApk && (
+                            <Button
+                              variant="default"
+                              className="w-full mt-2 h-8 text-[10px] font-bold bg-green-600 hover:bg-green-700"
+                              onClick={installApk}
+                              disabled={apkInstalling}
+                            >
+                              <Play className="mr-2 h-3 w-3" /> Install APK
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* --- BOTTOM: COMMAND BAR (Always Visible) --- */}
+                  <div className="p-3 bg-muted/10 border-t border-border/40 backdrop-blur-sm" id="recording-dashboard">
+                    {!recording ? (
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={startRecording}
+                          disabled={!mirrorActive}
+                          className="h-10 flex-1 text-[11px] font-black tracking-widest bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all gap-2"
+                        >
+                          <div className="w-2 h-2 rounded-full bg-white animate-pulse shadow-sm" />
+                          START RECORDING
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => replayActions(0)}
+                          disabled={actions.length === 0 || replaying}
+                          className="h-10 flex-1 text-[11px] font-black tracking-widest border-border/60 hover:bg-background shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all gap-2"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          REPLAY
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button
+                          variant={isPaused ? "default" : "outline"}
+                          onClick={async () => {
+                            try {
+                              const endpoint = isPaused ? "/recording/resume" : "/recording/pause";
+                              const res = await fetch(`${AGENT_URL}${endpoint}`, { method: "POST" });
+                              if (res.ok) setIsPaused(!isPaused);
+                            } catch (err) { }
+                          }}
+                          className={`h-10 flex-1 text-[11px] font-black tracking-widest transition-all gap-2 ${isPaused ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md' : 'border-amber-500/50 text-amber-600 hover:bg-amber-50/50'}`}
+                        >
+                          {isPaused ? <><Play className="h-4 w-4 fill-current" /> RESUME</> : <><Pause className="h-4 w-4 fill-current" /> PAUSE</>}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={stopRecording}
+                          className="h-10 flex-1 text-[11px] font-black tracking-widest shadow-md hover:shadow-lg hover:bg-destructive/90 transition-all gap-2"
+                        >
+                          <Square className="h-4 w-4 fill-current" /> STOP
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
               </Card>
             </Collapsible>
           )}
           {showInputPanel && (
             <Card className="border-primary/20 bg-primary/5 shadow-md animate-in slide-in-from-top-4 duration-300">
-              <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between space-y-0 border-b border-secondary/20">
                 <div className="flex items-center gap-2">
-                  <Type className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-sm">Text Input Panel</CardTitle>
+                  <Type className="h-3.5 w-3.5 text-primary" />
+                  <CardTitle className="text-xs font-bold text-foreground/80">Text Input Panel</CardTitle>
                 </div>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowInputPanel(false)}>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-destructive/5 hover:text-destructive" onClick={() => setShowInputPanel(false)}>
                   <XCircle className="h-4 w-4" />
                 </Button>
               </CardHeader>
@@ -2585,7 +2988,7 @@ ${enabledActions
               </CardContent>
             </Card>
           )}
-          <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full">
+          <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full" id="actions-tabs">
             <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="actions" className="flex items-center gap-2">
                 <MousePointer2 className="h-4 w-4" />
@@ -2692,7 +3095,7 @@ ${enabledActions
                                 <div className="flex items-center gap-2">
                                   {a.type === "tap" && <MousePointer2 className="h-3.5 w-3.5 text-blue-500" title="Tap action - Click on screen element" />}
                                   {a.type === "input" && <Type className="h-3.5 w-3.5 text-green-500" title="Text input - Enter text into field" />}
-                                  {a.type === "scroll" && <Move className="h-3.5 w-3.5 text-purple-500" title="Swipe/Scroll action - Navigate screen" />}
+                                  {(a.type === "scroll" || a.type === "swipe") && <Move className="h-3.5 w-3.5 text-purple-500" title="Swipe/Scroll action - Navigate screen" />}
                                   {a.type === "wait" && <Clock className="h-3.5 w-3.5 text-amber-500" title="Wait/Delay - Pause execution" />}
                                   {a.type === "hideKeyboard" && <Keyboard className="h-3.5 w-3.5 text-gray-500" title="Hide Keyboard" />}
                                   <span className="font-semibold text-sm leading-none capitalize">{a.type === "hideKeyboard" ? "Hide Keyboard" : a.type}</span>
@@ -2983,7 +3386,8 @@ ${enabledActions
                         />
                       ) : (
                         <pre className="bg-zinc-950 text-emerald-400 p-4 rounded-xl text-xs overflow-x-auto font-mono">
-                          {generatedScript}
+                          {generatedScriptCache || generatedScript}
+
                         </pre>
                       )}
                     </ScrollArea>
@@ -3251,11 +3655,17 @@ ${enabledActions
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          accept=".apk"
+          className="hidden"
+        />
+      </div >
     </div >
   );
 }
-
 
 function FileIcon(props: any) {
   return (

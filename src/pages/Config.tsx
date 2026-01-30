@@ -13,7 +13,7 @@ export default function Config() {
   const [config, setConfig] = useState({
     appiumHost: "localhost",
     appiumPort: "4723",
-    deviceName: "emulator-5554",
+    deviceName: "",
     platformVersion: "13",
     appPath: "/path/to/app.apk",
     appPackage: "com.example.app",
@@ -250,7 +250,7 @@ BACKEND_PORT=3001`;
                     category: "Device Management",
                     commands: [
                       { cmd: "adb devices", desc: "List connected devices" },
-                      { cmd: "adb -s emulator-5554 shell", desc: "Open device shell" },
+                      { cmd: "adb -s DEVICE_ID shell", desc: "Open device shell" },
                       { cmd: "adb reboot", desc: "Reboot device" },
                     ],
                   },

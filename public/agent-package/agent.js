@@ -195,7 +195,7 @@ class MobileAutomationAgent {
     /* ---------------- DEVICE ---------------- */
     this.app.get("/device/check", async (req, res) => { try { res.json(await deviceController.getStatus()); } catch (e) { res.status(500).json({ connected: false, error: e.message }); } });
     this.app.get("/device/size", async (req, res) => { try { res.json({ success: true, size: await deviceController.getScreenSize() }); } catch (e) { res.status(500).json({ success: false, error: e.message }); } });
-    this.app.get("/device/screenshot", async (req, res) => { try { const img = await deviceController.takeScreenshot(); res.setHeader("Content-Type", "image/png"); res.send(img); } catch (e) { res.status(404).json({ error: e.message }); } });
+    this.app.get("/device/screenshot", async (req, res) => { try { const img = await deviceController.takeScreenshot(); res.setHeader("Content-Type", "image/png"); res.send(img); } catch (e) { log("error", "Screenshot failed", { error: e.message }); res.status(500).json({ error: e.message }); } });
     this.app.post("/device/shell", async (req, res) => { try { const { command, deviceId } = req.body; if (!command) throw new Error("Command is required"); res.json({ success: true, ...await deviceController.shell(command, deviceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
     this.app.get("/device/ui", async (req, res) => { try { res.json({ success: true, xml: await deviceController.getUIHierarchy() }); } catch (e) { res.status(500).json({ success: false, error: e.message }); } });
 

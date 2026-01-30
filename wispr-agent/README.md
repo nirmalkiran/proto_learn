@@ -154,7 +154,6 @@ No separate setup or manual terminal commands are required for mobile automation
 2. **Install** dependencies:
    ```bash
    npm install
-   npx playwright install chromium
    ```
 3. **Start** the agent:
    ```bash
