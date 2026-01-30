@@ -397,7 +397,18 @@ export default function MobileRecorder({
     setLoadingScenarios(false);
 
     if (res.success && res.data) {
-      setScenarios(res.data);
+      // Map to RecordedScenario type with fallbacks
+      const mappedScenarios: RecordedScenario[] = (res.data as any[]).map((s: any) => ({
+        id: s.id,
+        name: s.name || "Unnamed Scenario",
+        description: s.description,
+        steps: s.steps || [],
+        app_package: s.app_package,
+        user_id: s.user_id,
+        created_at: s.created_at,
+        updated_at: s.updated_at
+      }));
+      setScenarios(mappedScenarios);
     } else {
       toast.error("Failed to load scenarios");
     }
@@ -1974,7 +1985,7 @@ ${enabledActions
       if (!data.success) {
         throw new Error(data.error || "Failed to swipe");
       }
-      toast.success(payload.description || "Swiped successfully");
+      toast.success((payload as any).description || "Swiped successfully");
     } catch (err) {
       toast.error("Failed to swipe");
     }
@@ -2785,7 +2796,7 @@ ${enabledActions
                         <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-blue-500/5 hover:text-blue-600 hover:border-blue-200" onClick={() => setShowInputPanel(!showInputPanel)}>
                           <Type className="h-3.5 w-3.5 mr-1.5 text-blue-500" /> Input
                         </Button>
-                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-purple-500/5 hover:text-purple-600 hover:border-purple-200" onClick={handleSwipe}>
+                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-purple-500/5 hover:text-purple-600 hover:border-purple-200" onClick={() => handleSwipe()}>
                           <Move className="h-3.5 w-3.5 mr-1.5 text-purple-500" /> Swipe
                         </Button>
                         <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-amber-500/5 hover:text-amber-600 hover:border-amber-200" onClick={() => {
@@ -3093,11 +3104,11 @@ ${enabledActions
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2 mb-1">
                                 <div className="flex items-center gap-2">
-                                  {a.type === "tap" && <MousePointer2 className="h-3.5 w-3.5 text-blue-500" title="Tap action - Click on screen element" />}
-                                  {a.type === "input" && <Type className="h-3.5 w-3.5 text-green-500" title="Text input - Enter text into field" />}
-                                  {(a.type === "scroll" || a.type === "swipe") && <Move className="h-3.5 w-3.5 text-purple-500" title="Swipe/Scroll action - Navigate screen" />}
-                                  {a.type === "wait" && <Clock className="h-3.5 w-3.5 text-amber-500" title="Wait/Delay - Pause execution" />}
-                                  {a.type === "hideKeyboard" && <Keyboard className="h-3.5 w-3.5 text-gray-500" title="Hide Keyboard" />}
+                                  {a.type === "tap" && <span title="Tap action - Click on screen element"><MousePointer2 className="h-3.5 w-3.5 text-blue-500" /></span>}
+                                  {a.type === "input" && <span title="Text input - Enter text into field"><Type className="h-3.5 w-3.5 text-green-500" /></span>}
+                                  {(a.type === "scroll" || a.type === "swipe") && <span title="Swipe/Scroll action - Navigate screen"><Move className="h-3.5 w-3.5 text-purple-500" /></span>}
+                                  {a.type === "wait" && <span title="Wait/Delay - Pause execution"><Clock className="h-3.5 w-3.5 text-amber-500" /></span>}
+                                  {a.type === "hideKeyboard" && <span title="Hide Keyboard"><Keyboard className="h-3.5 w-3.5 text-gray-500" /></span>}
                                   <span className="font-semibold text-sm leading-none capitalize">{a.type === "hideKeyboard" ? "Hide Keyboard" : a.type}</span>
                                   {a.enabled === false && <Badge variant="secondary" className="h-4 text-[9px] px-1 opacity-70">Disabled</Badge>}
                                 </div>

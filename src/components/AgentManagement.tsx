@@ -74,44 +74,48 @@ interface AgentManagementProps {
 
 interface Agent {
   id: string;
-  agent_id: string;
-  agent_name: string;
-  status: string;
+  agent_id?: string;
+  agent_name?: string;
+  name?: string;
+  agent_type?: string;
+  status: string | null;
   last_heartbeat: string | null;
-  capacity: number;
-  running_jobs: number;
-  browsers: string[] | null;
-  config: any;
+  capacity?: number;
+  running_jobs?: number;
+  browsers?: string[] | null;
+  config?: any;
+  capabilities?: any;
   created_at: string;
+  endpoint_url?: string | null;
+  api_key?: string | null;
+  project_id?: string | null;
+  user_id?: string;
+  updated_at?: string;
 }
 
 interface JobQueueItem {
   id: string;
-  run_id: string;
-  test_id: string;
-  status: string;
-  priority: number;
+  job_type: string;
+  job_data: any;
+  status: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
   agent_id: string | null;
-  retries: number;
-  max_retries: number;
+  error_message: string | null;
+  result: any;
+  user_id: string;
 }
 
 interface ExecutionResult {
   id: string;
-  job_id: string;
   status: string;
-  passed_steps: number;
-  failed_steps: number;
-  total_steps: number;
   duration_ms: number | null;
-  error_message: string | null;
+  logs: string | null;
+  result: any;
+  test_case_id: string | null;
   created_at: string;
-  screenshots: any;
-  video_url: string | null;
-  trace_url: string | null;
+  user_id: string;
 }
 
 export const AgentManagement = ({ projectId }: AgentManagementProps) => {
@@ -306,9 +310,9 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
 
     const localAgents: Agent[] = (dbAgents || []).map(agent => ({
       ...agent,
-      agent_name: agent.agent_name || agent.name || "Unnamed Agent",
-      browsers: agent.browsers || (agent.capabilities as any)?.browsers || [],
-      capacity: agent.capacity || (agent.capabilities as any)?.capacity || 1
+      agent_name: agent.name || "Unnamed Agent",
+      browsers: (agent.capabilities as any)?.browsers || [],
+      capacity: (agent.capabilities as any)?.capacity || 1
     }));
 
     // Deduplicate ephemeral agents (don't push virtual ones if they are already in the DB)
@@ -350,27 +354,52 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   };
 
   const loadJobs = async () => {
-    const { data, error } = await supabase
-      .from("agent_job_queue")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false })
-      .limit(100);
+    try {
+      const { data, error } = await supabase
+        .from("agent_job_queue")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
 
-    if (error) throw error;
-    setJobs((data || []) as JobQueueItem[]);
+      if (error) {
+        console.warn("Could not load jobs:", error.message);
+        setJobs([]);
+        return;
+      }
+      setJobs((data || []) as unknown as JobQueueItem[]);
+    } catch (err) {
+      console.warn("Error loading jobs:", err);
+      setJobs([]);
+    }
   };
 
   const loadExecutionResults = async () => {
+    // Note: agent_execution_results table doesn't exist in the current schema
+    // Using automation_results as a fallback
     const { data, error } = await supabase
-      .from("agent_execution_results")
+      .from("automation_results")
       .select("*")
-      .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (error) throw error;
-    setExecutionResults((data || []) as ExecutionResult[]);
+    if (error) {
+      console.warn("Could not load execution results:", error.message);
+      setExecutionResults([]);
+      return;
+    }
+    
+    // Map to expected format
+    const mapped = (data || []).map(r => ({
+      id: r.id,
+      status: r.status,
+      duration_ms: r.duration_ms,
+      logs: r.logs,
+      result: r.result,
+      test_case_id: r.test_case_id,
+      created_at: r.created_at,
+      user_id: r.user_id
+    }));
+    setExecutionResults(mapped as ExecutionResult[]);
   };
 
   const checkMobileAgentStatus = async () => {
@@ -500,7 +529,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
 
       toast({
         title: "Job Deleted",
-        description: `Job "${job.run_id}" has been removed`,
+        description: `Job "${job.id}" has been removed`,
       });
       await loadJobs();
       setJobToDelete(null);
@@ -531,7 +560,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
 
       toast({
         title: "Status Updated",
-        description: `Job "${job.run_id}" status changed to ${newStatus}`,
+        description: `Job "${job.id}" status changed to ${newStatus}`,
       });
       await loadJobs();
     } catch (error: any) {
@@ -972,13 +1001,13 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                     <TableBody>
                       {jobs.map((job) => (
                         <TableRow key={job.id}>
-                          <TableCell className="font-mono text-sm">{job.run_id}</TableCell>
-                          <TableCell>{getJobStatusBadge(job.status)}</TableCell>
+                          <TableCell className="font-mono text-sm">{job.job_type || job.id.slice(0, 8)}</TableCell>
+                          <TableCell>{getJobStatusBadge(job.status || "unknown")}</TableCell>
                           <TableCell>
-                            <Badge variant="outline">{job.priority}</Badge>
+                            <Badge variant="outline">{(job as any).priority ?? "-"}</Badge>
                           </TableCell>
                           <TableCell>
-                            {job.retries}/{job.max_retries}
+                            {(job as any).retries ?? 0}/{(job as any).max_retries ?? 3}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
@@ -1065,29 +1094,17 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                           <TableCell>{getJobStatusBadge(result.status)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-green-500">{result.passed_steps} passed</span>
-                              <span className="text-muted-foreground">/</span>
-                              <span className="text-red-500">{result.failed_steps} failed</span>
-                              <span className="text-muted-foreground">/</span>
-                              <span>{result.total_steps} total</span>
+                              <span className="text-muted-foreground">
+                                {result.result ? "Result available" : "No result data"}
+                              </span>
                             </div>
                           </TableCell>
                           <TableCell>{formatDuration(result.duration_ms)}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              {result.screenshots && result.screenshots.length > 0 && (
+                              {result.logs && (
                                 <Badge variant="outline" className="text-xs">
-                                  {result.screenshots.length} screenshots
-                                </Badge>
-                              )}
-                              {result.video_url && (
-                                <Badge variant="outline" className="text-xs">
-                                  Video
-                                </Badge>
-                              )}
-                              {result.trace_url && (
-                                <Badge variant="outline" className="text-xs">
-                                  Trace
+                                  Logs available
                                 </Badge>
                               )}
                             </div>
@@ -1433,7 +1450,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Job</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete job "{jobToDelete?.run_id}"? This action cannot be undone.
+              Are you sure you want to delete job "{jobToDelete?.id}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
