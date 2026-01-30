@@ -13,6 +13,7 @@ export type ActionType =
     | "wait"
     | "assert"
     | "openApp"
+    | "stopApp"
     | "clearCache"
     | "hideKeyboard"
     | "pressKey";
