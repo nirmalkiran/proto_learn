@@ -1652,67 +1652,7 @@ playwright/.cache/
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Check if we should use agent or browserbase
-      if (suiteExecutionTarget === "agent") {
-        if (!selectedSuiteAgentId) {
-          toast({
-            title: "Agent Required",
-            description: "Please select an agent to run the suite",
-            variant: "destructive"
-          });
-          return;
-        }
-
-        const agent = availableAgents.find(a => a.id === selectedSuiteAgentId);
-        if (agent && !isAgentOnline(agent)) {
-          setShowOfflineAgentConfirm(true);
-          setPendingSuiteRun(true);
-          return;
-        }
-
-        setIsRunningSuite(true);
-        const runId = `suite_run_${Date.now()}`;
-
-        // Create a suite execution record
-        const { data: suiteExec, error: suiteExecError } = await supabase.from("nocode_suite_executions").insert({
-          suite_id: selectedSuite.id,
-          status: "pending",
-          user_id: user.id,
-          total_tests: suiteTests.length,
-          passed_tests: 0,
-          failed_tests: 0
-        }).select().single();
-
-        if (suiteExecError) throw suiteExecError;
-
-        // Queue all tests in the suite
-        for (const suiteTest of suiteTests) {
-          if (!suiteTest.test) continue;
-
-          await supabase.from("agent_job_queue").insert({
-            project_id: projectId,
-            test_id: suiteTest.test.id,
-            run_id: runId,
-            agent_id: selectedSuiteAgentId,
-            status: "pending",
-            priority: 5,
-            config: {
-              suite_execution_id: suiteExec.id,
-              baseUrl: suiteTest.test.base_url,
-              steps: suiteTest.test.steps
-            }
-          });
-        }
-
-        toast({
-          title: "Suite Scheduled",
-          description: `${suiteTests.length} tests added to the agent's queue`
-        });
-        loadSuiteExecutions(selectedSuite.id);
-        setIsRunningSuite(false);
-        return;
-      }
-
+      // Agent execution is not currently configured - using default browserbase execution
       setIsRunningSuite(true);
 
       // Create suite execution record for standard flow
@@ -2686,47 +2626,7 @@ playwright/.cache/
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Check if we should use agent or browserbase
-      if (executionTarget === "agent") {
-        if (!selectedAgentId) {
-          toast({
-            title: "Agent Required",
-            description: "Please select an agent to run the test",
-            variant: "destructive"
-          });
-          return;
-        }
-
-        const agent = availableAgents.find(a => a.id === selectedAgentId);
-        if (agent && !isAgentOnline(agent)) {
-          setShowOfflineAgentConfirm(true);
-          setPendingTestRun(test);
-          return;
-        }
-
-        // Insert job into queue
-        const { error: jobError } = await supabase.from("agent_job_queue").insert({
-          project_id: projectId,
-          test_id: test.id,
-          run_id: `run_${Date.now()}`,
-          agent_id: selectedAgentId,
-          status: "pending",
-          priority: 10,
-          config: {
-            baseUrl: test.base_url,
-            steps: test.steps
-          }
-        });
-
-        if (jobError) throw jobError;
-
-        toast({
-          title: "Job Scheduled",
-          description: "Test has been added to the agent's queue"
-        });
-        return;
-      }
-
+      // Agent execution is not currently configured - using default browserbase execution
       // Default Browserbase execution flow
       // Create execution record
       const {
