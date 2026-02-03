@@ -21,17 +21,21 @@ interface ProjectEditDialogProps {
   onClose: () => void;
   onProjectUpdated: () => void;
   onProjectDeleted: () => void;
+  projectOwnerId?: string;
+  currentUserId: string | null;
 }
 
-export const ProjectEditDialog = ({ 
-  projectId, 
-  projectName, 
+export const ProjectEditDialog = ({
+  projectId,
+  projectName,
   projectDescription,
   projectStatus,
-  isOpen, 
-  onClose, 
-  onProjectUpdated, 
-  onProjectDeleted 
+  isOpen,
+  onClose,
+  onProjectUpdated,
+  onProjectDeleted,
+  projectOwnerId,
+  currentUserId
 }: ProjectEditDialogProps) => {
   const [name, setName] = useState(projectName);
   const [description, setDescription] = useState(projectDescription);
@@ -40,6 +44,9 @@ export const ProjectEditDialog = ({
   const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
   const { isAdmin } = useRoles();
+
+  const isOwner = currentUserId && projectOwnerId && currentUserId === projectOwnerId;
+  const canEdit = isAdmin || isOwner;
 
   useEffect(() => {
     setName(projectName);
@@ -101,15 +108,12 @@ export const ProjectEditDialog = ({
     }
   };
 
-  const handleSoftDelete = async () => {
+  const handleDelete = async () => {
     setDeleting(true);
     try {
       const { error } = await supabase
         .from('projects')
-        .update({
-          deleted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        .delete()
         .eq('id', projectId);
 
       if (error) throw error;
@@ -152,7 +156,7 @@ export const ProjectEditDialog = ({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter project name..."
-              disabled={!isAdmin}
+              disabled={!canEdit}
             />
           </div>
           <div className="grid gap-2">
@@ -163,12 +167,12 @@ export const ProjectEditDialog = ({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Enter project description..."
               rows={3}
-              disabled={!isAdmin}
+              disabled={!canEdit}
             />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="edit-status">Status</Label>
-            <Select value={status} onValueChange={(value: 'Active' | 'Closed' | 'On Hold') => setStatus(value)} disabled={!isAdmin}>
+            <Select value={status} onValueChange={(value: 'Active' | 'Closed' | 'On Hold') => setStatus(value)} disabled={!canEdit}>
               <SelectTrigger>
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
@@ -182,11 +186,11 @@ export const ProjectEditDialog = ({
         </div>
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
-          {isAdmin && (
+          {canEdit && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   size="sm"
                   disabled={saving || deleting}
                   className="mr-auto"
@@ -199,13 +203,13 @@ export const ProjectEditDialog = ({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Project</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to delete "{projectName}"? This action will hide the project from the list, but data can be recovered by an administrator if needed.
+                    Are you sure you want to delete "{projectName}"? This action cannot be undone and will permanently remove all associated data.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleSoftDelete}
+                  <AlertDialogAction
+                    onClick={handleDelete}
                     disabled={deleting}
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
@@ -215,18 +219,18 @@ export const ProjectEditDialog = ({
               </AlertDialogContent>
             </AlertDialog>
           )}
-          
+
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={onClose} 
+            <Button
+              variant="outline"
+              onClick={onClose}
               disabled={saving || deleting}
             >
               Cancel
             </Button>
-            {isAdmin && (
-              <Button 
-                onClick={handleSave} 
+            {canEdit && (
+              <Button
+                onClick={handleSave}
                 disabled={saving || deleting}
               >
                 {saving ? "Saving..." : "Save Changes"}

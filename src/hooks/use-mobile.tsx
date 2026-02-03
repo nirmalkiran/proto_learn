@@ -1,7 +1,16 @@
+/**
+ * Purpose:
+ * A custom hook to detect if the current viewport width is within
+ * the mobile breakpoint range.
+ */
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
 
+/**
+ * Purpose:
+ * Returns a boolean indicating if the current screen size is "mobile".
+ */
 export function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
 

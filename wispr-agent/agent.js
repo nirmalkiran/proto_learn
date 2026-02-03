@@ -261,6 +261,7 @@ class MobileAutomationAgent {
             type: "openApp",
             description: `Launch app: ${packageName}`,
             value: packageName,
+            locator: "system",
             timestamp: Date.now()
           });
         }
@@ -324,6 +325,35 @@ class MobileAutomationAgent {
     this.app.post("/recording/pause", (req, res) => { try { recordingService.pauseRecording(); res.json({ success: true }); } catch (e) { res.status(400).json({ error: e.message }); } });
     this.app.post("/recording/resume", (req, res) => { try { recordingService.resumeRecording(); res.json({ success: true }); } catch (e) { res.status(400).json({ error: e.message }); } });
     this.app.get("/recording/steps", (req, res) => res.json({ success: true, steps: recordingService.getRecordedSteps() }));
+    this.app.post("/recording/add-step", (req, res) => {
+      try {
+        const { type, description, value, locator, coordinates, assertionType } = req.body;
+        if (!type) throw new Error("Step type is required");
+
+        const step = {
+          type,
+          description: description || `${type} action`,
+          value: value || "",
+          locator: locator || "",
+          coordinates: coordinates || null,
+          timestamp: Date.now()
+        };
+
+        // Add assertionType for assertion steps
+        if (type === "assert" && assertionType) {
+          step.assertionType = assertionType;
+        }
+
+        if (recordingService.isRecording) {
+          recordingService.addStep(step);
+          res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
+        } else {
+          res.status(400).json({ error: "Recording is not active" });
+        }
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
 
     this.app.get("/recording/events", (req, res) => {
       res.setHeader("Content-Type", "text/event-stream"); res.setHeader("Cache-Control", "no-cache"); res.setHeader("Connection", "keep-alive");

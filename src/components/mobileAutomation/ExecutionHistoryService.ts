@@ -1,3 +1,8 @@
+/**
+ * Purpose:
+ * Manages the persistence of test execution results to Supabase.
+ * Tracks both individual test runs and suite-level results.
+ */
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -5,6 +10,9 @@ const supabase = createClient(
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 );
 
+/**
+ * Purpose: Data structure for test and suite execution results.
+ */
 export interface ExecutionResult {
     status: "SUCCESS" | "FAILED";
     test_id?: string;
@@ -18,7 +26,8 @@ export interface ExecutionResult {
 
 export const ExecutionHistoryService = {
     /**
-     * Saves a test execution result to Supabase
+     * Purpose:
+     * Saves a single test execution record to the 'nocodemobile_test_executions' table.
      */
     async saveTestExecution(result: ExecutionResult) {
         try {
@@ -62,7 +71,9 @@ export const ExecutionHistoryService = {
     },
 
     /**
-     * Saves a suite execution result (for consistency with existing logic)
+     * Purpose:
+     * Saves a suite-level execution record to the 'nocodemobile_suite_executions' table.
+     * Groups multiple tests together for reporting.
      */
     async saveSuiteExecution(result: ExecutionResult) {
         try {

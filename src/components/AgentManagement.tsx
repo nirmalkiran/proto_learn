@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -150,6 +150,8 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
     port: 3001,
     lastChecked: null
   });
+
+  const lastStatusCheckFail = useRef<number | null>(null);
 
   const [mobileDetails, setMobileDetails] = useState<{
     devices: any[];
@@ -387,7 +389,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
       setExecutionResults([]);
       return;
     }
-    
+
     // Map to expected format
     const mapped = (data || []).map(r => ({
       id: r.id,
@@ -403,12 +405,18 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   };
 
   const checkMobileAgentStatus = async () => {
+    // If it recently failed, skip the check to avoid console spam (1 minute cooldown)
+    if (lastStatusCheckFail.current && (Date.now() - lastStatusCheckFail.current < 60000)) {
+      return;
+    }
+
     try {
       const res = await fetch('http://localhost:3001/setup/status', {
-        signal: AbortSignal.timeout(5000) // Increased timeout to 5 seconds
+        signal: AbortSignal.timeout(5000)
       });
       if (res.ok) {
         const data = await res.json();
+        lastStatusCheckFail.current = null; // Clear failure on success
         setMobileAgentStatus({
           running: true,
           uptime: data.uptime || 0,
@@ -424,7 +432,8 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
       } else {
         throw new Error('Not running');
       }
-    } catch {
+    } catch (err) {
+      lastStatusCheckFail.current = Date.now();
       setMobileAgentStatus(prev => ({
         ...prev,
         running: false,
@@ -908,12 +917,12 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Cpu className="h-4 w-4 text-muted-foreground" />
-                              {agent.agent_id.startsWith('mobile') ? (
+                              {agent.agent_id?.startsWith('mobile') ? (
                                 <Smartphone className="h-4 w-4 text-muted-foreground" />
                               ) : (
                                 <Monitor className="h-4 w-4 text-muted-foreground" />
                               )}
-                              <span>{agent.running_jobs}/{agent.capacity} {agent.agent_id.startsWith('mobile') ? 'Devices' : 'Slots'}</span>
+                              <span>{agent.running_jobs}/{agent.capacity} {agent.agent_id?.startsWith('mobile') ? 'Devices' : 'Slots'}</span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -948,7 +957,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                                   <Eye className="h-4 w-4 mr-2" />
                                   View Details
                                 </DropdownMenuItem>
-                                {agent.agent_id.startsWith('mobile') && (
+                                {agent.agent_id?.startsWith('mobile') && (
                                   <DropdownMenuItem onClick={() => {
                                     setMobileWizardStep(1);
                                     setShowMobileWizard(true);

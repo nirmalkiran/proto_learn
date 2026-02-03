@@ -1,3 +1,9 @@
+/**
+ * Purpose:
+ * Provides a dropdown interface to discover and select Android devices.
+ * Integrates with the local agent to fetch both connected physical devices
+ * and available Virtual Devices (AVDs).
+ */
 import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +21,10 @@ interface DeviceInfo {
   os_version?: string;
 }
 
+/**
+ * Purpose:
+ * Small component that logic to scan for and list available mobile devices.
+ */
 export default function DeviceSelector({
   onSelect,
   selectedDeviceFromSetup,
@@ -33,6 +43,11 @@ export default function DeviceSelector({
 
   /* ---------------- FETCH DEVICES ---------------- */
 
+  /**
+   * Purpose:
+   * Queries the local agent for all connected physical/active devices
+   * and all configured Android Virtual Devices.
+   */
   const fetchDevices = async () => {
     if (disabled) return;
     setLoading(true);
@@ -76,8 +91,10 @@ export default function DeviceSelector({
       }
 
       setDevices(allDevices);
-    } catch {
-      toast.error("Failed to fetch devices");
+    } catch (err: any) {
+      // Background scan failures are expected when agent is offline.
+      // We handle this silently to avoid console/UI noise.
+      console.debug("[DeviceSelector] Fetch failed (Agent likely offline)");
     } finally {
       setLoading(false);
     }
@@ -125,9 +142,9 @@ export default function DeviceSelector({
       {/* Dropdown-style device selector */}
       <div className="relative" ref={dropdownRef}>
         <button
-          className={`flex items-center gap-2 p-2 border rounded-md transition-colors min-w-[200px] text-left ${disabled
-            ? 'cursor-not-allowed bg-green-50 border-green-200 text-green-700 font-medium'
-            : 'bg-background hover:bg-muted/50'
+          className={`flex items-center gap-2 p-2 border rounded-lg transition-all duration-200 min-w-[200px] text-left ${disabled
+            ? 'cursor-not-allowed bg-primary/5 border-primary/20 text-primary font-bold shadow-none'
+            : 'bg-background hover:bg-muted/30 border-border/60 hover:border-border shadow-sm'
             }`}
           onClick={() => !disabled && setDropdownOpen(!dropdownOpen)}
           disabled={disabled}
@@ -144,7 +161,7 @@ export default function DeviceSelector({
 
         {/* Device list dropdown */}
         {dropdownOpen && !disabled && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
+          <div className="absolute top-full left-0 right-0 mt-2 bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-card z-[60] max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200">
             {/* Show all available devices */}
             {devices.length === 0 ? (
               <div className="p-4 space-y-3">
@@ -192,7 +209,7 @@ export default function DeviceSelector({
               devices.map((d) => (
                 <div
                   key={d.id}
-                  className={`p-2 hover:bg-muted/50 cursor-pointer ${d.id === selectedDeviceFromSetup ? 'bg-blue-50/50' : ''
+                  className={`p-2 rounded-lg m-1 transition-all duration-200 cursor-pointer ${d.id === selectedDeviceFromSetup ? 'bg-primary/10 border-primary/20' : 'hover:bg-muted/50'
                     }`}
                   onClick={() => selectDevice(d)}
                 >
@@ -200,17 +217,16 @@ export default function DeviceSelector({
                     <div className="flex items-center gap-2">
                       <Smartphone className="h-4 w-4" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate max-w-[200px]" title={d.name || d.id}>
+                        <p className="text-sm font-bold text-foreground truncate max-w-[200px]" title={d.name || d.id}>
                           {d.name || d.id}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {d.name ? `ID: ${d.id}` : `Android ${d.os_version}`}
-                          {d.id === selectedDeviceFromSetup && ' (Matched)'}
+                        <p className="text-[10px] text-muted-foreground font-medium">
+                          {d.type === "real" ? `Android ${d.os_version} • ${d.id}` : `AVD • Android ${d.os_version}`}
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-xs">
-                      {d.type === "emulator" ? "Emulator" : "Real Device"}
+                    <Badge variant="outline" className="text-xs font-bold border-primary/20 bg-primary/5 text-primary">
+                      {d.type === "emulator" ? "Emulator" : "Physical Device"}
                     </Badge>
                   </div>
                 </div>

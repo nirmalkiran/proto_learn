@@ -1,3 +1,9 @@
+/**
+ * Purpose:
+ * Main entry point for the Mobile No-Code Automation module.
+ * Manages the high-level navigation (Tabs) between Setup and Recorder,
+ * while maintaining shared connection state.
+ */
 import { useState } from "react";
 import {
   Tabs,
@@ -16,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Smartphone,
   Circle,
-  Search,
   Terminal,
   Wand2,
   AlertCircle,
@@ -26,7 +31,6 @@ import {
 } from "lucide-react";
 
 import MobileRecorder from "./MobileRecorder";
-import MobileInspector from "./MobileInspector";
 import MobileSetupWizard from "./MobileSetupWizard";
 
 import { ActionType, RecordedAction, SelectedDevice } from "./types";
@@ -69,7 +73,7 @@ export default function MobileAutomation() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="setup">
             <Settings className="mr-2 h-4 w-4" />
             Setup
@@ -78,11 +82,6 @@ export default function MobileAutomation() {
           <TabsTrigger value="recorder">
             <Circle className="mr-2 h-4 w-4" />
             Recorder
-          </TabsTrigger>
-
-          <TabsTrigger value="inspector">
-            <Search className="mr-2 h-4 w-4" />
-            Inspector
           </TabsTrigger>
         </TabsList>
 
@@ -107,11 +106,6 @@ export default function MobileAutomation() {
             setSelectedDevice={setSelectedDevice}
             selectedDeviceFromSetup={selectedDevice?.device}
           />
-        </TabsContent>
-
-        {/* ================= INSPECTOR ================= */}
-        <TabsContent value="inspector" forceMount className={activeTab !== "inspector" ? "hidden" : "mt-6"}>
-          <MobileInspector />
         </TabsContent>
 
       </Tabs>

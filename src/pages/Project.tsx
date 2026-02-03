@@ -53,17 +53,21 @@ const Project = () => {
           .eq('id', projectId)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          if (error.code === 'PGRST116') {
+            toast({
+              title: "Access Denied",
+              description: "You do not have access to this project or it does not exist.",
+              variant: "destructive",
+            });
+            navigate('/');
+            return;
+          }
+          throw error;
+        }
 
         if (data) {
           setSelectedProject({ id: data.id, name: data.name });
-        } else {
-          toast({
-            title: "Project not found",
-            description: "The requested project does not exist",
-            variant: "destructive",
-          });
-          navigate('/');
         }
       } catch (error) {
         console.error('Error loading project:', error);

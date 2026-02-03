@@ -1,5 +1,13 @@
+/**
+ * Purpose:
+ * Provides CRUD (Create, Read, Update, Delete) operations for mobile automation scenarios.
+ * Scenarios contain the sequence of recorded actions and target app metadata.
+ */
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Purpose: Represents a saved automation script/scenario.
+ */
 export interface RecordedScenario {
     id: string;
     name: string;
@@ -15,9 +23,13 @@ export interface RecordedScenario {
 // Using type casting to avoid TypeScript errors until the table is created
 const SCENARIOS_TABLE = "nocodemobile_scenarios";
 
+/**
+ * Purpose: Service object for scenario management.
+ */
 export const ScenarioService = {
     /**
-     * Get all saved scenarios for the current user
+     * Purpose:
+     * Retrieves all saved scenarios for the currently authenticated user.
      */
     async getScenarios() {
         try {
@@ -43,7 +55,8 @@ export const ScenarioService = {
     },
 
     /**
-     * Save a new scenario or update existing if ID provided
+     * Purpose:
+     * Saves a new scenario or updates an existing one if an ID is provided.
      */
     async saveScenario(name: string, steps: any[], id?: string, description?: string, appPackage?: string) {
         try {
@@ -88,7 +101,8 @@ export const ScenarioService = {
     },
 
     /**
-     * Delete a scenario
+     * Purpose:
+     * Deletes a scenario from the database by its ID.
      */
     async deleteScenario(id: string) {
         try {

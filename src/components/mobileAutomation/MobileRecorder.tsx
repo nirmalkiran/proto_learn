@@ -1,7 +1,20 @@
+/**
+ * Purpose:
+ * Provides the core recording and playback experience for mobile automation.
+ * Features real-time screen mirroring, action capture via SSE, script generation,
+ * and automated replay with visual progress tracking.
+ */
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { createClient } from "@supabase/supabase-js";
-import { Play, Pause, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone, Wifi, WifiOff, Upload, Package, CheckCircle, XCircle, Type, MousePointer2, Move, ChevronRight, Settings, Settings2, Info, AlertCircle, Circle, Keyboard, ChevronUp, ChevronDown, BookOpen, CheckCircle2, HelpCircle, ExternalLink, X, Zap } from "lucide-react";
+import {
+  Play, Pause, Square, Trash2, RefreshCw, Copy, Download, Monitor, Smartphone,
+  Wifi, WifiOff, Upload, Package, CheckCircle, XCircle, Type, MousePointer2,
+  Move, ChevronRight, Settings, Settings2, Info, AlertCircle, Circle, Keyboard,
+  ArrowLeft, ArrowRight, BookOpen, CheckCircle2, HelpCircle, ExternalLink, X,
+  Zap, ChevronDown, ChevronUp, ListChecks, Clock, RotateCcw, Terminal,
+  History, Wand2, Save, FolderOpen, Edit, FileInput
+} from "lucide-react";
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
@@ -20,7 +33,6 @@ import { Input } from "@/components/ui/input";
 import { ActionType, RecordedAction, SelectedDevice } from "./types";
 import { ExecutionHistoryService } from "./ExecutionHistoryService";
 import { ScenarioService, RecordedScenario } from "./ScenarioService";
-import { ListChecks, Clock, RotateCcw, Terminal, History, Wand2, Save, FolderOpen, Edit, FileInput } from "lucide-react";
 
 const AGENT_URL = "http://localhost:3001";
 
@@ -31,6 +43,11 @@ const supabase = createClient(
 const DEVICE_WIDTH = 310;
 const DEVICE_HEIGHT = 568;
 
+/**
+ * Purpose:
+ * Provides a robust retry mechanism for asynchronous device actions.
+ * Useful for handling transient network issues or device busy states.
+ */
 const retryDeviceAction = async <T,>(
   action: () => Promise<T>,
   maxRetries: number = 2,
@@ -55,6 +72,11 @@ const retryDeviceAction = async <T,>(
   console.error('[Retry] All attempts failed:', lastError);
   throw lastError;
 };
+/**
+ * Purpose:
+ * Polls the local agent until a device connection is successfully established
+ * or the specified timeout is reached.
+ */
 const waitForDeviceReady = async (
   agentUrl: string,
   timeoutMs: number = 10000,
@@ -106,6 +128,11 @@ interface MobileRecorderProps {
   selectedDeviceFromSetup?: string;
 }
 
+/**
+ * Purpose:
+ * The main component for the Mobile Recorder. Manages the recording session,
+ * device mirroring, and scenario lifecycle.
+ */
 export default function MobileRecorder({
   setupState,
   setSetupState,
@@ -157,18 +184,45 @@ export default function MobileRecorder({
     return { width: 350, height: fixedHeight };
   }, [deviceSize]);
 
-  // FOCUS MONITOR: Detect focused input fields in background during recording
+  /**
+   * Purpose:
+   * Continuously monitors the mobile device for focused input fields.
+   * If a candidate field is found, it automatically opens the text entry panel
+   * to streamline the recording of keyboard interactions.
+   */
+  /**
+     * Purpose:
+     * Continuously monitors the mobile device for focused input fields.
+     * If a candidate field is found, it automatically opens the text entry panel.
+     * FIX: Added 404 detection to stop polling if backend doesn't support it.
+     */
   useEffect(() => {
     let focusInterval: ReturnType<typeof setInterval> | null = null;
     let burstTimeout1: ReturnType<typeof setTimeout> | null = null;
     let burstTimeout2: ReturnType<typeof setTimeout> | null = null;
+
+    // CIRCUIT BREAKER: Local flag to stop polling if backend is missing the feature
+    let isEndpointMissing = false;
+
     const checkInputFocus = async () => {
-      if (showInputPanel || inputPending) return;
+      // 1. Stop if panel is open, input is pending, or we know the endpoint is missing
+      if (showInputPanel || inputPending || isEndpointMissing) return;
+
       try {
         const res = await fetch(`${AGENT_URL}/device/focus`);
+
+        // === FIX START: Handle 404 Gracefully ===
+        if (res.status === 404) {
+          // Backend doesn't support this feature. Stop polling immediately.
+          isEndpointMissing = true;
+          if (focusInterval) clearInterval(focusInterval);
+          return;
+        }
+        // === FIX END ===
+
         if (res.ok) {
           const data = await res.json();
-          console.debug("[FocusMonitor] Check result:", data);
+
           if (data.success && data.isInputCandidate && data.focusedElement) {
             let x = 500, y = 500;
             if (data.focusedElement.bounds) {
@@ -188,13 +242,17 @@ export default function MobileRecorder({
           }
         }
       } catch (err) {
-        console.warn("[FocusMonitor] Poll failed", err);
+        // Only log network errors (fetch failures), not 404s (handled above)
+        // console.warn("[FocusMonitor] Network error:", err);
       }
     };
+
     if (recording && !isPaused && mirrorActive) {
       checkInputFocus();
+      // Burst checks to catch UI settling
       burstTimeout1 = setTimeout(checkInputFocus, 500);
       burstTimeout2 = setTimeout(checkInputFocus, 1200);
+      // Regular polling
       focusInterval = setInterval(checkInputFocus, 3500);
     }
 
@@ -204,6 +262,8 @@ export default function MobileRecorder({
       if (burstTimeout2) clearTimeout(burstTimeout2);
     };
   }, [recording, isPaused, mirrorActive, showInputPanel, inputPending]);
+
+
   const [executionLogs, setExecutionLogs] = useState<{
     id: string;
     description: string;
@@ -298,7 +358,11 @@ export default function MobileRecorder({
     screenshotTimeoutMs: 8000,
   });
 
-  /* CONNECT TO SSE STREAM */
+  /**
+   * Purpose:
+   * Establishes a persistent Server-Sent Events (SSE) connection to the local agent.
+   * This stream provides real-time updates for recorded steps and replay progress.
+   */
   const connectToEventStream = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -391,6 +455,11 @@ export default function MobileRecorder({
    * SCENARIO MANAGEMENT HANDLERS
    * ===================================================== */
 
+  /**
+   * Purpose:
+   * Fetches the list of saved scenarios from the database (Supabase)
+   * to populate the scenario management UI.
+   */
   const fetchScenarios = async () => {
     setLoadingScenarios(true);
     const res = await ScenarioService.getScenarios();
@@ -414,6 +483,11 @@ export default function MobileRecorder({
     }
   };
 
+  /**
+   * Purpose:
+   * Saves the current sequence of recorded actions as a new scenario or
+   * updates an existing one in the database.
+   */
   const handleSaveScenario = async () => {
     if (!saveScenarioName.trim()) {
       toast.error("Please enter a scenario name");
@@ -578,6 +652,11 @@ export default function MobileRecorder({
    * 📷 SCREENSHOT STREAM FOR EMBEDDED PREVIEW
    * ===================================================== */
 
+  /**
+   * Purpose:
+   * Initializes and maintains a high-frequency screenshot stream from the mobile device.
+   * Leverages a dynamic interval to balance UI responsiveness with network efficiency.
+   */
   const startScreenshotStream = useCallback(() => {
     // Clear any existing scheduled capture
     if (screenshotIntervalRef.current) {
@@ -604,11 +683,14 @@ export default function MobileRecorder({
 
     const captureScreenshot = async () => {
       if (!active) return;
-      if (inFlight) return; // skip if previous fetch still running
+      if (inFlight) return;
       inFlight = true;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      // Dynamic interval: Fast on success, Slow on failure
+      let nextInterval = intervalMs;
 
       try {
         const res = await fetch(`${AGENT_URL}/device/screenshot`, { signal: controller.signal });
@@ -626,45 +708,42 @@ export default function MobileRecorder({
             failCount = 0;
           } else {
             failCount++;
+            nextInterval = 1000;
           }
         } else {
           const data = await res.json().catch(() => ({}));
-          console.warn("[Mirror] Screenshot failed:", data.error);
+          console.warn(`[Mirror] Server error (${res.status}):`, data.error || res.statusText);
           failCount++;
+          nextInterval = 2000;
         }
       } catch (err: any) {
-        if (err.name === "AbortError") {
-          // Timeout/abort - expected sometimes, keep debug-level log only
-          console.debug("[Mirror] Screenshot request timed out");
-        } else {
-          console.warn("[Mirror] Fetch error:", err);
-        }
+        const isNetworkError = err.name === 'TypeError' || err.name === 'AbortError' || err.message?.includes('Failed to fetch');
+
         failCount++;
+        nextInterval = isNetworkError ? 5000 : 3000;
+
+        if (isNetworkError) {
+          setMirrorError("Device service is offline. Please start the WISPR Agent.");
+        }
       } finally {
         inFlight = false;
       }
-
       if (failCount >= maxFails) {
         setMirrorActive(false);
         setMirrorError("Connection lost to device. Please reconnect.");
         stopLoop();
         return;
       }
-
-      // Schedule next capture after configured interval
       if (active) {
-        screenshotIntervalRef.current = setTimeout(captureScreenshot as any, intervalMs);
+        screenshotIntervalRef.current = setTimeout(captureScreenshot as any, nextInterval);
       }
     };
-
-    // Start the capture loop
     captureScreenshot();
 
-    // Ensure we clear loop when mirror is deactivated elsewhere
     return () => stopLoop();
   }, [advancedConfig.screenshotMaxFails, advancedConfig.screenshotTimeoutMs]);
 
-  // Reset mirror state when device changes
+
   useEffect(() => {
     setMirrorActive(false);
     setMirrorImage(null);
@@ -685,7 +764,8 @@ export default function MobileRecorder({
       console.log("[MobileRecorder] Emulator stopped");
       return true;
     } catch (err) {
-      console.error("[MobileRecorder] stopEmulator error:", err);
+      // Suppress noisy logs when agent is offline
+      console.debug("[MobileRecorder] stopEmulator - agent offline");
       return false;
     }
   };
@@ -694,6 +774,14 @@ export default function MobileRecorder({
    * 📱 CONNECT DEVICE - EMBEDDED MIRROR
    * ===================================================== */
 
+  /**
+   * Purpose:
+   * Establishes a complete connection to the mobile device:
+   * 1. Verifies local helper health.
+   * 2. Checks if the device/emulator is already connected.
+   * 3. Starts the specified emulator if necessary.
+   * 4. Waits for the device to become fully responsive before proceeding.
+   */
   const connectDevice = useCallback(async () => {
     if (!selectedDevice) {
       toast.error("Select a device first");
@@ -844,12 +932,18 @@ export default function MobileRecorder({
         description: "Live preview active. Tap, type, or navigate on the device to record actions",
       });
     } catch (err: any) {
-      console.error("[connectDevice] Error:", err);
+      // Suppress noisy connection logs
+      const isConnectionError = err.name === 'TypeError' || err.message?.includes('fetch');
+      if (isConnectionError) {
+        console.debug("[connectDevice] Agent unreachable");
+      } else {
+        console.error("[connectDevice] Error:", err);
+      }
+
+      setMirrorError("Local helper not reachable. Start with: npm start in public/mobile-automation");
       setMirrorLoading(false);
-      setMirrorError("Cannot connect to local helper. Run: cd public\\mobile-automation; npm start");
-      toast.error("Local helper not running");
     }
-  }, [selectedDevice, startScreenshotStream]);
+  }, [selectedDevice, startScreenshotStream, advancedConfig.emulatorReadyTimeoutMs, advancedConfig.emulatorReadyPollIntervalMs, advancedConfig.deviceReadyTimeoutMs, advancedConfig.deviceReadyPollIntervalMs, appPackage]);
 
   const disconnectDevice = useCallback(() => {
     setMirrorActive(false);
@@ -935,9 +1029,10 @@ export default function MobileRecorder({
       });
       setCaptureMode(true);
     } catch (err) {
-      console.error("[MobileRecorder] Start recording error:", err);
+      // Suppress noisy connection logs
+      console.debug("[MobileRecorder] Start recording failed - likely agent offline");
       toast.error("Failed to start recording", {
-        description: "Make sure the local agent is running (npm run server)",
+        description: "Make sure the agent is running (npm start)",
       });
     }
   };
@@ -982,15 +1077,12 @@ export default function MobileRecorder({
         description: `${actions.length} actions captured`,
       });
     } catch (err) {
-      console.error("[MobileRecorder] Stop recording error:", err);
+      // Suppress noisy connection logs
+      console.debug("[MobileRecorder] Stop recording failed - likely agent offline");
       toast.error("Failed to stop recording");
       setRecording(false);
     }
   };
-
-  /* =====================================================
-   * 🔄 REFRESH STEPS FROM SERVER
-   * ===================================================== */
 
   const refreshSteps = async () => {
     try {
@@ -1014,11 +1106,6 @@ export default function MobileRecorder({
     }
   };
 
-  /* =====================================================
-   * ▶ REPLAY (ADB)
-   * ===================================================== */
-
-  // Helper function to convert technical errors to user-friendly messages
   const friendlyErrorMessage = (error: string): string => {
     const lowerError = error.toLowerCase();
     if (lowerError.includes('timeout')) return 'Timeout while waiting for element';
@@ -1031,7 +1118,7 @@ export default function MobileRecorder({
   const runAdbCommand = async (command: string) => {
     if (!selectedDevice) return false;
     try {
-      // Use the generic shell endpoint (assumed to exist or mapped to /device/shell)
+
       const res = await fetch(`${AGENT_URL}/device/shell`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1057,8 +1144,7 @@ export default function MobileRecorder({
     toast.info(`Running step: ${action.type}`);
 
     try {
-      // Check if we need to clear logs for this specific step?
-      // We'll update just this step's status
+
       setExecutionLogs(prev => prev.map(log =>
         log.id === action.id ? { ...log, status: "running", error: undefined } : log
       ));
@@ -1069,7 +1155,7 @@ export default function MobileRecorder({
         body: JSON.stringify({
           deviceId: selectedDevice.id || selectedDevice.device,
           steps: [action],
-          startIndex: 0 // Local index for this batch
+          startIndex: 0
         }),
       });
 
@@ -1269,6 +1355,8 @@ ${enabledActions
                 javaCode = `driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}")).click();`;
               } else if (a.elementText) {
                 javaCode = `driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")")).click();`;
+              } else if (a.locator && a.locator !== "system") {
+                javaCode = `driver.findElement(AppiumBy.xpath("${a.locator}")).click();`;
               } else if (a.coordinates) {
                 javaCode = `// Coordinate tap at (${a.coordinates.x}, ${a.coordinates.y})
             // Use W3C Actions for coordinates if needed
@@ -1277,7 +1365,7 @@ ${enabledActions
                 "y", ${a.coordinates.y}
             ));`;
               } else {
-                javaCode = `driver.findElement(AppiumBy.xpath("${a.locator}")).click();`;
+                javaCode = `// Action missing locator and coordinates`;
               }
               break;
 
@@ -1669,7 +1757,7 @@ ${enabledActions
 
     setApkInstalling(true);
     const toastId = toast.loading(`Installing ${uploadedApk.name} on ${selectedDevice.name || deviceId}...`, {
-      description: "This may take a minute for physical devices."
+      description: "This may take a minute for devices."
     });
 
     try {
@@ -1684,7 +1772,6 @@ ${enabledActions
       });
 
       const data = await res.json();
-
       if (res.ok && data.success) {
         toast.success("Installation successful", {
           id: toastId,
@@ -1692,6 +1779,7 @@ ${enabledActions
         });
         setIsAppInstalled(true);
         refreshAppPackages();
+        setUploadedApk(prev => prev ? { ...prev, installed: true } : null);
       } else {
         throw new Error(data.error || "ADB installation failed");
       }
@@ -1849,7 +1937,8 @@ ${enabledActions
       }
       return [];
     } catch (err) {
-      console.error("Failed to fetch installed packages:", err);
+      // Suppress noisy connection logs
+      console.debug("[fetchInstalledPackages] Agent unreachable");
       return null;
     } finally {
       setLoadingPackages(false);
@@ -1876,23 +1965,61 @@ ${enabledActions
     }
   };
 
-  const handleScroll = async (direction: "up" | "down" | "left" | "right") => {
+  // Find this function (approx line 1130) and replace it completely
+  const handleDirectionalSwipe = async (direction: "up" | "down" | "left" | "right") => {
     try {
-      const res = await fetch(`${AGENT_URL}/device/scroll`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction, duration: 800 }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to scroll");
+      // FIX: Use coordinate-based swiping instead of the /device/scroll endpoint
+      // This bypasses the "Device service returned an error page" issue.
+
+      const width = deviceSize?.width || 1080;
+      const height = deviceSize?.height || 1920;
+      const centerX = Math.round(width / 2);
+      const centerY = Math.round(height / 2);
+
+      let startX, startY, endX, endY;
+
+      // Calculate swipe coordinates (swiping 60% of the screen)
+      switch (direction) {
+        case "up": // Swipe from bottom to top
+          startX = centerX;
+          startY = Math.round(height * 0.8);
+          endX = centerX;
+          endY = Math.round(height * 0.2);
+          break;
+        case "down": // Swipe from top to bottom
+          startX = centerX;
+          startY = Math.round(height * 0.2);
+          endX = centerX;
+          endY = Math.round(height * 0.8);
+          break;
+        case "left": // Swipe from right to left
+          startX = Math.round(width * 0.9);
+          startY = centerY;
+          endX = Math.round(width * 0.1);
+          endY = centerY;
+          break;
+        case "right": // Swipe from left to right
+          startX = Math.round(width * 0.1);
+          startY = centerY;
+          endX = Math.round(width * 0.9);
+          endY = centerY;
+          break;
       }
-      toast.success(`Scrolled ${direction} `);
+
+      // Re-use the existing handleSwipe which we know works
+      await handleSwipe({
+        x1: startX,
+        y1: startY,
+        x2: endX,
+        y2: endY,
+        description: `Swipe ${direction}`
+      });
+
     } catch (err: any) {
-      toast.error(err.message || "Failed to scroll");
+      console.error("[handleDirectionalSwipe] Error:", err);
+      toast.error(`Failed to swipe ${direction}`);
     }
   };
-
   const handleUndo = () => {
     if (actions.length === 0) {
       toast.info("No actions to undo");
@@ -1923,7 +2050,7 @@ ${enabledActions
     );
   };
 
-  const handleAssertion = (type: "visible" | "text_equals" | "enabled" | "disabled" | "toast" | "screen_loaded") => {
+  const handleAssertion = async (type: "visible" | "text_equals" | "enabled" | "disabled" | "toast" | "screen_loaded") => {
     if (!recording || isPaused) {
       toast.warning("Start recording to add assertions");
       return;
@@ -1938,19 +2065,28 @@ ${enabledActions
       screen_loaded: "Assert Screen Loaded"
     };
 
-    const newAction: RecordedAction = {
-      id: crypto.randomUUID(),
-      type: "assert",
-      assertionType: type,
-      description: descriptionMap[type],
-      locator: selectedNode?.xpath || "system",
-      value: selectedNode?.text || "",
-      timestamp: Date.now(),
-      enabled: true
-    };
-
-    setActions(prev => [...prev, newAction]);
-    toast.success(`Added Assertion: ${descriptionMap[type]} `);
+    // Use backend API to add assertion step
+    try {
+      const response = await fetch(`${AGENT_URL}/recording/add-step`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "assert",
+          description: descriptionMap[type],
+          locator: selectedNode?.xpath || "system",
+          value: selectedNode?.text || "",
+          assertionType: type
+        })
+      });
+      if (response.ok) {
+        toast.success(`Added Assertion: ${descriptionMap[type]} `);
+      } else {
+        throw new Error("Failed to add assertion");
+      }
+    } catch (err: any) {
+      console.error("Assertion step error:", err);
+      toast.error("Failed to add assertion");
+    }
   };
 
   const handleLongPress = async (x: number, y: number) => {
@@ -2027,18 +2163,8 @@ ${enabledActions
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(`Launched ${appPackage} `);
-
-        if (recording && !isPaused) {
-          setActions(prev => [...prev, {
-            id: crypto.randomUUID(),
-            type: "openApp",
-            description: `Launch App: ${getAppFriendlyName(appPackage)}`,
-            locator: "system",
-            value: appPackage,
-            timestamp: Date.now(),
-            enabled: true
-          }]);
-        }
+        // Note: Step recording is handled by the backend via SSE stream
+        // No need to manually add the step here to avoid duplicates
       } else {
         throw new Error(data.error || "Failed to launch app");
       }
@@ -2196,10 +2322,7 @@ ${enabledActions
       return () => clearTimeout(timer);
     }
   }, [mirrorActive]);
-  /* =====================================================
-     * HANDLE DEVICE SWITCHING
-     * Stops active recording before changing device
-     * ===================================================== */
+
   const handleDeviceSelection = async (device: SelectedDevice) => {
     if (recording) {
       try {
@@ -2214,7 +2337,7 @@ ${enabledActions
   return (
     <div className="space-y-4" id="recorder-container">
       {/* NEW PREMIUM HEADER ROW */}
-      <div className="relative z-50 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 mb-4" id="device-selector-header">
+      <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 mb-4" id="device-selector-header">
         {/* LEFT: Title & Device Selector Grouped Tightly */}
         <div className="flex flex-wrap items-center gap-4">
           {/* Title Block with subtle gradient and icon */}
@@ -2237,14 +2360,14 @@ ${enabledActions
 
           {/* Vertical Divider (Visual separation) */}
           <div className="hidden md:block h-10 w-px bg-white/[0.08] mx-1" />
-          {/* DEVICE SELECTOR PILL - GLASSMORPHIC DESIGN */}
+          {/* DEVICE SELECTOR CONTROL - MATCHING DASHBOARD PATTERN */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 py-1.5 pl-3 pr-2 rounded-full border border-white/[0.08] bg-white/[0.03] backdrop-blur-md shadow-xl transition-all duration-300 hover:bg-white/[0.06] group">
+            <div className="flex items-center gap-2 py-1 px-3 rounded-lg border border-border bg-card/40 backdrop-blur-md shadow-card transition-all duration-200 hover:bg-muted/30 group">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hidden lg:block">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden lg:block">
                   Device
                 </span>
-                <div className="h-3 w-px bg-white/[0.1] hidden lg:block" />
+                <div className="h-3 w-px bg-border/40 hidden lg:block" />
               </div>
 
               <div className="flex items-center">
@@ -2268,7 +2391,7 @@ ${enabledActions
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 ml-1 transition-all"
+                    className="h-7 w-7 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 ml-1 transition-all"
                     onClick={() => {
                       setDeviceRefreshKey(prev => prev + 1);
                       toast.info("Refreshing device list...");
@@ -2291,7 +2414,7 @@ ${enabledActions
               variant="ghost"
               size="sm"
               onClick={startTour}
-              className="h-9 px-4 text-sm font-bold text-primary hover:bg-primary/5 gap-2 rounded-full border border-primary/20 shadow-sm transition-all group"
+              className="h-9 px-4 text-sm font-bold text-primary hover:bg-primary/10 gap-2 rounded-lg border border-primary/20 shadow-sm transition-all group"
             >
               <HelpCircle className="h-4 w-4 group-hover:rotate-12 transition-transform" />
               Recording Guide
@@ -2302,7 +2425,7 @@ ${enabledActions
           {recording && (
             <Badge
               variant={isPaused ? "secondary" : (connectionStatus === "connected" ? "default" : "destructive")}
-              className={`h-8 px-4 rounded-full text-[10px] font-black tracking-widest shadow-sm ${!isPaused && "animate-pulse"}`}
+              className={`h-8 px-4 rounded-lg text-[10px] font-black tracking-widest shadow-sm ${!isPaused && "animate-pulse"}`}
             >
               {isPaused ? "PAUSED" : (connectionStatus === "connected" ? "REC" : "RECORDING")}
             </Badge>
@@ -2313,7 +2436,7 @@ ${enabledActions
         {/* MAESTRO-STYLE EMULATOR WINDOW */}
         {/* FIXED SIZE MAESTRO-STYLE EMULATOR WINDOW */}
         <div
-          className="lg:col-span-1 h-fit lg:sticky lg:top-24 flex flex-col rounded-xl overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-950/50 backdrop-blur-sm mx-auto transition-all duration-500"
+          className="lg:col-span-1 h-fit lg:sticky lg:top-24 flex flex-col rounded-xl overflow-hidden border border-zinc-800 shadow-card bg-zinc-950/50 backdrop-blur-sm mx-auto transition-all duration-300 hover:shadow-elegant"
           style={{ width: `${previewDimensions.width}px` }}
           id="device-preview-card"
         >
@@ -2399,16 +2522,16 @@ ${enabledActions
                 </div>
                 <Button
                   onClick={connectDevice}
-                  className="h-9 px-6 text-[11px] font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-full shadow-[0_0_15px_rgba(236,72,153,0.3)] hover:shadow-[0_0_20px_rgba(236,72,153,0.5)] transition-all duration-300 gap-2 group"
+                  className="h-9 px-6 text-[11px] font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg shadow-card hover:shadow-elegant transition-all duration-300 gap-2 group"
                 >
                   <Zap className="h-3.5 w-3.5 fill-current group-hover:animate-pulse" />
-                  Initialize System
+                  Connect Device
                 </Button>
               </div>
             ) : mirrorError ? (
               // ERROR STATE
               <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <div className="p-3 bg-red-500/10 rounded-full">
+                <div className="p-3 bg-red-500/10 rounded-lg">
                   <WifiOff className="h-8 w-8 text-red-500/50" />
                 </div>
                 <div className="space-y-1">
@@ -2482,9 +2605,9 @@ ${enabledActions
 
                       const startX = pressCoordsRef.current.x;
                       const startY = pressCoordsRef.current.y;
-
                       const dist = Math.sqrt(Math.pow(deviceX - startX, 2) + Math.pow(deviceY - startY, 2));
 
+                      // 1. Handle Swipe
                       if (dist > 30) {
                         isDraggingRef.current = false;
                         const description = Math.abs(deviceX - startX) > Math.abs(deviceY - startY)
@@ -2496,6 +2619,7 @@ ${enabledActions
                         return;
                       }
 
+                      // 2. Handle Long Press
                       if (longPressHappenedRef.current) {
                         isDraggingRef.current = false;
                         pressCoordsRef.current = null;
@@ -2503,6 +2627,8 @@ ${enabledActions
                       }
 
                       isDraggingRef.current = false;
+
+                      // 3. Execute Tap & Force Check
                       try {
                         const { res, json } = await retryDeviceAction(async () => {
                           const response = await fetch(`${AGENT_URL}/device/tap`, {
@@ -2516,35 +2642,44 @@ ${enabledActions
                         }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
 
                         if (res.ok) {
-                          if (json.step?.elementMetadata) {
-                            setSelectedNode(json.step.elementMetadata);
-                          }
+                          const meta = json.step?.elementMetadata || {};
+                          const resourceId = (meta.resourceId || "").toLowerCase();
+                          const className = (meta.class || "").toLowerCase();
 
-                          // RECORD TAP ACTION
-                          if (recording && !isPaused) {
-                            const node = json.step?.elementMetadata;
-                            setActions(prev => [...prev, {
-                              id: crypto.randomUUID(),
-                              type: "tap",
-                              description: node ? `Tap on ${node.text || node.contentDesc || node.className.split('.').pop()}` : `Tap at (${deviceX}, ${deviceY})`,
-                              locator: node?.xpath || "coordinate",
-                              timestamp: Date.now(),
-                              enabled: true,
-                              coordinates: { x: deviceX, y: deviceY },
-                              elementId: node?.resourceId,
-                              elementText: node?.text,
-                              elementContentDesc: node?.contentDesc
-                            }]);
-                          }
+                          // DEBUG: See exactly what your app is reporting in the Console (F12)
+                          console.log("Tap Metadata:", meta);
 
-                          if (json.step?.isInputCandidate) {
+                          const isInput =
+                            // Standard Checks
+                            json.step?.isInputCandidate ||
+                            meta.attributes?.editable === "true" ||
+                            className.includes("edit") ||
+                            className.includes("input") ||
+                            resourceId.includes("search") ||
+                            resourceId.includes("input") ||
+
+                            // NEW: Aggressive Checks for Custom/Hybrid Apps
+                            className.includes("webkit") || // WebViews
+                            className === "android.view.view" || // Generic Views (React Native/Flutter)
+
+                            // Fallback: If it has an ID but is NOT a layout or simple text label
+                            (resourceId.length > 0 &&
+                              !className.includes("layout") &&
+                              !className.includes("textview") &&
+                              !className.includes("button") &&
+                              !className.includes("image"));
+
+                          if (isInput) {
+                            toast.info("Input Panel Opened");
                             setInputText("");
                             setInputCoords({ x: deviceX, y: deviceY });
-                            if (recording && !isPaused) {
-                              setInputPending(false);
-                              setShowInputPanel(true);
-                              toast.info("Input field detected");
-                            }
+                            setInputPending(false);
+                            setShowInputPanel(true);
+                          } else {
+                            // OPTIONAL: Fallback if auto-detect STILL fails
+                            // You can uncomment this to force it open on EVERY tap if needed:
+                            // setInputCoords({ x: deviceX, y: deviceY });
+                            // setShowInputPanel(true);
                           }
                         }
                       } catch (err: any) {
@@ -2567,7 +2702,7 @@ ${enabledActions
         <div className="lg:col-span-2 space-y-6">
           {mirrorActive && (
             <Collapsible open={showQuickStart} onOpenChange={setShowQuickStart} className="w-full">
-              <Card className="border-primary/20 shadow-sm animate-in fade-in slide-in-from-right-4 duration-500">
+              <Card className="bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border-border animate-in fade-in slide-in-from-right-4">
                 <CollapsibleTrigger asChild>
                   <CardHeader className="py-2.5 px-4 border-b border-secondary/20 flex flex-row items-center justify-between cursor-pointer hover:bg-primary/[0.03] transition-colors">
                     <div className="flex flex-row items-baseline gap-2 flex-1 min-w-0">
@@ -2673,32 +2808,82 @@ ${enabledActions
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         {installedPackages.length === 0 ? (
-                          <div className="h-9 flex items-center justify-between px-3 border border-dashed border-muted-foreground/30 rounded-md bg-background/50 text-[10px] text-muted-foreground">
+                          <div className="h-9 flex items-center justify-between px-3 border border-dashed border-muted-foreground/30 rounded-lg bg-background/50 text-[10px] text-muted-foreground">
                             <span>No apps detected</span>
                             <Button
                               variant="link"
-                              className="h-auto p-0 text-[10px] text-primary font-bold"
+                              className="h-auto p-0 text-[10px] text-primary font-bold hover:no-underline"
                               onClick={() => fileInputRef.current?.click()}
                             >
+                              <Upload className="h-3 w-3 mr-1" />
                               Upload APK
                             </Button>
                           </div>
                         ) : (
-                          <div className="relative group">
-                            <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/70 group-hover:text-primary transition-colors" />
-                            <Select value={appPackage} onValueChange={setAppPackage}>
-                              <SelectTrigger className="h-9 text-[11px] font-medium bg-background pl-9 border-border/60 shadow-sm focus:ring-1 focus:ring-primary/20">
-                                <SelectValue placeholder="Select Target Application..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {installedPackages.map((pkg) => (
-                                  <SelectItem key={pkg} value={pkg} className="text-[11px]">
-                                    <span className="font-semibold">{getAppFriendlyName(pkg)}</span>
-                                    <span className="text-muted-foreground/50 text-[9px] ml-2 font-mono opacity-70">{pkg}</span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          <div className="relative group flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary" />
+                              <Select
+                                value={appPackage}
+                                onValueChange={(val) => {
+                                  setAppPackage(val);
+                                  // Update Recently Used
+                                  const recentStr = localStorage.getItem("mobile_recorder_recent_apps") || "[]";
+                                  const recent = JSON.parse(recentStr);
+                                  const updated = [val, ...recent.filter((id: string) => id !== val)].slice(0, 5);
+                                  localStorage.setItem("mobile_recorder_recent_apps", JSON.stringify(updated));
+                                }}
+                              >
+                                <SelectTrigger className="h-11 text-[12px] font-bold bg-background pl-9 border-border/80 shadow-md focus:ring-1 focus:ring-primary/30 rounded-lg group transition-all hover:bg-muted/30">
+                                  <div className="flex flex-col items-start leading-tight truncate">
+                                    <SelectValue placeholder="Choose App to Record" />
+                                  </div>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[400px]">
+                                  {/* RENDER SORTED LIST */}
+                                  {(() => {
+                                    const recentStr = localStorage.getItem("mobile_recorder_recent_apps") || "[]";
+                                    const recentIds = JSON.parse(recentStr);
+
+                                    // Sort Alphabetical by Friendly Name
+                                    const sorted = [...installedPackages].sort((a, b) => {
+                                      const nameA = getAppFriendlyName(a).toLowerCase();
+                                      const nameB = getAppFriendlyName(b).toLowerCase();
+                                      return nameA < nameB ? -1 : 1;
+                                    });
+
+                                    // Move recent apps to top
+                                    const final = [
+                                      ...sorted.filter(pkg => recentIds.includes(pkg)),
+                                      ...sorted.filter(pkg => !recentIds.includes(pkg))
+                                    ];
+
+                                    return final.map((pkg) => (
+                                      <SelectItem key={pkg} value={pkg} className="py-2.5 px-3 focus:bg-primary/10 transition-colors">
+                                        <div className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-foreground">{getAppFriendlyName(pkg)}</span>
+                                            {recentIds.includes(pkg) && (
+                                              <Badge variant="outline" className="h-3.5 px-1 text-[8px] font-black uppercase text-primary border-primary/20 bg-primary/5">Recent</Badge>
+                                            )}
+                                          </div>
+                                          <span className="text-[10px] font-mono text-muted-foreground font-medium opacity-90">{pkg}</span>
+                                        </div>
+                                      </SelectItem>
+                                    ));
+                                  })()}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 border border-dashed border-border/60 hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all rounded-lg"
+                              onClick={() => fileInputRef.current?.click()}
+                              title="Upload New APK (Update/Reinstall)"
+                            >
+                              <Upload className="h-4 w-4" />
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -2721,45 +2906,45 @@ ${enabledActions
 
                     {/* 1. SYSTEM NAVIGATION (Top Row) */}
                     {/* 1. SYSTEM NAVIGATION (Top Row) */}
-                    <div className="space-y-3" id="system-navigation-tools">
-                      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <Smartphone className="h-3.5 w-3.5" /> System Navigation
+                    <div className="space-y-4 px-1" id="system-navigation-tools">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-3 px-1">
+                        <Smartphone className="h-3 w-3" /> System Navigation
                       </div>
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-4 gap-3">
                         <Button
                           variant="outline"
-                          className="h-9 text-[10px] font-bold gap-1 bg-background hover:bg-accent/50 hover:text-primary group px-0 transition-colors"
+                          className="h-10 text-[10px] font-bold gap-2 bg-background hover:bg-accent/50 hover:text-primary border-border/60 group transition-all duration-300 rounded-lg shadow-sm hover:shadow-md"
                           onClick={() => handleKeyPress(4, "Back")}
                           title="Back Button"
                         >
-                          <RotateCcw className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
+                          <RotateCcw className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:-translate-x-0.5 transition-all" />
                           Back
                         </Button>
                         <Button
                           variant="outline"
-                          className="h-9 text-[10px] font-bold gap-1.5 bg-background hover:bg-accent/50 hover:text-primary px-0 transition-colors"
+                          className="h-10 text-[10px] font-bold gap-2 bg-background hover:bg-accent/50 hover:text-primary border-border/60 group transition-all duration-300 rounded-lg shadow-sm hover:shadow-md"
                           onClick={() => handleKeyPress(3, "Home")}
                           title="Home Button"
                         >
-                          <Circle className="h-3.5 w-3.5" />
+                          <Circle className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
                           Home
                         </Button>
                         <Button
                           variant="outline"
-                          className="h-9 text-[10px] font-bold gap-1.5 bg-background hover:bg-accent/50 hover:text-primary px-0 transition-colors"
+                          className="h-10 text-[10px] font-bold gap-2 bg-background hover:bg-accent/50 hover:text-primary border-border/60 group transition-all duration-300 rounded-lg shadow-sm hover:shadow-md"
                           onClick={() => handleKeyPress(187, "Recents")}
                           title="Recent Apps"
                         >
-                          <ListChecks className="h-3.5 w-3.5" />
+                          <ListChecks className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                           Tasks
                         </Button>
                         <Button
                           variant="outline"
-                          className="h-9 text-[10px] font-bold gap-1.5 bg-background hover:bg-accent/50 text-amber-600 hover:text-amber-700 px-0 transition-colors"
+                          className="h-10 text-[10px] font-bold gap-2 bg-background hover:bg-accent/50 hover:text-amber-600 border-border/60 group transition-all duration-300 rounded-lg shadow-sm hover:shadow-md"
                           onClick={hideKeyboard}
                           title="Hide Soft Keyboard"
                         >
-                          <Keyboard className="h-3.5 w-3.5" />
+                          <Keyboard className="h-4 w-4 text-muted-foreground group-hover:text-amber-600 transition-colors" />
                           Hide KB
                         </Button>
                       </div>
@@ -2768,22 +2953,22 @@ ${enabledActions
                     <div className="h-px bg-border/40 w-full" />
 
                     {/* 2. CAPTURE & INTERACTION (Prominent) */}
-                    <div id="interaction-tools" className="space-y-3">
-                      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <MousePointer2 className="h-3.5 w-3.5" /> Interaction Tools
+                    <div id="interaction-tools" className="space-y-4 px-1">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-3 px-1">
+                        <MousePointer2 className="h-3 w-3" /> Interaction Tools
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-4">
                         <Button
                           variant={captureMode ? "default" : "secondary"}
-                          className={`h-10 flex-1 text-[11px] font-black tracking-widest gap-2 transition-all shadow-md ${captureMode ? 'bg-primary text-primary-foreground ring-1 ring-primary/20' : 'bg-secondary/80 text-secondary-foreground hover:bg-secondary border border-transparent'}`}
+                          className={`h-11 flex-1 text-xs font-black tracking-widest gap-2.5 transition-all shadow-md rounded-lg ${captureMode ? 'bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-primary/20' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700/50 checkbox-strong'}`}
                           onClick={() => setCaptureMode(!captureMode)}
                         >
-                          <MousePointer2 className={`h-4 w-4 ${captureMode ? 'animate-pulse' : ''}`} />
-                          {captureMode ? "CAPTURE ON" : "START CAPTURE"}
+                          <MousePointer2 className={`h-4 w-4 ${captureMode ? 'animate-bounce' : ''}`} />
+                          {captureMode ? "CAPTURE ACTIVE" : "START CAPTURE"}
                         </Button>
                         <Button
                           variant="outline"
-                          className="h-10 flex-1 text-[11px] font-black tracking-widest gap-2 border-border/40 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-muted-foreground shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+                          className="h-11 flex-1 text-[11px] font-bold tracking-widest gap-2 bg-background border-border/60 text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 rounded-lg shadow-sm hover:shadow-md transition-all"
                           onClick={handleUndo}
                           title="Undo Last Action"
                         >
@@ -2792,27 +2977,66 @@ ${enabledActions
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2">
-                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-blue-500/5 hover:text-blue-600 hover:border-blue-200" onClick={() => setShowInputPanel(!showInputPanel)}>
-                          <Type className="h-3.5 w-3.5 mr-1.5 text-blue-500" /> Input
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button variant="outline" className="h-10 text-[10px] font-bold bg-background border-dashed hover:bg-blue-500/5 hover:text-blue-600 hover:border-blue-200 group rounded-lg shadow-sm hover:shadow-md transition-all" onClick={() => setShowInputPanel(!showInputPanel)}>
+                          <Type className="h-4 w-4 mr-2 text-muted-foreground group-hover:text-blue-500 transition-colors" /> Input
                         </Button>
-                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-purple-500/5 hover:text-purple-600 hover:border-purple-200" onClick={() => handleSwipe()}>
-                          <Move className="h-3.5 w-3.5 mr-1.5 text-purple-500" /> Swipe
-                        </Button>
-                        <Button variant="outline" className="h-8 text-[10px] font-medium border-dashed hover:bg-amber-500/5 hover:text-amber-600 hover:border-amber-200" onClick={() => {
-                          if (!recording || isPaused) { toast.warning("Start recording first"); return; }
-                          setActions(prev => [...prev, { id: crypto.randomUUID(), type: 'wait', description: 'Wait (2s)', locator: 'system', value: '2000', timestamp: Date.now(), enabled: true }]);
-                          toast.info("Added Wait (2s)");
-                        }}>
-                          <Clock className="h-3.5 w-3.5 mr-1.5 text-amber-500" /> Wait 2s
+                        <Button
+                          variant="outline"
+                          className="h-10 text-[10px] font-bold bg-background border-dashed hover:bg-amber-500/5 hover:text-amber-600 hover:border-amber-200 group rounded-lg shadow-sm hover:shadow-md transition-all"
+                          onClick={() => {
+                            if (!recording || isPaused) {
+                              toast.warning("Start recording first");
+                              return;
+                            }
+
+                            // FIX: Add step directly to local state (Bypass server)
+                            const waitStep: RecordedAction = {
+                              id: crypto.randomUUID(),
+                              type: "wait",
+                              description: "Wait (2s)",
+                              value: "2000",
+                              locator: "system",
+                              timestamp: Date.now(),
+                              enabled: true
+                            };
+
+                            setActions(prev => [...prev, waitStep]);
+                            toast.info("Added Wait");
+                          }}
+                        >
+                          <Clock className="h-4 w-4 mr-2 text-muted-foreground group-hover:text-amber-500 transition-colors" /> Wait
                         </Button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <Button variant="ghost" className="h-7 text-[10px] border border-border/30 hover:bg-accent hover:text-primary" onClick={() => handleScroll("up")}>
-                          <ChevronUp className="h-3.5 w-3.5 mr-1" /> Scroll Up
+                      {/* Find the div with "grid grid-cols-2" around line 1836 and REPLACE it with this: */}
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <Button
+                          variant="ghost"
+                          className="h-10 text-[10px] font-bold bg-background/50 border border-border/30 hover:bg-accent hover:text-primary rounded-lg shadow-sm transition-all"
+                          onClick={() => handleDirectionalSwipe("up")}
+                        >
+                          <ChevronUp className="h-4 w-4 mr-2" /> Swipe Up
                         </Button>
-                        <Button variant="ghost" className="h-7 text-[10px] border border-border/30 hover:bg-accent hover:text-primary" onClick={() => handleScroll("down")}>
-                          <ChevronDown className="h-3.5 w-3.5 mr-1" /> Scroll Down
+                        <Button
+                          variant="ghost"
+                          className="h-10 text-[10px] font-bold bg-background/50 border border-border/30 hover:bg-accent hover:text-primary rounded-lg shadow-sm transition-all"
+                          onClick={() => handleDirectionalSwipe("down")}
+                        >
+                          <ChevronDown className="h-4 w-4 mr-2" /> Swipe Down
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="h-10 text-[10px] font-bold bg-background/50 border border-border/30 hover:bg-accent hover:text-primary rounded-lg shadow-sm transition-all"
+                          onClick={() => handleDirectionalSwipe("left")}
+                        >
+                          <ArrowLeft className="h-4 w-4 mr-2" /> Swipe Left
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="h-10 text-[10px] font-bold bg-background/50 border border-border/30 hover:bg-accent hover:text-primary rounded-lg shadow-sm transition-all"
+                          onClick={() => handleDirectionalSwipe("right")}
+                        >
+                          <ArrowRight className="h-4 w-4 mr-2" /> Swipe Right
                         </Button>
                       </div>
                     </div>
@@ -2878,29 +3102,85 @@ ${enabledActions
                         </Button>
                       </div>
 
-                      {/* APK Upload (Conditional) */}
-                      {installedPackages.length === 0 && (
-                        <div className="mt-2 pt-2 border-t border-dashed border-border/50">
-                          <Button
-                            variant="outline"
-                            className="w-full h-8 text-[10px] font-bold border-dashed"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={apkUploading}
-                          >
-                            <Upload className="mr-2 h-3.5 w-3.5" /> Upload APK
-                          </Button>
-                          {uploadedApk && (
+                      {/* APK Upload (Persistent Workflow) */}
+                      <div className="mt-2 pt-2 border-t border-dashed border-border/50 space-y-2">
+                        <Button
+                          variant="outline"
+                          className="w-full h-8 text-[10px] font-bold border-dashed border-border/60 hover:bg-primary/5 hover:text-primary hover:border-primary/20 transition-all rounded-lg"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={apkUploading}
+                        >
+                          {apkUploading ? (
+                            <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="mr-2 h-3.5 w-3.5" />
+                          )}
+                          {installedPackages.length > 0 ? "Upload APK (Update/New)" : "Upload APK"}
+                        </Button>
+
+                        {uploadedApk && (
+                          <div className={`animate-in fade-in slide-in-from-top-1 duration-300 mt-3 rounded-xl border p-2 transition-colors ${
+                            // CHANGE COLOR: Darker Green on Success
+                            (uploadedApk as any).installed
+                              ? "bg-emerald-500/10 border-emerald-500/30"
+                              : "bg-green-500/5 border-green-500/20"
+                            }`}>
+                            <div className="flex items-center justify-between px-2 py-1 mb-2">
+                              <span className={`text-[10px] font-medium truncate max-w-[200px] flex items-center gap-2 ${(uploadedApk as any).installed ? "text-emerald-700 dark:text-emerald-400" : "text-green-700 dark:text-green-400"
+                                }`}>
+                                {/* ICON CHANGE: Package -> Checkmark */}
+                                {(uploadedApk as any).installed ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Package className="h-3.5 w-3.5" />
+                                )}
+
+                                {/* TEXT CHANGE: Ready -> Installed */}
+                                {(uploadedApk as any).installed ? (
+                                  <span className="font-bold">Successfully Installed: {uploadedApk.name}</span>
+                                ) : (
+                                  <span>Ready: {uploadedApk.name}</span>
+                                )}
+                              </span>
+
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 text-muted-foreground hover:bg-black/5 rounded-full"
+                                onClick={() => setUploadedApk(null)}
+                                title="Dismiss"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+
                             <Button
                               variant="default"
-                              className="w-full mt-2 h-8 text-[10px] font-bold bg-green-600 hover:bg-green-700"
-                              onClick={installApk}
-                              disabled={apkInstalling}
+                              className={`w-full h-9 text-[10px] font-black uppercase tracking-widest shadow-md transition-all rounded-lg gap-2 ${
+                                // BUTTON STYLE CHANGE: Disable and Darken on Success
+                                (uploadedApk as any).installed
+                                  ? "bg-emerald-600 hover:bg-emerald-600 opacity-90 cursor-default"
+                                  : "bg-green-600 hover:bg-green-700"
+                                }`}
+                              onClick={(uploadedApk as any).installed ? undefined : installApk}
+                              disabled={apkInstalling || (uploadedApk as any).installed}
                             >
-                              <Play className="mr-2 h-3 w-3" /> Install APK
+                              {apkInstalling ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : (uploadedApk as any).installed ? (
+                                <CheckCircle className="h-3.5 w-3.5 fill-current" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5 fill-current" />
+                              )}
+
+                              {/* BUTTON TEXT CHANGE */}
+                              {(uploadedApk as any).installed
+                                ? "Installation Complete"
+                                : (appPackage ? "Update Existing App" : "Install New APK")}
                             </Button>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -2956,46 +3236,60 @@ ${enabledActions
             </Collapsible>
           )}
           {showInputPanel && (
-            <Card className="border-primary/20 bg-primary/5 shadow-md animate-in slide-in-from-top-4 duration-300">
-              <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between space-y-0 border-b border-secondary/20">
+            <Card className="bg-card/95 backdrop-blur-md shadow-xl border-primary/20 border-2 rounded-xl overflow-hidden animate-in slide-in-from-top-4 mb-4 z-50">
+              <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between bg-primary/5 border-b border-primary/10">
                 <div className="flex items-center gap-2">
-                  <Type className="h-3.5 w-3.5 text-primary" />
-                  <CardTitle className="text-xs font-bold text-foreground/80">Text Input Panel</CardTitle>
+                  <div className="p-1.5 bg-primary/20 rounded-md">
+                    <Type className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <div className="flex flex-col">
+                    <CardTitle className="text-xs font-bold text-foreground">Text Input</CardTitle>
+                    {inputCoords && (
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        Target: ({inputCoords.x}, {inputCoords.y})
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-destructive/5 hover:text-destructive" onClick={() => setShowInputPanel(false)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive rounded-full"
+                  onClick={() => setShowInputPanel(false)}
+                >
                   <XCircle className="h-4 w-4" />
                 </Button>
               </CardHeader>
-              <CardContent className="py-3 flex gap-3">
-                <div className="flex-1 space-y-1">
+              <CardContent className="py-4 px-4 flex gap-3 items-start">
+                <div className="flex-1 space-y-2">
                   <Input
                     value={inputText}
                     onChange={(e: any) => setInputText(e.target.value)}
-                    placeholder={inputCoords ? `Type text to send to (${inputCoords.x}, ${inputCoords.y})...` : "Select a field on target or type here..."}
+                    placeholder="Type text to send..."
+                    className="h-10 font-medium text-sm focus-visible:ring-primary bg-background"
+                    autoFocus={true}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleConfirmInput();
                       if (e.key === 'Escape') setShowInputPanel(false);
                     }}
-                    autoFocus
                   />
-                  {!inputCoords && <p className="text-[11px] text-muted-foreground">Tip: Tap an input field on device to set coordinates automatically</p>}
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-[10px] text-muted-foreground">Press <kbd className="font-mono bg-muted px-1 rounded border">Enter</kbd> to send</p>
+                    {!inputCoords && <span className="text-[10px] text-amber-500 animate-pulse font-bold">Tap screen to set target</span>}
+                  </div>
                 </div>
-                <Button
-                  onClick={handleConfirmInput}
-                  disabled={inputPending || !inputCoords}
-                  className="gap-2"
-                >
-                  {inputPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                  Send
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={hideKeyboard}
-                  className="gap-2"
-                  title="Hide Android keyboard"
-                >
-                  <Keyboard className="h-4 w-4" />
-                </Button>
+
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={handleConfirmInput}
+                    disabled={inputPending || !inputCoords || inputText.length === 0}
+                    className="h-10 px-4 gap-2 font-bold shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
+                    size="sm"
+                  >
+                    {inputPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                    Send
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -3016,7 +3310,7 @@ ${enabledActions
             </TabsList>
 
             <TabsContent value="actions" className="mt-0 outline-none">
-              <Card>
+              <Card className="bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border-border">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2">
@@ -3092,7 +3386,7 @@ ${enabledActions
                         {actions.map((a, i) => (
                           <div
                             key={a.id}
-                            className={`group flex items-start gap-3 p-3 border rounded-xl transition-all duration-200 hover:shadow-sm hover:border-primary/30 ${replayIndex === i ? 'bg-primary/5 border-primary ring-1 ring-primary/20' : 'bg-background hover:bg-muted/50'}`}
+                            className={`group flex items-start gap-3 p-3 border rounded-lg transition-all duration-200 hover:shadow-sm ${replayIndex === i ? 'bg-primary/5 border-primary ring-1 ring-primary/20' : 'bg-muted/30 border-transparent hover:border-border hover:bg-muted/50'}`}
                           >
                             <div className="flex flex-col items-center gap-1 mt-0.5">
                               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${replayIndex === i ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors'}`}>
@@ -3294,6 +3588,16 @@ ${enabledActions
                                           toast.error("Please enter a valid wait duration (ms)");
                                           return;
                                         }
+                                        // FIX: Add step directly to local state instead of relying on fetch
+                                        const waitStep: RecordedAction = {
+                                          id: crypto.randomUUID(),
+                                          type: "wait",
+                                          description: "Wait",
+                                          value: "3000",
+                                          locator: "system",
+                                          timestamp: Date.now(),
+                                          enabled: true
+                                        };
                                         setActions((prev) => prev.map((p) => p.id === a.id ? {
                                           ...p,
                                           value: editingValue,
@@ -3357,7 +3661,7 @@ ${enabledActions
             </TabsContent>
 
             <TabsContent value="script" className="mt-0 outline-none">
-              <Card>
+              <Card className="bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border-border">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
                     <CardTitle className="flex items-center gap-2">
@@ -3412,7 +3716,7 @@ ${enabledActions
             </TabsContent>
 
             <TabsContent value="history" className="mt-0 outline-none">
-              <Card>
+              <Card className="bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border-border">
                 <CardHeader className="flex flex-row items-center justify-between border-b border-muted/10 pb-4 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-primary/10 rounded-lg">
@@ -3532,10 +3836,10 @@ ${enabledActions
                             <div
                               key={`${log.id}-${i}`}
                               data-step-index={i}
-                              className={`group relative overflow-hidden p-4 border rounded-xl transition-all duration-300 ${log.status === "error" ? "bg-destructive/[0.03] border-destructive/20 shadow-sm" :
-                                log.status === "running" ? "bg-primary/[0.03] border-primary ring-1 ring-primary/10 shadow-md translate-x-1" :
-                                  log.status === "success" ? "bg-green-500/[0.02] border-green-500/20" :
-                                    "bg-background/50 border-muted/20 opacity-60"
+                              className={`group relative overflow-hidden p-4 border rounded-lg transition-all duration-300 ${log.status === "error" ? "bg-destructive/5 border-destructive/20 shadow-sm" :
+                                log.status === "running" ? "bg-primary/5 border-primary ring-1 ring-primary/10 shadow-md translate-x-1" :
+                                  log.status === "success" ? "bg-green-500/5 border-green-500/20" :
+                                    "bg-muted/30 border-transparent hover:border-border opacity-70 hover:opacity-100"
                                 }`}
                             >
                               {log.status === "running" && (

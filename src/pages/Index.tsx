@@ -19,7 +19,6 @@ import { AdvancedAPITestGenerator } from "@/components/AdvancedAPITestGenerator"
 import { SwaggerTestGenerator } from "@/components/SwaggerTestGenerator";
 import { EnhancedPerformanceTestGenerator } from "@/components/EnhancedPerformanceTestGenerator";
 import { MenuConfigPanel } from "@/components/MenuConfigPanel";
-import SelfHosting from "@/pages/SelfHosting";
 
 const Index = () => {
   const [currentView, setCurrentView] = useState('projects');
@@ -87,18 +86,18 @@ const Index = () => {
         return <Repository projectId={selectedProject.id} />;
       case 'defects':
         return <Defects onViewChange={setCurrentView} projectId={selectedProject.id} />;
-	  case 'api':
+      case 'api':
         return <SwaggerTestGenerator projectId={selectedProject.id} />;
       case 'performance':
-        return <EnhancedPerformanceTestGenerator />;		
+        return <EnhancedPerformanceTestGenerator />;
       default:
         return <Dashboard onViewChange={setCurrentView} projectId={selectedProject.id} />;
     }
   };
 
   return (
-    <Layout 
-      currentView={currentView} 
+    <Layout
+      currentView={currentView}
       onViewChange={setCurrentView}
       selectedProject={selectedProject}
       onBackToProjects={handleBackToProjects}

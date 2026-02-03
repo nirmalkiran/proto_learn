@@ -23,11 +23,11 @@ interface Project {
   description: string;
   created_at: string;
   updated_at: string;
-  deleted_at?: string;
-  markdown_settings?: any;
+  markdown_settings?: string;
   member_count?: number;
   status?: 'Active' | 'Closed' | 'On Hold';
   member_names?: string[];
+  user_id?: string;
 }
 
 interface ProjectsProps {
@@ -40,8 +40,9 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newProject, setNewProject] = useState({ name: "", description: "" });
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedProjectForSettings, setSelectedProjectForSettings] = useState<{ id: string; name: string } | null>(null);
-  const [selectedProjectForEdit, setSelectedProjectForEdit] = useState<{ id: string; name: string; description: string; status: 'Active' | 'Closed' | 'On Hold' } | null>(null);
+  const [selectedProjectForEdit, setSelectedProjectForEdit] = useState<{ id: string; name: string; description: string; status: 'Active' | 'Closed' | 'On Hold'; ownerId?: string } | null>(null);
   const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useRoles();
 
@@ -51,63 +52,65 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
 
   const fetchProjects = async () => {
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setCurrentUserId(user.id);
+
       // Get all projects for current user
-      const { data: projectsData, error: projectsError } = await supabase
+      let query = supabase
         .from('projects')
         .select('*')
         .order('updated_at', { ascending: false });
 
+      // If we have a user, filter by ownership
+      // Note: Admins might want to see all projects, but the requirement is "my existing projects"
+      if (user) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data: projectsData, error: projectsError } = await query;
+
       if (projectsError) throw projectsError;
 
-      // Then get member counts and names for each project
-      const projectsWithMemberCount = await Promise.all(
-        (projectsData || []).map(async (project) => {
-          const { count, error: countError } = await supabase
-            .from('project_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('project_id', project.id);
+      if (!projectsData || projectsData.length === 0) {
+        setProjects([]);
+        setLoading(false);
+        return;
+      }
 
-          // Get project members first
-          const { data: members, error: membersError } = await supabase
-            .from('project_members')
-            .select('user_id')
-            .eq('project_id', project.id);
+      // Batch fetch all members and their profiles for the returned projects
+      const projectIds = projectsData.map(p => p.id);
+      const { data: allMembers, error: membersError } = await supabase
+        .from('project_members')
+        .select(`
+          project_id,
+          user_id,
+          profiles (
+            display_name,
+            email
+          )
+        `)
+        .in('project_id', projectIds);
 
-          if (membersError) {
-            console.error('Error fetching members for project:', project.id, membersError);
-          }
+      if (membersError) {
+        console.error('Error fetching all members:', membersError);
+      }
 
-          // Then get their profiles
-          let memberNames: string[] = [];
-          if (members && members.length > 0) {
-            const userIds = members.map(m => m.user_id);
-            const { data: profiles, error: profilesError } = await supabase
-              .from('profiles')
-              .select('display_name, email')
-              .in('user_id', userIds);
+      // Map members back to projects
+      const projectsWithMemberData = projectsData.map(project => {
+        const projectMembers = (allMembers || []).filter(m => m.project_id === project.id);
+        const memberNames = projectMembers.map(m =>
+          (m.profiles as any)?.display_name || (m.profiles as any)?.email || 'Unknown User'
+        );
 
-            if (profilesError) {
-              console.error('Error fetching profiles for project:', project.id, profilesError);
-            }
+        return {
+          ...project,
+          member_count: projectMembers.length,
+          member_names: memberNames
+        };
+      });
 
-            memberNames = (profiles || []).map(profile => 
-              profile.display_name || profile.email || 'Unknown User'
-            );
-           }
-
-          if (countError) {
-            console.error('Error counting members for project:', project.id, countError);
-          }
-
-          return {
-            ...project,
-            member_count: count || 0,
-            member_names: memberNames
-          };
-        })
-      );
-      
-      setProjects(projectsWithMemberCount);
+      setProjects(projectsWithMemberData);
     } catch (error) {
       console.error('Error fetching projects:', error);
       toast({
@@ -212,42 +215,42 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
                 New Project
               </Button>
             </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Project</DialogTitle>
-              <DialogDescription>
-                Create a new test management project to organize your user stories and test cases.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Project Name</Label>
-                <Input
-                  id="name"
-                  value={newProject.name}
-                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                  placeholder="Enter project name..."
-                />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Project</DialogTitle>
+                <DialogDescription>
+                  Create a new test management project to organize your user stories and test cases.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Project Name</Label>
+                  <Input
+                    id="name"
+                    value={newProject.name}
+                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                    placeholder="Enter project name..."
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newProject.description}
+                    onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                    placeholder="Enter project description..."
+                    rows={3}
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                  placeholder="Enter project description..."
-                  rows={3}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={createProject}>Create Project</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={createProject}>Create Project</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
 
@@ -258,7 +261,7 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
             <div>
               <h3 className="text-lg font-semibold">No Projects Yet</h3>
               <p className="text-muted-foreground">
-                {isAdmin 
+                {isAdmin
                   ? "Create your first project to get started with test management."
                   : "No projects available. Contact an admin to get access to projects."
                 }
@@ -275,8 +278,8 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <Card 
-              key={project.id} 
+            <Card
+              key={project.id}
               className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
               onClick={() => navigate(`/project/${project.id}`)}
             >
@@ -289,18 +292,20 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isAdmin && (
+                    {/* Allow Edit if Admin or Owner */}
+                    {(isAdmin || (currentUserId && project.user_id === currentUserId)) && (
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                        setSelectedProjectForEdit({ 
-                          id: project.id, 
-                          name: project.name, 
-                          description: project.description || "",
-                          status: project.status
-                        });
+                          setSelectedProjectForEdit({
+                            id: project.id,
+                            name: project.name,
+                            description: project.description || "",
+                            status: project.status,
+                            ownerId: project.user_id
+                          });
                         }}
                         className="h-8 w-8 p-0"
                       >
@@ -318,10 +323,10 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
                     >
                       <Settings className="h-4 w-4" />
                     </Button>
-                    <Badge 
+                    <Badge
                       variant={
                         project.status === 'Active' ? 'default' :
-                        project.status === 'Closed' ? 'destructive' : 'secondary'
+                          project.status === 'Closed' ? 'destructive' : 'secondary'
                       }
                     >
                       {project.status}
@@ -381,6 +386,8 @@ export const Projects = ({ onProjectSelect }: ProjectsProps) => {
           projectName={selectedProjectForEdit.name}
           projectDescription={selectedProjectForEdit.description}
           projectStatus={selectedProjectForEdit.status}
+          projectOwnerId={selectedProjectForEdit.ownerId}
+          currentUserId={currentUserId}
           isOpen={true}
           onClose={() => setSelectedProjectForEdit(null)}
           onProjectUpdated={() => {

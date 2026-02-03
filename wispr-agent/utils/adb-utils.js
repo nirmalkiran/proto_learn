@@ -10,6 +10,7 @@ import path from 'path';
 import { CONFIG } from '../config.js';
 
 const execAsync = promisify(exec);
+const loggedDevices = new Set();
 
 /**
  * Execute ADB command with timeout
@@ -380,7 +381,10 @@ export async function getDeviceFriendlyInfo(deviceId) {
     // Fallback if results are too generic
     if (brand === 'Android' && model === deviceId) {
       const friendlyName = `${deviceId} (Android ${osVersion})`;
-      console.log(`[ADB] Friendly name for ${deviceId} (generic fallback): ${friendlyName}`);
+      if (!loggedDevices.has(deviceId)) {
+        console.log(`[ADB] Friendly name for ${deviceId} (generic fallback): ${friendlyName}`);
+        loggedDevices.add(deviceId);
+      }
       return {
         brand,
         model,
@@ -391,7 +395,10 @@ export async function getDeviceFriendlyInfo(deviceId) {
 
     const friendlyName = `${capitalizedBrand} ${model} (Android ${osVersion})`.trim();
 
-    console.log(`[ADB] Friendly name for ${deviceId}: ${friendlyName}`);
+    if (!loggedDevices.has(deviceId)) {
+      console.log(`[ADB] Friendly name for ${deviceId}: ${friendlyName}`);
+      loggedDevices.add(deviceId);
+    }
 
     return {
       brand: capitalizedBrand,
