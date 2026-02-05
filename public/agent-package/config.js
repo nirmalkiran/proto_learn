@@ -4,9 +4,9 @@
 
 export const CONFIG = {
   // Server configuration
-  AGENT_HOST: 'localhost',
-  PORT: 3001,
-  AGENT_PORT: 3001,
+  AGENT_HOST: process.env.WISPR_AGENT_HOST || 'localhost',
+  PORT: parseInt(process.env.WISPR_AGENT_PORT || process.env.PORT || '3001', 10),
+  AGENT_PORT: parseInt(process.env.WISPR_AGENT_PORT || process.env.PORT || '3001', 10),
 
   // Service ports
   APPIUM_HOST: '127.0.0.1',

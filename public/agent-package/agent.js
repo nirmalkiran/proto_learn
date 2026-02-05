@@ -21,6 +21,10 @@ import emulatorController from "./controllers/emulator-controller.js";
 import recordingService from "./services/recording-service.js";
 import ReplayEngine from "./services/replay-engine.js";
 import screenshotService from "./services/screenshot-service.js";
+import inspectorService from "./services/inspector-service.js";
+import { HierarchySnapshotStore } from "./services/hierarchy-snapshot-store.js";
+import { diffHierarchies } from "./services/hierarchy-diff.js";
+import { LocatorHistoryStore } from "./services/locator-history-store.js";
 
 /* =====================================================
  * WISPR WEB AGENT CONFIG & LOGIC
@@ -34,6 +38,7 @@ const CONFIG = {
 };
 
 let isRunning = true, activeJobs = 0;
+const AGENT_BUILD = process.env.WISPR_AGENT_BUILD || "2026-02-05T10:10:00Z";
 const log = (l, m, d = {}) => console.log(`[${new Date().toISOString()}] [${l.toUpperCase()}] ${m}`, Object.keys(d).length ? d : "");
 
 async function apiRequest(endpoint, opts = {}) {
@@ -172,6 +177,9 @@ class MobileAutomationAgent {
     this.app.use(express.json({ limit: "500mb" }));
     this.app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
+    const snapshotStore = new HierarchySnapshotStore({});
+    const locatorHistory = new LocatorHistoryStore({});
+
     /* ---------------- HEALTH & STATUS ---------------- */
     this.app.get("/health", (req, res) => res.json({ status: "ok", uptime: this.startTime ? Date.now() - this.startTime : 0, port: MOBILE_CONFIG.PORT }));
 
@@ -199,12 +207,52 @@ class MobileAutomationAgent {
     this.app.post("/device/shell", async (req, res) => { try { const { command, deviceId } = req.body; if (!command) throw new Error("Command is required"); res.json({ success: true, ...await deviceController.shell(command, deviceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
     this.app.get("/device/ui", async (req, res) => { try { res.json({ success: true, xml: await deviceController.getUIHierarchy() }); } catch (e) { res.status(500).json({ success: false, error: e.message }); } });
 
+    /* ---------------- INSPECTOR (ADDITIVE) ---------------- */
+    this.app.post("/device/inspect", async (req, res) => {
+      try {
+        const { x, y, deviceId, mode, preferCache } = req.body || {};
+        const inspect = await inspectorService.inspectAtPoint({ x, y, deviceId, mode, preferCache });
+        res.json({ success: true, inspect });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    this.app.get("/device/hierarchy/snapshot/:id", async (req, res) => {
+      try {
+        const snapshotId = req.params.id;
+        const xml = snapshotStore.getSnapshotXml(snapshotId);
+        if (!xml) return res.status(404).json({ success: false, error: "Snapshot not found" });
+        res.setHeader("Content-Type", "application/xml; charset=utf-8");
+        res.send(xml);
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    this.app.post("/device/hierarchy/diff", async (req, res) => {
+      try {
+        const { fromSnapshotId, toSnapshotId } = req.body || {};
+        const xmlA = snapshotStore.getSnapshotXml(fromSnapshotId);
+        const xmlB = snapshotStore.getSnapshotXml(toSnapshotId);
+        if (!xmlA || !xmlB) return res.status(404).json({ success: false, error: "Snapshot(s) not found" });
+        const diff = diffHierarchies(xmlA, xmlB);
+        res.json({ success: true, ...diff });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
     /* ---------------- INTERACTION ---------------- */
     this.app.post("/device/tap", async (req, res) => {
       try {
         const { x, y } = req.body; if (x == null || y == null) throw new Error("Coordinates required");
         const result = await deviceController.tap(x, y);
-        const { element } = result;
+        const { element, xpath } = result;
+        let inspect = null;
+        try {
+          inspect = await inspectorService.inspectAtPoint({ x, y, deviceId: result.deviceId, mode: "tap", preferCache: true });
+        } catch { /* non-fatal */ }
 
         const elementId = element?.resourceId || "";
         const elementText = element?.text || "";
@@ -212,23 +260,52 @@ class MobileAutomationAgent {
         const elementContentDesc = element?.contentDesc || "";
 
         const locator =
+          (xpath || "") ||
           elementId ||
           elementContentDesc ||
           elementText ||
           `${x},${y}`;
+        const locatorStrategy = xpath ? "xpath" : elementId ? "id" : elementContentDesc ? "accessibilityId" : elementText ? "text" : "coordinates";
 
+        const descTarget = elementText || elementContentDesc || (elementId ? elementId.split('/').pop() : "");
+        const role = elementClass?.includes("EditText") ? "Input" :
+          elementClass?.includes("Button") ? "Button" :
+            elementClass?.includes("Switch") ? "Toggle" :
+              elementClass?.includes("CheckBox") ? "Checkbox" :
+                elementClass?.includes("Spinner") ? "Dropdown" :
+                  elementClass?.includes("ImageButton") ? "Icon Button" : "";
         const step = {
           type: "tap",
-          description: elementText ? `Tap on "${elementText}"` : `Tap at (${x}, ${y})`,
+          description: descTarget ? `${role ? role + " " : ""}Tap on "${descTarget}"` : `Tap at (${x}, ${y})`,
           locator,
+          locatorStrategy,
           coordinates: { x, y },
           elementId,
           elementText,
           elementClass,
           elementContentDesc,
+          xpath: xpath || "",
           elementMetadata: element,
+          locatorBundle: inspect?.locatorBundle || null,
+          reliabilityScore: typeof inspect?.reliabilityScore === "number" ? inspect.reliabilityScore : undefined,
+          hierarchySnapshotId: inspect?.hierarchySnapshotId || null,
+          smartXPath: inspect?.smartXPath || "",
+          elementFingerprint: inspect?.elementFingerprint || "",
+          screenContext: inspect?.screenContext || null,
           timestamp: Date.now()
         };
+        try {
+          if (inspect?.elementFingerprint && inspect?.best) {
+            locatorHistory.appendRecord(inspect?.screenContext?.package, {
+              fingerprint: inspect.elementFingerprint,
+              best: inspect.best,
+              locatorBundle: inspect.locatorBundle || null,
+              hierarchySnapshotId: inspect.hierarchySnapshotId || null,
+              reliabilityScore: inspect.reliabilityScore,
+              element: inspect.element || null
+            });
+          }
+        } catch { /* ignore */ }
         if (recordingService.isRecording) recordingService.addStep(step);
         res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) { res.status(500).json({ error: e.message }); }
@@ -238,7 +315,11 @@ class MobileAutomationAgent {
       try {
         const { x, y, duration } = req.body; if (x == null || y == null) throw new Error("Coordinates required");
         const result = await deviceController.longPress(x, y, duration || 1000);
-        const { element } = result || {};
+        const { element, xpath } = result || {};
+        let inspect = null;
+        try {
+          inspect = await inspectorService.inspectAtPoint({ x, y, deviceId: result?.deviceId, mode: "tap", preferCache: true });
+        } catch { /* non-fatal */ }
 
         const elementId = element?.resourceId || "";
         const elementText = element?.text || "";
@@ -246,23 +327,46 @@ class MobileAutomationAgent {
         const elementContentDesc = element?.contentDesc || "";
 
         const locator =
+          (xpath || "") ||
           elementId ||
           elementContentDesc ||
           elementText ||
           `${x},${y}`;
+        const locatorStrategy = xpath ? "xpath" : elementId ? "id" : elementContentDesc ? "accessibilityId" : elementText ? "text" : "coordinates";
 
+        const descTarget = elementText || elementContentDesc || (elementId ? elementId.split('/').pop() : "");
         const step = {
           type: "longPress",
-          description: elementText ? `Long press on "${elementText}"` : `Long press at (${x}, ${y})`,
+          description: descTarget ? `Long press on "${descTarget}"` : `Long press at (${x}, ${y})`,
           locator,
+          locatorStrategy,
           coordinates: { x, y },
           elementId,
           elementText,
           elementClass,
           elementContentDesc,
+          xpath: xpath || "",
           elementMetadata: element || null,
+          locatorBundle: inspect?.locatorBundle || null,
+          reliabilityScore: typeof inspect?.reliabilityScore === "number" ? inspect.reliabilityScore : undefined,
+          hierarchySnapshotId: inspect?.hierarchySnapshotId || null,
+          smartXPath: inspect?.smartXPath || "",
+          elementFingerprint: inspect?.elementFingerprint || "",
+          screenContext: inspect?.screenContext || null,
           timestamp: Date.now()
         };
+        try {
+          if (inspect?.elementFingerprint && inspect?.best) {
+            locatorHistory.appendRecord(inspect?.screenContext?.package, {
+              fingerprint: inspect.elementFingerprint,
+              best: inspect.best,
+              locatorBundle: inspect.locatorBundle || null,
+              hierarchySnapshotId: inspect.hierarchySnapshotId || null,
+              reliabilityScore: inspect.reliabilityScore,
+              element: inspect.element || null
+            });
+          }
+        } catch { /* ignore */ }
         if (recordingService.isRecording) recordingService.addStep(step);
         res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) { res.status(500).json({ error: e.message }); }
@@ -271,36 +375,64 @@ class MobileAutomationAgent {
     this.app.post("/device/input", async (req, res) => {
       try {
         const { text, x, y } = req.body;
-        await deviceController.input(text);
-
         let element = null;
+        let inspect = null;
         if (typeof x === "number" && typeof y === "number") {
           element = await deviceController.getElementAt(x, y);
+          try {
+            inspect = await inspectorService.inspectAtPoint({ x, y, deviceId: req.body.deviceId, mode: "tap", preferCache: true });
+          } catch { /* non-fatal */ }
         }
+
+        await deviceController.input(text);
 
         const elementId = element?.resourceId || "";
         const elementText = element?.text || "";
         const elementClass = element?.class || "";
         const elementContentDesc = element?.contentDesc || "";
+        const xpath = deviceController._buildXPath ? deviceController._buildXPath(element) : "";
         const locator =
+          (xpath || "") ||
           elementId ||
           elementContentDesc ||
           elementText ||
           (typeof x === "number" && typeof y === "number" ? `${x},${y}` : "");
+        const locatorStrategy = xpath ? "xpath" : elementId ? "id" : elementContentDesc ? "accessibilityId" : elementText ? "text" : locator ? "coordinates" : "";
 
+        const inputTarget = elementText || elementContentDesc || (elementId ? elementId.split('/').pop() : "");
         const step = {
           type: "input",
-          description: elementId ? `Input "${text}" into ${elementId}` : `Input "${text}"`,
+          description: inputTarget ? `Input "${text}" into ${inputTarget}` : `Input "${text}"`,
           value: text,
           locator,
+          locatorStrategy,
           coordinates: (typeof x === "number" && typeof y === "number") ? { x, y } : null,
           elementId,
           elementText,
           elementClass,
           elementContentDesc,
+          xpath: xpath || "",
           elementMetadata: element || null,
+          locatorBundle: inspect?.locatorBundle || null,
+          reliabilityScore: typeof inspect?.reliabilityScore === "number" ? inspect.reliabilityScore : undefined,
+          hierarchySnapshotId: inspect?.hierarchySnapshotId || null,
+          smartXPath: inspect?.smartXPath || "",
+          elementFingerprint: inspect?.elementFingerprint || "",
+          screenContext: inspect?.screenContext || null,
           timestamp: Date.now()
         };
+        try {
+          if (inspect?.elementFingerprint && inspect?.best) {
+            locatorHistory.appendRecord(inspect?.screenContext?.package, {
+              fingerprint: inspect.elementFingerprint,
+              best: inspect.best,
+              locatorBundle: inspect.locatorBundle || null,
+              hierarchySnapshotId: inspect.hierarchySnapshotId || null,
+              reliabilityScore: inspect.reliabilityScore,
+              element: inspect.element || null
+            });
+          }
+        } catch { /* ignore */ }
         if (recordingService.isRecording) recordingService.addStep(step);
         res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) { res.status(500).json({ error: e.message }); }
@@ -437,9 +569,23 @@ class MobileAutomationAgent {
           ? reqDeviceId
           : status.primaryDevice;
         if (!deviceId) throw new Error("No connected device found");
-        await this.replayEngine.startReplay(steps, deviceId, req.body.startIndex || 0);
+        await this.replayEngine.startReplay(steps, deviceId, req.body.startIndex || 0, {
+          screenSettleDelayMs: req.body.screenSettleDelayMs,
+          strict: req.body.strict,
+          stepTimeoutMs: req.body.stepTimeoutMs,
+          pollMs: req.body.pollMs
+        });
         res.json({ success: true, message: "Replay completed", deviceId });
       } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    this.app.post("/recording/replay/stop", async (req, res) => {
+      try {
+        this.replayEngine.stopReplay();
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
     });
 
     /* ---------------- EMULATOR & APPIUM ---------------- */
@@ -459,8 +605,18 @@ class MobileAutomationAgent {
   async start() {
     if (this.isRunning) return;
     this.server = createServer(this.app);
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
+      const onError = (err) => {
+        if (err?.code === "EADDRINUSE") {
+          log("error", `Port ${MOBILE_CONFIG.PORT} already in use on host ${MOBILE_CONFIG.AGENT_HOST}`, {
+            hint: "Stop the existing agent process, or set WISPR_AGENT_PORT to a free port and update VITE_AGENT_URL in the UI if needed."
+          });
+        }
+        reject(err);
+      };
+      this.server.once("error", onError);
       this.server.listen(MOBILE_CONFIG.PORT, MOBILE_CONFIG.AGENT_HOST, () => {
+        this.server.removeListener("error", onError);
         log("info", `Mobile Automation Server running at http://${MOBILE_CONFIG.AGENT_HOST}:${MOBILE_CONFIG.PORT}`);
         resolve();
       });
@@ -478,6 +634,7 @@ const mobileAgent = new MobileAutomationAgent();
 async function runAgent() {
   log("info", "=".repeat(50));
   log("info", "WISPR Self-Hosted Agent Starting...");
+  log("info", `Agent build: ${AGENT_BUILD}`);
   log("info", "=".repeat(50));
 
   // 1. Start Mobile Automation Helper

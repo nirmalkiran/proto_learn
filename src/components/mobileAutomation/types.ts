@@ -34,6 +34,36 @@ export interface ElementMetadata {
     bounds?: string;
 }
 
+export type LocatorStrategy =
+    | "accessibilityId"
+    | "id"
+    | "text"
+    | "xpath"
+    | "androidUiAutomator"
+    | "coordinates";
+
+export interface LocatorCandidate {
+    strategy: LocatorStrategy;
+    value: string;
+    score: number; // 0-100
+    source?: "inspector" | "healer" | "legacy";
+    reason?: string;
+}
+
+export interface LocatorBundleV1 {
+    version: 1;
+    fingerprint: string;
+    primary: LocatorCandidate;
+    fallbacks: LocatorCandidate[];
+}
+
+export interface ScreenContext {
+    package?: string;
+    activity?: string;
+    window?: string;
+    ts?: number;
+}
+
 /**
  * Purpose: Represents a single recorded user interaction or system command.
  * Used during recording, replay, and script generation.
@@ -59,6 +89,22 @@ export interface RecordedAction {
     elementContentDesc?: string;
     /** Raw metadata from the agent (optional, backward-compatible) */
     elementMetadata?: ElementMetadata | null;
+    /** Optional derived XPath for script generation (fallback after id/a11y/text) */
+    xpath?: string;
+    /** How `locator` should be interpreted (when present) */
+    locatorStrategy?: "id" | "accessibilityId" | "text" | "xpath" | "coordinates" | "";
+    /** Inspector-first locator bundle (preferred) */
+    locatorBundle?: LocatorBundleV1 | null;
+    /** 0-100 confidence of locator stability */
+    reliabilityScore?: number;
+    /** Snapshot reference for hierarchy diffs/healing */
+    hierarchySnapshotId?: string | null;
+    /** Resilient XPath (in addition to legacy `xpath`) */
+    smartXPath?: string;
+    /** Deterministic fingerprint of the element (healing key) */
+    elementFingerprint?: string;
+    /** Screen context (best-effort) */
+    screenContext?: ScreenContext | null;
     /** Assertion configurations */
     assertionType?: "visible" | "text_equals" | "enabled" | "disabled" | "toast" | "screen_loaded";
 }

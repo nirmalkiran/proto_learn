@@ -589,9 +589,9 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
     });
   };
 
-  const downloadAgentPackage = async (agentToken?: string) => {
-    const zip = new JSZip();
-    const token = agentToken || newAgentToken || "YOUR_API_TOKEN_HERE";
+	  const downloadAgentPackage = async (agentToken?: string) => {
+	    const zip = new JSZip();
+	    const token = agentToken || newAgentToken || "YOUR_API_TOKEN_HERE";
 
     try {
       // Fetch the latest files from the public folder
@@ -620,28 +620,41 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
         `API_TOKEN: process.env.WISPR_API_TOKEN || '${token}'`
       );
 
-      agentJs = agentJs.replace(
-        /API_BASE_URL:\s*['"][^'"]*['"]/,
-        `API_BASE_URL: "${apiBaseUrl}"`
-      );
+	      agentJs = agentJs.replace(
+	        /API_BASE_URL:\s*['"][^'"]*['"]/,
+	        `API_BASE_URL: "${apiBaseUrl}"`
+	      );
+
+	      // Stamp build so downloaded agent clearly reflects current package
+	      agentJs = agentJs.replace(
+	        /const AGENT_BUILD\s*=\s*['"][^'"]*['"]\s*;/,
+	        `const AGENT_BUILD = "${new Date().toISOString()}";`
+	      );
 
       zip.file("package.json", packageJson);
       zip.file("agent.js", agentJs);
       zip.file("README.md", readme);
       zip.file("Dockerfile", dockerfile);
 
-      // Add Mobile Automation components directly into the package structure
-      const mobileFiles = [
-        "config.js",
-        "controllers/appium-controller.js",
-        "controllers/device-controller.js",
-        "controllers/emulator-controller.js",
-        "services/recording-service.js",
-        "services/replay-engine.js",
-        "services/screenshot-service.js",
-        "utils/adb-utils.js",
-        "utils/process-manager.js",
-      ];
+	      // Add Mobile Automation components directly into the package structure
+	      const mobileFiles = [
+	        "config.js",
+	        "controllers/appium-controller.js",
+	        "controllers/device-controller.js",
+	        "controllers/emulator-controller.js",
+	        "services/recording-service.js",
+	        "services/replay-engine.js",
+	        "services/screenshot-service.js",
+	        "services/inspector-service.js",
+	        "services/smart-xpath-builder.js",
+	        "services/locator-healing-engine.js",
+	        "services/hierarchy-snapshot-store.js",
+	        "services/hierarchy-diff.js",
+	        "services/locator-history-store.js",
+	        "utils/adb-utils.js",
+	        "utils/process-manager.js",
+	        "utils/ui-hierarchy-fast.js",
+	      ];
 
       const mobileResponses = await Promise.all(
         mobileFiles.map(file => fetch(`/agent-package/${file}`))

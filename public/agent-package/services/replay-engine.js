@@ -2,6 +2,9 @@ import { EventEmitter } from 'events';
 import { CONFIG } from '../config.js';
 import { adbCommand, tapDevice, inputText, swipeDevice, launchApp, sendKeyEvent } from '../utils/adb-utils.js';
 import deviceController from '../controllers/device-controller.js';
+import crypto from "crypto";
+import { parseHierarchyNodesFast } from "../utils/ui-hierarchy-fast.js";
+import { LocatorHealingEngine } from "./locator-healing-engine.js";
 
 export class ReplayEngine extends EventEmitter {
   constructor() {
@@ -10,9 +13,115 @@ export class ReplayEngine extends EventEmitter {
     this.currentStepIndex = 0;
     this.steps = [];
     this.deviceId = null;
+    this.healingEngine = new LocatorHealingEngine({});
+    this.options = {
+      screenSettleDelayMs: 0,
+      strict: true,
+      stepTimeoutMs: 7000,
+      pollMs: 250
+    };
   }
 
-  async startReplay(steps, deviceId, startIndex = 0) {
+  _hashXml(xml) {
+    return crypto.createHash("sha1").update(String(xml || "")).digest("hex");
+  }
+
+  async _getUiXml({ stabilize = false } = {}) {
+    if (!stabilize) return await deviceController.getUIHierarchy(this.deviceId);
+
+    const pollMs = parseInt(process.env.WISPR_STABILIZE_POLL_MS || "200", 10) || 200;
+    const timeoutMs = parseInt(process.env.WISPR_STABILIZE_TIMEOUT_MS || "3000", 10) || 3000;
+    const stableReads = parseInt(process.env.WISPR_STABILIZE_STABLE_READS || "2", 10) || 2;
+
+    const start = Date.now();
+    let lastHash = null;
+    let stableCount = 0;
+    let lastXml = null;
+
+    while (Date.now() - start < timeoutMs) {
+      const xml = await deviceController.getUIHierarchy(this.deviceId);
+      if (xml && typeof xml === "string") {
+        const h = this._hashXml(xml);
+        if (h === lastHash) stableCount += 1;
+        else stableCount = 1;
+        lastHash = h;
+        lastXml = xml;
+        if (stableCount >= stableReads) return xml;
+      }
+      await new Promise(r => setTimeout(r, pollMs));
+    }
+
+    return lastXml;
+  }
+
+  _candidateListFromBundle(locatorBundle) {
+    if (!locatorBundle) return [];
+    const primary = locatorBundle.primary ? [locatorBundle.primary] : [];
+    const fallbacks = Array.isArray(locatorBundle.fallbacks) ? locatorBundle.fallbacks : [];
+    return [...primary, ...fallbacks].filter(Boolean);
+  }
+
+  _locatorStringForCandidate(candidate) {
+    if (!candidate) return "";
+    const strategy = candidate.strategy;
+    const value = candidate.value;
+    if (!value) return "";
+    if (strategy === "xpath") return value;
+    // Our XML parser supports plain strings for resource-id / content-desc / text already.
+    return value;
+  }
+
+  async _resolveCoordsFromLocatorBundle(step) {
+    const candidates = this._candidateListFromBundle(step.locatorBundle);
+    if (!candidates.length) return null;
+
+    const xml = await this._getUiXml({ stabilize: true });
+    if (!xml) return null;
+
+    for (const c of candidates) {
+      const locator = this._locatorStringForCandidate(c);
+      if (!locator) continue;
+      const coords = await this._coordsFromLocator(xml, c.strategy, locator);
+      if (coords) return { coords, used: c };
+    }
+    return null;
+  }
+
+  async _coordsFromLocator(xml, strategy, locator) {
+    const element = this._parseXmlForElementByStrategy(xml, strategy, locator);
+    if (!element?.bounds) return null;
+    const boundsMatch = element.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+    if (!boundsMatch) return null;
+    const [, x1, y1, x2, y2] = boundsMatch.map(Number);
+    if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+    return { x: Math.floor((x1 + x2) / 2), y: Math.floor((y1 + y2) / 2) };
+  }
+
+  _parseXmlForElementByStrategy(xml, strategy, locator) {
+    const value = String(locator || "");
+    if (!xml || typeof xml !== "string" || !value) return null;
+    const st = String(strategy || "");
+
+    if (st === "xpath") return this.parseXmlForElement(xml, value);
+    if (/^\d+,\d+$/.test(value) && st === "coordinates") return this.parseXmlForElement(xml, value);
+
+    const nodeRegex = /<node[^>]*>/g;
+    const nodes = xml.match(nodeRegex) || [];
+
+    for (const nodeStr of nodes) {
+      const attrs = this.parseNodeAttributes(nodeStr);
+      if (st === "id" && attrs["resource-id"] === value) return { locator: value, found: true, type: "resource-id", bounds: attrs.bounds, text: attrs.text, class: attrs.class };
+      if (st === "accessibilityId" && attrs["content-desc"] === value) return { locator: value, found: true, type: "content-desc", bounds: attrs.bounds, text: attrs.text, class: attrs.class };
+      if (st === "text") {
+        if (attrs.text === value) return { locator: value, found: true, type: "text", bounds: attrs.bounds, text: attrs.text, class: attrs.class };
+        if (value.length > 20 && String(attrs.text || "").includes(value)) return { locator: value, found: true, type: "text", bounds: attrs.bounds, text: attrs.text, class: attrs.class };
+      }
+    }
+
+    return null;
+  }
+
+  async startReplay(steps, deviceId, startIndex = 0, options = {}) {
     if (this.isReplaying) {
       throw new Error('Replay already in progress');
     }
@@ -21,19 +130,32 @@ export class ReplayEngine extends EventEmitter {
     this.currentStepIndex = startIndex;
     this.steps = steps;
     this.deviceId = deviceId;
+    this.options = {
+      ...this.options,
+      ...(options || {}),
+      screenSettleDelayMs: parseInt(options?.screenSettleDelayMs || "0", 10) || 0,
+      strict: options?.strict !== false,
+      stepTimeoutMs: parseInt(options?.stepTimeoutMs || process.env.WISPR_REPLAY_STEP_TIMEOUT_MS || "7000", 10) || 7000,
+      pollMs: parseInt(options?.pollMs || process.env.WISPR_REPLAY_POLL_MS || "250", 10) || 250
+    };
 
     this.emit('replay-started', { steps: steps.length, deviceId, startIndex });
 
     try {
       for (let i = startIndex; i < steps.length; i++) {
+        if (!this.isReplaying) {
+          throw new Error("Replay stopped by user");
+        }
         this.currentStepIndex = i;
         const step = steps[i];
 
         this.emit('step-started', { stepIndex: i, step });
 
+        const stepStart = Date.now();
         await this.executeStep(step);
+        const duration = Date.now() - stepStart;
 
-        this.emit('step-completed', { stepIndex: i, step });
+        this.emit('step-completed', { stepIndex: i, step, duration });
       }
 
       this.emit('replay-completed', { totalSteps: steps.length });
@@ -47,6 +169,10 @@ export class ReplayEngine extends EventEmitter {
 
   async executeStep(step) {
     const { type, locator, value, coordinates } = step;
+
+    if (this.options?.screenSettleDelayMs > 0) {
+      await new Promise(r => setTimeout(r, this.options.screenSettleDelayMs));
+    }
 
     switch (type) {
       case 'tap':
@@ -81,11 +207,88 @@ export class ReplayEngine extends EventEmitter {
     }
   }
 
+  _hasNonCoordinateLocator(step) {
+    if (step?.locatorBundle?.primary?.value) return true;
+    if (step?.xpath) return true;
+    if (step?.smartXPath) return true;
+    if (step?.locatorStrategy && step.locatorStrategy !== "coordinates" && step.locator) return true;
+    if (step?.elementId || step?.elementText || step?.elementContentDesc) return true;
+    return false;
+  }
+
+  _candidatesFromStep(step) {
+    const out = [];
+    const push = (strategy, value, score = 0) => {
+      const v = String(value || "");
+      if (!v) return;
+      const key = `${strategy}:${v}`;
+      if (out.some(x => `${x.strategy}:${x.value}` === key)) return;
+      out.push({ strategy, value: v, score });
+    };
+
+    const lb = step?.locatorBundle;
+    if (lb?.primary?.strategy && lb?.primary?.value) push(lb.primary.strategy, lb.primary.value, lb.primary.score || 90);
+    if (Array.isArray(lb?.fallbacks)) {
+      for (const f of lb.fallbacks) {
+        if (f?.strategy && f?.value) push(f.strategy, f.value, f.score || 50);
+      }
+    }
+
+    // Back-compat: explicit strategy
+    if (step?.locatorStrategy && step?.locator && step.locatorStrategy !== "") {
+      push(step.locatorStrategy, step.locator, 60);
+    }
+
+    // Prefer smartXPath/xpath if present
+    if (step?.smartXPath) push("xpath", step.smartXPath, 70);
+    if (step?.xpath) push("xpath", step.xpath, 65);
+
+    // Derive from metadata
+    if (step?.elementId) push("id", step.elementId, 80);
+    if (step?.elementContentDesc) push("accessibilityId", step.elementContentDesc, 78);
+    if (step?.elementText) push("text", step.elementText, 55);
+
+    out.sort((a, b) => (b.score || 0) - (a.score || 0));
+    return out;
+  }
+
+  async _waitForCoordsByLocators(step) {
+    const candidates = this._candidatesFromStep(step);
+    if (!candidates.length) return null;
+
+    const timeoutMs = this.options?.stepTimeoutMs || 7000;
+    const pollMs = this.options?.pollMs || 250;
+    const start = Date.now();
+    let lastErr = null;
+
+    while (Date.now() - start < timeoutMs) {
+      if (!this.isReplaying) throw new Error("Replay stopped by user");
+      const xml = await this._getUiXml({ stabilize: true });
+      if (!xml || typeof xml !== "string") {
+        lastErr = new Error("UI hierarchy unavailable (uiautomator dump failed)");
+        await new Promise(r => setTimeout(r, pollMs));
+        continue;
+      }
+
+      for (const c of candidates) {
+        const coords = await this._coordsFromLocator(xml, c.strategy, c.value);
+        if (coords) return { coords, used: c };
+      }
+
+      await new Promise(r => setTimeout(r, pollMs));
+    }
+
+    if (lastErr) throw lastErr;
+    return null;
+  }
+
   async executeLongPressStep(step) {
     const { coordinates, elementId, elementText, elementClass, elementContentDesc } = step;
     try {
       // 1. Try self-healing first if we have metadata
       let targetCoords = coordinates;
+      const resolved = await this._waitForCoordsByLocators(step).catch((e) => { throw e; });
+      if (resolved?.coords) targetCoords = resolved.coords;
       if (elementId || elementText || elementContentDesc) {
         const foundElement = await this.findBestMatchingElement({
           elementId, elementText, elementClass, elementContentDesc
@@ -97,7 +300,9 @@ export class ReplayEngine extends EventEmitter {
         }
       }
 
+      const requireLocator = this.options?.strict && this._hasNonCoordinateLocator(step);
       if (!targetCoords || typeof targetCoords.x !== 'number' || typeof targetCoords.y !== 'number') {
+        if (requireLocator) throw new Error(`Element not found for long press (locator resolution failed)`);
         throw new Error(`Invalid coordinates for long press: ${JSON.stringify(targetCoords)}`);
       }
 
@@ -114,6 +319,8 @@ export class ReplayEngine extends EventEmitter {
     try {
       // 1. Try self-healing first if we have metadata
       let targetCoords = coordinates;
+      const resolved = await this._waitForCoordsByLocators(step).catch((e) => { throw e; });
+      if (resolved?.coords) targetCoords = resolved.coords;
       if (elementId || elementText || elementContentDesc) {
         const foundElement = await this.findBestMatchingElement({
           elementId, elementText, elementClass, elementContentDesc
@@ -125,7 +332,9 @@ export class ReplayEngine extends EventEmitter {
         }
       }
 
+      const requireLocator = this.options?.strict && this._hasNonCoordinateLocator(step);
       if (!targetCoords || typeof targetCoords.x !== 'number' || typeof targetCoords.y !== 'number') {
+        if (requireLocator) throw new Error(`Element not found (locator resolution failed)`);
         throw new Error(`Invalid coordinates and self-healing failed: ${JSON.stringify(targetCoords)}`);
       }
 
@@ -164,6 +373,8 @@ export class ReplayEngine extends EventEmitter {
     try {
       // 1. Try self-healing first if we have metadata
       let targetCoords = coordinates;
+      const resolved = await this._waitForCoordsByLocators(step).catch((e) => { throw e; });
+      if (resolved?.coords) targetCoords = resolved.coords;
       if (elementId || elementText || elementContentDesc) {
         const foundElement = await this.findBestMatchingElement({
           elementId, elementText, elementClass, elementContentDesc
@@ -180,15 +391,9 @@ export class ReplayEngine extends EventEmitter {
         targetCoords = await this.findElementCoordinates(locator);
       }
 
-      // 2b. Final fallback: if we have no target but the app already has focus (common when a tap
-      // step occurred immediately before), still attempt to type. This keeps older recordings
-      // from hard-failing when metadata is missing.
+      const requireLocator = this.options?.strict && this._hasNonCoordinateLocator(step);
       if (!targetCoords || typeof targetCoords.x !== 'number' || typeof targetCoords.y !== 'number') {
-        if (typeof value === 'string' && value.length > 0) {
-          console.warn(`[Replay] Input step missing target (locator/coords). Sending keys to current focus as fallback.`);
-          await inputText(value, this.deviceId);
-          return;
-        }
+        if (requireLocator) throw new Error(`Element not found for input (locator resolution failed)`);
         throw new Error(`Target coordinates or locator ${locator} not found for input step`);
       }
 
@@ -241,7 +446,9 @@ export class ReplayEngine extends EventEmitter {
     // Find the element and check its properties
     const element = await this.findElement(locator);
     if (!element) {
+      const nonFatal = process.env.WISPR_ASSERT_NON_FATAL === "1";
       this.emit('assertion-result', { locator, expectedValue, success: false, error: 'Element not found' });
+      if (!nonFatal) throw new Error(`Assertion failed: element not found for locator ${locator}`);
       return;
     }
 
@@ -274,7 +481,7 @@ export class ReplayEngine extends EventEmitter {
         throw new Error('No device ID set for replay engine');
       }
 
-      const xml = await deviceController.getUIHierarchy(this.deviceId);
+      const xml = await this._getUiXml({ stabilize: true });
       if (!xml || typeof xml !== 'string') {
         throw new Error('Invalid or empty UI hierarchy XML received');
       }
@@ -318,7 +525,7 @@ export class ReplayEngine extends EventEmitter {
    */
   async findElement(locator) {
     try {
-      const xml = await deviceController.getUIHierarchy(this.deviceId);
+      const xml = await this._getUiXml({ stabilize: true });
       return this.parseXmlForElement(xml, locator);
     } catch (error) {
       console.error('Error finding element:', error.message);
@@ -331,42 +538,30 @@ export class ReplayEngine extends EventEmitter {
    */
   async findBestMatchingElement(metadata) {
     try {
-      const xml = await deviceController.getUIHierarchy(this.deviceId);
-      const nodeRegex = /<node[^>]*>/g;
-      const nodes = xml.match(nodeRegex) || [];
+      const xml = await this._getUiXml({ stabilize: true });
+      if (!xml || typeof xml !== "string") return null;
 
-      let bestMatch = null;
-      let highestScore = 0;
+      // Fast-ish parse to nodes, then apply ranking engine
+      const nodes = parseHierarchyNodesFast(xml);
+      const best = this.healingEngine.rankBestMatch(
+        {
+          resourceId: metadata.elementId,
+          contentDesc: metadata.elementContentDesc,
+          text: metadata.elementText,
+          class: metadata.elementClass,
+          bounds: metadata.bounds
+        },
+        nodes
+      );
+      if (!best?.node?.attrs?.bounds) return null;
 
-      for (const nodeStr of nodes) {
-        const attrs = this.parseNodeAttributes(nodeStr);
-        let score = 0;
-
-        if (metadata.elementId && attrs['resource-id'] === metadata.elementId) score += 100;
-        if (metadata.elementContentDesc && attrs['content-desc'] === metadata.elementContentDesc) score += 80;
-        if (metadata.elementText && attrs.text === metadata.elementText) score += 60;
-        if (metadata.elementClass && attrs.class === metadata.elementClass) score += 10;
-
-        if (score > highestScore) {
-          highestScore = score;
-          bestMatch = attrs;
-        }
-      }
-
-      // Threshold for a valid match
-      if (highestScore < 50) return null;
-
-      const boundsMatch = bestMatch.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+      const boundsMatch = String(best.node.attrs.bounds).match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
       if (!boundsMatch) return null;
-
       const [, x1, y1, x2, y2] = boundsMatch.map(Number);
       return {
-        attributes: bestMatch,
-        score: highestScore,
-        coordinates: {
-          x: Math.floor((x1 + x2) / 2),
-          y: Math.floor((y1 + y2) / 2)
-        }
+        attributes: best.node.attrs,
+        score: best.score,
+        coordinates: { x: Math.floor((x1 + x2) / 2), y: Math.floor((y1 + y2) / 2) }
       };
     } catch (error) {
       console.error('Error in self-healing search:', error.message);
@@ -377,13 +572,57 @@ export class ReplayEngine extends EventEmitter {
   /**
    * Parse XML to find element by locator
    */
+  _decodeXpathLiteral(raw) {
+    const value = raw.trim();
+    if (value.startsWith("concat(") && value.endsWith(")")) {
+      const inner = value.slice(7, -1);
+      const parts = inner.match(/'[^']*'|"[^"]*"/g) || [];
+      return parts.map(p => p.slice(1, -1)).join("");
+    }
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      return value.slice(1, -1);
+    }
+    return value;
+  }
+
+  _parseXPathCriteria(locator) {
+    if (!locator || (!locator.startsWith("//") && !locator.startsWith("//*"))) return null;
+    const criteria = {};
+    const attrRegex = /@([a-zA-Z-]+)\s*=\s*(concat\([^)]+\)|"[^"]*"|'[^']*')/g;
+    let match;
+    while ((match = attrRegex.exec(locator)) !== null) {
+      criteria[match[1]] = this._decodeXpathLiteral(match[2]);
+    }
+    return Object.keys(criteria).length ? criteria : null;
+  }
+
+  _matchesXPathCriteria(attrs, criteria) {
+    if (!criteria) return false;
+    return Object.entries(criteria).every(([key, val]) => attrs[key] === val);
+  }
+
   parseXmlForElement(xml, locator) {
     // Split XML into node declarations
     const nodeRegex = /<node[^>]*>/g;
     const nodes = xml.match(nodeRegex) || [];
 
+    const xpathCriteria = this._parseXPathCriteria(locator);
+
     for (const nodeStr of nodes) {
       const attrs = this.parseNodeAttributes(nodeStr);
+
+      if (xpathCriteria && this._matchesXPathCriteria(attrs, xpathCriteria)) {
+        return {
+          locator,
+          found: true,
+          type: 'xpath',
+          bounds: attrs.bounds,
+          text: attrs.text,
+          class: attrs.class,
+          clickable: attrs.clickable === 'true',
+          enabled: attrs.enabled === 'true'
+        };
+      }
 
       // Check different locator strategies
       if (attrs['resource-id'] === locator) {

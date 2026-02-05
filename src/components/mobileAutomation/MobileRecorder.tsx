@@ -34,7 +34,7 @@ import { ActionType, RecordedAction, SelectedDevice } from "./types";
 import { ExecutionHistoryService } from "./ExecutionHistoryService";
 import { ScenarioService, RecordedScenario } from "./ScenarioService";
 
-const AGENT_URL = "http://localhost:3001";
+const AGENT_URL = (import.meta as any).env?.VITE_AGENT_URL || "http://localhost:3001";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -42,6 +42,7 @@ const supabase = createClient(
 );
 const DEVICE_WIDTH = 310;
 const DEVICE_HEIGHT = 568;
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
 /**
  * Purpose:
@@ -140,8 +141,6 @@ export default function MobileRecorder({
   setSelectedDevice,
   selectedDeviceFromSetup,
 }: MobileRecorderProps) {
-  // Recorder state moved from index.tsx
-  // Cache generated script so it is NOT tied to Script tab rendering
   const [generatedScriptCache, setGeneratedScriptCache] = useState<string>("");
   const [recording, setRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -154,6 +153,22 @@ export default function MobileRecorder({
   const [isPreparingDevice, setIsPreparingDevice] = useState(false);
   const [captureMode, setCaptureMode] = useState(false);
   const [deviceSize, setDeviceSize] = useState<{ width: number; height: number } | null>(null);
+  const inspectorModeEnabled = useMemo(() => {
+    try {
+      const raw = window.localStorage.getItem("wispr.inspectorMode");
+      if (raw == null) return true;
+      return raw !== "0" && raw !== "false";
+    } catch {
+      return true;
+    }
+	  }, []);
+	  const [hoverInspect, setHoverInspect] = useState<any>(null);
+	  const [tapInspect, setTapInspect] = useState<any>(null);
+	  const [pinnedInspect, setPinnedInspect] = useState<any>(null);
+	  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false);
+	  const [inspectorSpotlight, setInspectorSpotlight] = useState(true);
+	  const lastHoverInspectTsRef = useRef(0);
+	  const hoverInspectAbortRef = useRef<AbortController | null>(null);
   const [inputText, setInputText] = useState("");
   const [inputCoords, setInputCoords] = useState<{ x: number; y: number } | null>(null);
   const inputFieldRef = useRef<HTMLInputElement>(null);
@@ -171,6 +186,8 @@ export default function MobileRecorder({
   const [inputPending, setInputPending] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string>("");
+  const [editingLocatorStepId, setEditingLocatorStepId] = useState<string | null>(null);
+  const [editingLocatorValue, setEditingLocatorValue] = useState<string>("");
   const [previewPendingId, setPreviewPendingId] = useState<string | null>(null);
   const [replaying, setReplaying] = useState<boolean>(false);
   const [deviceRefreshKey, setDeviceRefreshKey] = useState(0);
@@ -193,12 +210,26 @@ export default function MobileRecorder({
     return { width: 350, height: fixedHeight };
   }, [deviceSize]);
 
-  /**
-   * Purpose:
-   * Continuously monitors the mobile device for focused input fields.
-   * If a candidate field is found, it automatically opens the text entry panel
-   * to streamline the recording of keyboard interactions.
-   */
+  const replayAbortRef = useRef<AbortController | null>(null);
+  const replayStopRequestedRef = useRef(false);
+  const stopReplay = async () => {
+    replayStopRequestedRef.current = true;
+    try { replayAbortRef.current?.abort(); } catch { }
+    try {
+      await fetch(`${AGENT_URL}/recording/replay/stop`, { method: "POST" }).catch(() => null);
+    } catch { }
+    toast.info("Replay stopped");
+  };
+
+  const copyText = async (text: string, label: string = "Copied") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(label);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
   /**
      * Purpose:
      * Continuously monitors the mobile device for focused input fields.
@@ -458,6 +489,14 @@ export default function MobileRecorder({
           const elementText = rawStep.elementText || meta?.text || "";
           const elementClass = rawStep.elementClass || meta?.class || "";
           const elementContentDesc = rawStep.elementContentDesc || meta?.contentDesc || "";
+          const xpath = rawStep.xpath || "";
+          const locatorStrategy = rawStep.locatorStrategy || "";
+          const locatorBundle = rawStep.locatorBundle || null;
+          const reliabilityScore = (typeof rawStep.reliabilityScore === "number") ? rawStep.reliabilityScore : undefined;
+          const hierarchySnapshotId = rawStep.hierarchySnapshotId ?? null;
+          const smartXPath = rawStep.smartXPath || "";
+          const elementFingerprint = rawStep.elementFingerprint || "";
+          const screenContext = rawStep.screenContext || null;
 
           const coords = rawStep.coordinates || null;
           const coordsLocator = (coords && typeof coords.x === "number" && typeof coords.y === "number")
@@ -483,6 +522,14 @@ export default function MobileRecorder({
             elementClass,
             elementContentDesc,
             elementMetadata: meta,
+            xpath,
+            locatorStrategy,
+            locatorBundle,
+            reliabilityScore,
+            hierarchySnapshotId,
+            smartXPath,
+            elementFingerprint,
+            screenContext,
             assertionType: rawStep.assertionType,
           };
 
@@ -512,6 +559,14 @@ export default function MobileRecorder({
       }
     };
   }, [recording]);
+
+	  useEffect(() => {
+	    if (!mirrorActive || !captureMode) {
+	      setHoverInspect(null);
+	      setPinnedInspect(null);
+	      setInspectorPanelOpen(false);
+	    }
+	  }, [mirrorActive, captureMode]);
 
   /* =====================================================
    * SCENARIO MANAGEMENT HANDLERS
@@ -1207,52 +1262,60 @@ export default function MobileRecorder({
     }
   };
 
-  const replaySingleAction = async (action: RecordedAction) => {
+	  const replaySingleAction = async (action: RecordedAction) => {
     if (!selectedDevice) {
       toast.error("Select a device first");
       return;
     }
 
-    setReplaying(true);
-    toast.info(`Running step: ${action.type}`);
+	    setReplaying(true);
+	    toast.info(`Running step: ${action.type}`);
+	    replayStopRequestedRef.current = false;
 
-    try {
+	    try {
 
-      setExecutionLogs(prev => prev.map(log =>
-        log.id === action.id ? { ...log, status: "running", error: undefined } : log
-      ));
+	      setExecutionLogs(prev => prev.map(log =>
+	        log.id === action.id ? { ...log, status: "running", error: undefined } : log
+	      ));
 
-      const res = await fetch(`${AGENT_URL}/recording/replay`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deviceId: selectedDevice.id || selectedDevice.device,
-          steps: [action],
-          startIndex: 0
-        }),
-      });
+	      replayAbortRef.current?.abort();
+	      const ac = new AbortController();
+	      replayAbortRef.current = ac;
+	      const res = await fetch(`${AGENT_URL}/recording/replay`, {
+	        method: "POST",
+	        headers: { "Content-Type": "application/json" },
+	        body: JSON.stringify({
+	          deviceId: selectedDevice.id || selectedDevice.device,
+	          steps: [action],
+	          startIndex: 0,
+	          strict: true,
+	          screenSettleDelayMs: advancedConfig.screenSettleDelayMs
+	        }),
+	        signal: ac.signal
+	      });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Step failed");
-      }
+	      const data = await res.json();
+	      if (!res.ok || !data.success) {
+	        throw new Error(data.error || "Step failed");
+	      }
 
       setReplaying(false);
       setReplayIndex(null);
 
-    } catch (err: any) {
-      console.error("Single step replay error", err);
-      setReplaying(false);
+	    } catch (err: any) {
+	      console.error("Single step replay error", err);
+	      setReplaying(false);
 
-      toast.error(`Step failed: ${err.message}`);
-      setExecutionLogs(prev => prev.map(log =>
-        log.id === action.id ? { ...log, status: "error", error: err.message } : log
-      ));
-    }
-  };
+	      const msg = err?.name === "AbortError" || replayStopRequestedRef.current ? "Stopped by user" : (err.message || "Step failed");
+	      toast.error(`Step failed: ${msg}`);
+	      setExecutionLogs(prev => prev.map(log =>
+	        log.id === action.id ? { ...log, status: "error", error: msg } : log
+	      ));
+	    }
+	  };
 
-  const replayActions = async (startIndex: number = 0) => {
-    const enabledActions = actions.filter(a => a.enabled !== false);
+	  const replayActions = async (startIndex: number = 0) => {
+	    const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) {
       toast.error("No enabled actions to replay");
       return;
@@ -1262,11 +1325,12 @@ export default function MobileRecorder({
       toast.error("Select a device first");
       return;
     }
-    setReplaying(true);
-    setLastReplayStatus(null);
-    setActiveTab("history");
-    let lastFailedStep = -1;
-    let failureReason = "";
+	    setReplaying(true);
+	    setLastReplayStatus(null);
+	    setActiveTab("history");
+	    replayStopRequestedRef.current = false;
+	    let lastFailedStep = -1;
+	    let failureReason = "";
 
     if (startIndex === 0) {
       setReplayStartTime(Date.now());
@@ -1288,39 +1352,47 @@ export default function MobileRecorder({
     }
     setExecutionLogs(prev => prev.map(log => ({ ...log, error: undefined })));
 
-    try {
-      for (let i = startIndex; i < enabledActions.length; i++) {
-        const action = enabledActions[i];
-        setReplayIndex(i);
+	    try {
+	      for (let i = startIndex; i < enabledActions.length; i++) {
+	        if (replayStopRequestedRef.current) {
+	          throw new Error("Stopped by user");
+	        }
+	        const action = enabledActions[i];
+	        setReplayIndex(i);
 
         // Update step status to running
         setExecutionLogs(prev => prev.map((log, idx) =>
           idx === i ? { ...log, status: "running" } : log
         ));
 
-        const startStepTime = Date.now();
-        const res = await fetch(`${AGENT_URL}/recording/replay`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceId: selectedDevice.id || selectedDevice.device,
-            steps: [action],
-            startIndex: 0,
-            screenSettleDelayMs: advancedConfig.screenSettleDelayMs
-          }),
-        });
+	        const startStepTime = Date.now();
+	        replayAbortRef.current?.abort();
+	        const ac = new AbortController();
+	        replayAbortRef.current = ac;
+	        const res = await fetch(`${AGENT_URL}/recording/replay`, {
+	          method: "POST",
+	          headers: { "Content-Type": "application/json" },
+	          body: JSON.stringify({
+	            deviceId: selectedDevice.id || selectedDevice.device,
+	            steps: [action],
+	            startIndex: 0,
+	            screenSettleDelayMs: advancedConfig.screenSettleDelayMs,
+	            strict: true
+	          }),
+	          signal: ac.signal
+	        });
 
         const data = await res.json();
         const duration = Date.now() - startStepTime;
 
-        if (!res.ok || !data.success) {
-          const errorMsg = data.error || "Action failed";
+	        if (!res.ok || !data.success) {
+	          const errorMsg = data.error || "Action failed";
           // Update step status to error
           setExecutionLogs(prev => prev.map((log, idx) =>
             idx === i ? { ...log, status: "error", error: errorMsg } : log
           ));
-          throw new Error(errorMsg);
-        }
+	          throw new Error(errorMsg);
+	        }
 
         // Update step status to success
         setExecutionLogs(prev => prev.map((log, idx) =>
@@ -1331,21 +1403,22 @@ export default function MobileRecorder({
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      setLastReplayStatus("PASS");
+	      setLastReplayStatus("PASS");
       setReplaying(false);
       setReplayIndex(null);
       await saveExecutionToHistory("SUCCESS");
       toast.success("Replay completed successfully!");
 
-    } catch (err: any) {
-      console.error("[MobileRecorder] Replay error:", err);
-      setLastReplayStatus("FAIL");
-      setReplaying(false);
-      setReplayIndex(null);
-      toast.error(`Replay failed: ${err.message}`);
-      await saveExecutionToHistory("FAILED", undefined, err.message);
-    }
-  };
+	    } catch (err: any) {
+	      console.error("[MobileRecorder] Replay error:", err);
+	      setLastReplayStatus("FAIL");
+	      setReplaying(false);
+	      setReplayIndex(null);
+	      const msg = err?.name === "AbortError" || replayStopRequestedRef.current ? "Stopped by user" : (err.message || "Replay failed");
+	      toast.error(`Replay failed: ${msg}`);
+	      await saveExecutionToHistory("FAILED", undefined, msg);
+	    }
+	  };
 
 
   const saveExecutionToHistory = async (status: "SUCCESS" | "FAILED", failedIndex?: number, reason?: string) => {
@@ -1384,10 +1457,14 @@ export default function MobileRecorder({
     const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) return null;
 
-    return `import io.appium.java_client.AppiumBy;
+	    return `import io.appium.java_client.AppiumBy;
 import io.appium.java_client.android.AndroidDriver;
 import io.appium.java_client.android.options.UiAutomator2Options;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.remote.RemoteWebElement;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Supplier;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.Duration;
@@ -1397,9 +1474,27 @@ import java.time.Duration;
      * Platform: Android (Appium Java)
      * Generated: ${new Date().toISOString()}
      */
-    public class RecordedMobileTest {
-      public static void main(String[] args) throws MalformedURLException, InterruptedException {
-        UiAutomator2Options options = new UiAutomator2Options();
+	    public class RecordedMobileTest {
+	      private static WebElement findWithFallback(AndroidDriver driver, Duration timeout, List<Supplier<WebElement>> suppliers) throws InterruptedException {
+	        long end = System.currentTimeMillis() + timeout.toMillis();
+	        RuntimeException last = null;
+	        while (System.currentTimeMillis() < end) {
+	          for (Supplier<WebElement> s : suppliers) {
+	            try {
+	              WebElement el = s.get();
+	              if (el != null) return el;
+	            } catch (Exception e) {
+	              last = new RuntimeException(e);
+	            }
+	          }
+	          Thread.sleep(200);
+	        }
+	        if (last != null) throw last;
+	        throw new RuntimeException("Element not found");
+	      }
+
+	      public static void main(String[] args) throws MalformedURLException, InterruptedException {
+	        UiAutomator2Options options = new UiAutomator2Options();
       options.setPlatformName("Android");
       options.setAutomationName("UiAutomator2");
       options.setDeviceName("${selectedDevice?.device || "your-device-id"}");
@@ -1419,71 +1514,110 @@ ${enabledActions
           const stepNum = index + 1;
           const comment = `            // Step ${stepNum}: ${a.description}`;
           let javaCode = "";
+          const javaStr = (s: string) =>
+            String(s ?? "")
+              .replace(/\\/g, "\\\\")
+              .replace(/"/g, '\\"')
+              .replace(/\r?\n/g, "\\n");
+	          const xpathFor = (action: RecordedAction) => {
+	            if (action.smartXPath) return action.smartXPath;
+	            if (action.xpath) return action.xpath;
 
-          switch (a.type) {
-            case "tap": {
-              if (a.elementId) {
-                javaCode = `WebElement el${stepNum} = driver.findElement(AppiumBy.id("${a.elementId}"));\n            el${stepNum}.click();`;
-              } else if (a.elementContentDesc) {
-                javaCode = `WebElement el${stepNum} = driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}"));\n            el${stepNum}.click();`;
-              } else if (a.elementText) {
-                javaCode = `WebElement el${stepNum} = driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")"));\n            el${stepNum}.click();`;
-              } else if (a.locator && a.locator !== "system") {
-                const looksLikeXpath = a.locator.startsWith("/") || a.locator.startsWith("(");
-                javaCode = looksLikeXpath
-                  ? `WebElement el${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            el${stepNum}.click();`
-                  : `WebElement el${stepNum} = driver.findElement(AppiumBy.id("${a.locator}"));\n            el${stepNum}.click();`;
-              } else if (a.coordinates) {
-                javaCode = `// Coordinate tap at (${a.coordinates.x}, ${a.coordinates.y})
-            // Use W3C Actions for coordinates if needed
-            driver.executeScript("mobile: clickGesture", java.util.Map.of(
-                "x", ${a.coordinates.x},
-                "y", ${a.coordinates.y}
-            ));`;
-              } else {
-                javaCode = `// Action missing locator and coordinates`;
-              }
-              break;
-            }
+	            if (action.locatorStrategy === "xpath" && action.locator && (action.locator.startsWith("//") || action.locator.startsWith("//*"))) {
+	              return action.locator;
+	            }
 
-            case "input": {
+	            if (action.elementId) return `//*[@resource-id='${action.elementId}']`;
+	            if (action.elementContentDesc) return `//*[@content-desc='${action.elementContentDesc}']`;
+	            if (action.elementText) return `//*[@text='${action.elementText}']`;
+
+	            // If the backend didn't provide an XPath, avoid guessing from `locator` because it may be "x,y".
+	            return "";
+	          };
+
+	          const locatorSuppliersFor = (action: RecordedAction) => {
+	            const out: Array<{ strategy: string; value: string }> = [];
+	            const push = (strategy: string, value: string) => {
+	              const v = String(value || "");
+	              if (!v) return;
+	              const key = `${strategy}:${v}`;
+	              if ((push as any)._seen?.has(key)) return;
+	              (push as any)._seen = (push as any)._seen || new Set<string>();
+	              (push as any)._seen.add(key);
+	              out.push({ strategy, value: v });
+	            };
+
+	            const lb = action.locatorBundle as any;
+	            if (lb?.primary?.strategy && lb?.primary?.value) push(lb.primary.strategy, lb.primary.value);
+	            if (Array.isArray(lb?.fallbacks)) {
+	              for (const f of lb.fallbacks) {
+	                if (f?.strategy && f?.value) push(f.strategy, f.value);
+	              }
+	            }
+
+	            // Backward-compatible fallbacks if bundle missing
+	            const xp = xpathFor(action);
+	            if (xp) push("xpath", xp);
+	            if (action.elementId) push("id", action.elementId);
+	            if (action.elementContentDesc) push("accessibilityId", action.elementContentDesc);
+	            if (action.elementText) push("text", action.elementText);
+
+	            return out;
+	          };
+
+	          const javaSupplierExpr = (c: { strategy: string; value: string }) => {
+	            const v = javaStr(c.value);
+	            if (c.strategy === "accessibilityId") return `() -> driver.findElement(AppiumBy.accessibilityId("${v}"))`;
+	            if (c.strategy === "id") return `() -> driver.findElement(AppiumBy.id("${v}"))`;
+	            if (c.strategy === "text") {
+	              // Prefer contains for text to reduce brittleness; fallback chain still includes other strategies.
+	              return `() -> driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().textContains(\\\"${v}\\\")"))`;
+	            }
+	            // xpath and default
+	            return `() -> driver.findElement(AppiumBy.xpath("${v}"))`;
+	          };
+
+	          switch (a.type) {
+	            case "tap": {
+	              const suppliers = locatorSuppliersFor(a);
+	              if (suppliers.length) {
+	                const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
+	                javaCode = `WebElement el${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            el${stepNum}.click();`;
+	              } else {
+	                javaCode = `throw new RuntimeException("Tap step missing stable locator (no xpath/id/a11y/text available)");`;
+	              }
+	              break;
+	            }
+
+	            case "input": {
               const valueEnv = `System.getenv("INPUT_${stepNum}")`;
               const escapedValue = (typeof a.value === "string")
                 ? a.value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")
                 : "";
               const valueStr = a.value ? `"${escapedValue}"` : valueEnv;
 
-              if (a.elementId) {
-                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.id("${a.elementId}"));\n            input${stepNum}.sendKeys(${valueStr});`;
-              } else if (a.elementContentDesc) {
-                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}"));\n            input${stepNum}.sendKeys(${valueStr});`;
-              } else if (a.elementText) {
-                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")"));\n            input${stepNum}.sendKeys(${valueStr});`;
-              } else if (a.locator && a.locator !== "system") {
-                const looksLikeXpath = a.locator.startsWith("/") || a.locator.startsWith("(");
-                javaCode = looksLikeXpath
-                  ? `WebElement input${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`
-                  : `WebElement input${stepNum} = driver.findElement(AppiumBy.id("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`;
-              } else if (a.coordinates) {
-                javaCode = `// Fallback: coordinate-based input (no stable locator found)\n            driver.executeScript("mobile: clickGesture", java.util.Map.of(\n                "x", ${a.coordinates.x},\n                "y", ${a.coordinates.y}\n            ));\n            driver.getKeyboard().sendKeys(${valueStr});`;
-              } else {
-                javaCode = `// Input action missing locator and coordinates`;
-              }
-              break;
-            }
+	              const suppliers = locatorSuppliersFor(a);
+	              if (suppliers.length) {
+	                const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
+	                javaCode = `WebElement input${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            input${stepNum}.sendKeys(${valueStr});`;
+	              } else {
+	                javaCode = `throw new RuntimeException("Input step missing stable locator (no xpath/id/a11y/text available)");`;
+	              }
+	              break;
+	            }
 
-            case "longPress":
-              if (a.coordinates) {
-                javaCode = `// Long Press action
-            driver.executeScript("mobile: longClickGesture", java.util.Map.of(
-                "x", ${a.coordinates.x},
-                "y", ${a.coordinates.y},
-                "duration", 1000
-            ));`;
-              } else {
-                javaCode = `// longPress action (coordinates not captured)`;
-              }
-              break;
+	            case "longPress":
+	              {
+	                const suppliers = locatorSuppliersFor(a);
+	                if (suppliers.length) {
+	                  const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
+	                  javaCode = `WebElement lp${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            driver.executeScript(\"mobile: longClickGesture\", java.util.Map.of(\n                \"elementId\", ((RemoteWebElement) lp${stepNum}).getId(),\n                \"duration\", 1000\n            ));`;
+	                } else {
+	                  javaCode = `throw new RuntimeException(\"LongPress step missing stable locator (no xpath/id/a11y/text available)\");`;
+	                }
+	                break;
+	              }
+	              break;
 
             case "scroll":
               if (a.coordinates) {
@@ -2173,13 +2307,21 @@ ${enabledActions
 
     // Use backend API to add assertion step
     try {
+      const assertionLocator =
+        selectedNode?.resourceId ||
+        selectedNode?.contentDesc ||
+        selectedNode?.text ||
+        selectedNode?.locator ||
+        selectedNode?.xpath ||
+        "system";
+
       const response = await fetch(`${AGENT_URL}/recording/add-step`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "assert",
           description: descriptionMap[type],
-          locator: selectedNode?.xpath || "system",
+          locator: assertionLocator,
           value: selectedNode?.text || "",
           assertionType: type
         })
@@ -2469,7 +2611,7 @@ ${enabledActions
           {/* DEVICE SELECTOR CONTROL - MATCHING DASHBOARD PATTERN */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 py-1 px-3 rounded-lg border border-border bg-card/40 backdrop-blur-md shadow-card transition-all duration-200 hover:bg-muted/30 group">
-              <div className="flex items-center gap-2">
+	                  <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden lg:block">
                   Device
                 </span>
@@ -2663,10 +2805,10 @@ ${enabledActions
                   </div>
                 )}
 
-                {/* INPUT TARGET HIGHLIGHT (visual cue for auto text entry) */}
-                {captureMode && showInputPanel && (inputTargetBounds || inputCoords) && (
-                  <div
-                    className="absolute pointer-events-none z-30 rounded-md border-2 border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
+	                {/* INPUT TARGET HIGHLIGHT (visual cue for auto text entry) */}
+	                {captureMode && showInputPanel && (inputTargetBounds || inputCoords) && (
+	                  <div
+	                    className="absolute pointer-events-none z-30 rounded-md border-2 border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
                     style={(() => {
                       const devW = deviceSize?.width || 1080;
                       const devH = deviceSize?.height || 1920;
@@ -2687,17 +2829,247 @@ ${enabledActions
 
                       return {};
                     })()}
-                  />
-                )}
+	                  />
+	                )}
 
-                {mirrorImage && (
-                  <img
-                    src={mirrorImage}
+	                {/* INSPECTOR HIGHLIGHT + PANEL (additive, does not change layout) */}
+	                {(() => {
+	                  const active = pinnedInspect ?? tapInspect ?? hoverInspect;
+	                  const boundsStr = String(active?.element?.bounds || "");
+	                  const m = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+	                  if (!inspectorModeEnabled || !captureMode || !mirrorImage || !m) return null;
+
+	                  const devW = deviceSize?.width || 1080;
+	                  const devH = deviceSize?.height || 1920;
+	                  const x1 = parseInt(m[1], 10), y1 = parseInt(m[2], 10), x2 = parseInt(m[3], 10), y2 = parseInt(m[4], 10);
+	                  const leftPct = clamp((x1 / devW) * 100, 0, 100);
+	                  const topPct = clamp((y1 / devH) * 100, 0, 100);
+	                  const widthPct = clamp(((x2 - x1) / devW) * 100, 0, 100);
+	                  const heightPct = clamp(((y2 - y1) / devH) * 100, 0, 100);
+
+	                  const el = active?.element || {};
+	                  const lb = active?.locatorBundle || null;
+	                  const locators = (active?.locators && Array.isArray(active.locators))
+	                    ? active.locators
+	                    : (lb ? [lb.primary, ...(lb.fallbacks || [])] : []);
+	                  const score = (typeof active?.reliabilityScore === "number") ? active.reliabilityScore : undefined;
+	                  const best = active?.best || (lb?.primary ?? null);
+
+	                  const targetName =
+	                    String(el.text || "") ||
+	                    String(el.contentDesc || "") ||
+	                    (String(el.resourceId || "").split("/").pop() || "") ||
+	                    String(el.class || "") ||
+	                    "Element";
+
+	                  const band = (score == null) ? "bg-slate-400" : score >= 80 ? "bg-emerald-500" : score >= 50 ? "bg-amber-500" : "bg-red-500";
+	                  const outline = pinnedInspect ? "border-cyan-400/90" : tapInspect ? "border-cyan-400/80" : "border-fuchsia-400/80";
+	                  const glow = pinnedInspect ? "shadow-[0_0_28px_rgba(34,211,238,0.22)]" : tapInspect ? "shadow-[0_0_26px_rgba(34,211,238,0.22)]" : "shadow-[0_0_22px_rgba(217,70,239,0.16)]";
+
+	                  const pillLeft = clamp(leftPct, 1, 78);
+	                  const pillTop = clamp(topPct - 3, 1, 92);
+
+	                  return (
+	                    <>
+	                      {/* Spotlight mask (dims non-target area without blocking taps) */}
+	                      {inspectorSpotlight && (
+	                        <div className="absolute inset-0 pointer-events-none z-30">
+	                          <div className="absolute left-0 top-0 w-full bg-black/20" style={{ height: `${topPct}%` }} />
+	                          <div className="absolute left-0 bg-black/20" style={{ top: `${topPct}%`, width: `${leftPct}%`, height: `${heightPct}%` }} />
+	                          <div className="absolute bg-black/20" style={{ top: `${topPct}%`, left: `${leftPct + widthPct}%`, width: `${100 - (leftPct + widthPct)}%`, height: `${heightPct}%` }} />
+	                          <div className="absolute left-0 w-full bg-black/20" style={{ top: `${topPct + heightPct}%`, height: `${100 - (topPct + heightPct)}%` }} />
+	                        </div>
+	                      )}
+
+	                      {/* Target outline + handles */}
+	                      <div
+	                        className={`absolute pointer-events-none z-40 rounded-md border-2 ${outline} ${glow} ${tapInspect && !pinnedInspect ? "animate-pulse" : ""}`}
+	                        style={{ left: `${leftPct}%`, top: `${topPct}%`, width: `${widthPct}%`, height: `${heightPct}%` }}
+	                      >
+	                        {/* Corner handles */}
+	                        <div className={`absolute -top-1 -left-1 h-3 w-3 border-t-2 border-l-2 ${outline.replace("border-", "border-")} bg-transparent`} />
+	                        <div className={`absolute -top-1 -right-1 h-3 w-3 border-t-2 border-r-2 ${outline.replace("border-", "border-")} bg-transparent`} />
+	                        <div className={`absolute -bottom-1 -left-1 h-3 w-3 border-b-2 border-l-2 ${outline.replace("border-", "border-")} bg-transparent`} />
+	                        <div className={`absolute -bottom-1 -right-1 h-3 w-3 border-b-2 border-r-2 ${outline.replace("border-", "border-")} bg-transparent`} />
+
+	                        {/* Center reticle */}
+	                        <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 shadow" />
+	                        <div className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/50" />
+	                      </div>
+
+	                      {/* Minimal label pill near target (non-blocking) */}
+	                      <div
+	                        className="absolute pointer-events-none z-50"
+	                        style={{ left: `${pillLeft}%`, top: `${pillTop}%` }}
+	                      >
+	                        <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/85 backdrop-blur px-2.5 py-1 shadow-lg">
+	                          <div className={`h-2 w-2 rounded-full ${band}`} />
+	                          <div className="text-[11px] font-semibold text-foreground truncate max-w-[220px]">{targetName}</div>
+	                          {best?.strategy && (
+	                            <div className="text-[10px] font-mono text-muted-foreground">{best.strategy}</div>
+	                          )}
+	                          {typeof score === "number" && (
+	                            <div className="text-[10px] font-mono text-muted-foreground">{score}</div>
+	                          )}
+	                          {pinnedInspect && (
+	                            <div className="text-[10px] font-semibold text-cyan-500">PINNED</div>
+	                          )}
+	                        </div>
+	                      </div>
+
+	                      {/* Docked inspector panel (collapsible, stays out of the way) */}
+	                      <div className="absolute z-50 bottom-3 right-3 pointer-events-auto">
+	                        {!inspectorPanelOpen ? (
+	                          <button
+	                            type="button"
+	                            className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 backdrop-blur px-3 py-1.5 shadow-lg hover:bg-background/90 transition-colors"
+	                            onClick={() => setInspectorPanelOpen(true)}
+	                            title="Open Inspector details"
+	                          >
+	                            <div className={`h-2 w-2 rounded-full ${band}`} />
+	                            <span className="text-xs font-semibold">Inspector</span>
+	                            <span className="text-[11px] font-mono text-muted-foreground">{typeof score === "number" ? score : "--"}</span>
+	                          </button>
+	                        ) : (
+	                          <div className="w-[360px] max-w-[92vw] rounded-xl border border-border/60 bg-background/90 backdrop-blur shadow-2xl overflow-hidden">
+	                            <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
+	                              <div className="flex items-center gap-2">
+	                                <div className={`h-2.5 w-2.5 rounded-full ${band}`} />
+	                                <div className="text-sm font-semibold">Inspector</div>
+	                                <div className="text-xs font-mono text-muted-foreground">{typeof score === "number" ? score : "--"}</div>
+	                              </div>
+	                              <div className="flex items-center gap-2">
+	                                <button
+	                                  type="button"
+	                                  className={`text-xs rounded-md px-2 py-1 border ${pinnedInspect ? "border-cyan-500/60 text-cyan-600 bg-cyan-500/10" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
+	                                  onClick={() => {
+	                                    if (pinnedInspect) setPinnedInspect(null);
+	                                    else if (hoverInspect) setPinnedInspect(hoverInspect);
+	                                  }}
+	                                  title={pinnedInspect ? "Unpin target" : "Pin current hover target"}
+	                                >
+	                                  {pinnedInspect ? "Unpin" : "Pin"}
+	                                </button>
+	                                <button
+	                                  type="button"
+	                                  className={`text-xs rounded-md px-2 py-1 border ${inspectorSpotlight ? "border-foreground/20 text-foreground/80 bg-foreground/5" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
+	                                  onClick={() => setInspectorSpotlight(v => !v)}
+	                                  title="Toggle spotlight"
+	                                >
+	                                  Spotlight
+	                                </button>
+	                                <button
+	                                  type="button"
+	                                  className="text-xs rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground"
+	                                  onClick={() => setInspectorPanelOpen(false)}
+	                                  title="Close"
+	                                >
+	                                  Close
+	                                </button>
+	                              </div>
+	                            </div>
+
+	                            <div className="px-3 py-2 space-y-2">
+	                              <div className="text-xs text-muted-foreground">Target</div>
+	                              <div className="rounded-lg border border-border/50 bg-muted/30 p-2">
+	                                <div className="text-xs font-semibold text-foreground truncate">{targetName}</div>
+	                                <div className="mt-1 grid grid-cols-[88px_1fr] gap-x-2 gap-y-1 text-[11px]">
+	                                  <div className="text-muted-foreground">resource-id</div>
+	                                  <div className="font-mono break-all">{String(el.resourceId || "") || "-"}</div>
+	                                  <div className="text-muted-foreground">content-desc</div>
+	                                  <div className="font-mono break-all">{String(el.contentDesc || "") || "-"}</div>
+	                                  <div className="text-muted-foreground">text</div>
+	                                  <div className="font-mono break-all">{String(el.text || "") || "-"}</div>
+	                                  <div className="text-muted-foreground">class</div>
+	                                  <div className="font-mono break-all">{String(el.class || "") || "-"}</div>
+	                                  <div className="text-muted-foreground">bounds</div>
+	                                  <div className="font-mono break-all">{String(el.bounds || "") || "-"}</div>
+	                                </div>
+	                              </div>
+
+	                              <div className="flex items-center justify-between">
+	                                <div className="text-xs text-muted-foreground">Locators</div>
+	                                <div className="flex items-center gap-2">
+	                                  <div className="text-[11px] font-mono text-muted-foreground">{best ? `${best.strategy}` : "none"}</div>
+	                                  {!!best?.value && best?.strategy === "xpath" && (
+	                                    <button
+	                                      type="button"
+	                                      className="text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+	                                      onClick={() => copyText(String(best.value), "XPath copied")}
+	                                      title="Copy best XPath"
+	                                    >
+	                                      Copy XPath
+	                                    </button>
+	                                  )}
+	                                </div>
+	                              </div>
+	                              <div className="rounded-lg border border-border/50 bg-muted/20 p-2 max-h-[160px] overflow-auto">
+	                                {locators?.length ? (
+	                                  <div className="space-y-1">
+	                                    {locators.slice(0, 6).map((c: any, idx: number) => (
+	                                      <div key={`${c.strategy}-${idx}`} className="flex items-start justify-between gap-2">
+	                                        <button
+	                                          type="button"
+	                                          className={`text-left text-[11px] font-mono break-all ${idx === 0 ? "text-foreground" : "text-muted-foreground"} hover:underline`}
+	                                          onClick={() => copyText(String(c.value || ""), `${c.strategy} copied`)}
+	                                          title="Click to copy"
+	                                        >
+	                                          {c.strategy}: {String(c.value || "")}
+	                                        </button>
+	                                        <div className="text-[10px] font-mono text-muted-foreground">{typeof c.score === "number" ? c.score : ""}</div>
+	                                      </div>
+	                                    ))}
+	                                  </div>
+	                                ) : (
+	                                  <div className="text-[11px] text-muted-foreground">No locator candidates available (fallback to coordinates remains active).</div>
+	                                )}
+	                              </div>
+	                            </div>
+	                          </div>
+	                        )}
+	                      </div>
+	                    </>
+	                  );
+	                })()}
+
+	                {mirrorImage && (
+	                  <img
+	                    src={mirrorImage}
                     alt="Device Screen"
                     className={`w-full h-full object-contain select-none transition-all duration-200 ${captureMode ? 'cursor-pointer opacity-90' : 'cursor-default'}`}
-                    // --- INTERACTION LOGIC ---
-                    onMouseDown={(e) => {
-                      if (!captureMode) return;
+	                    // --- INTERACTION LOGIC ---
+	                    onMouseMove={(e) => {
+	                      if (!captureMode || !inspectorModeEnabled) return;
+	                      const now = Date.now();
+	                      if (now - lastHoverInspectTsRef.current < 120) return;
+	                      lastHoverInspectTsRef.current = now;
+
+	                      const el = e.currentTarget as HTMLImageElement;
+	                      const rect = el.getBoundingClientRect();
+	                      const clickX = e.clientX - rect.left;
+	                      const clickY = e.clientY - rect.top;
+	                      const finalDev = deviceSize || { width: 1080, height: 1920 };
+	                      const deviceX = Math.round((clickX / rect.width) * finalDev.width);
+	                      const deviceY = Math.round((clickY / rect.height) * finalDev.height);
+
+	                      hoverInspectAbortRef.current?.abort();
+	                      const ac = new AbortController();
+	                      hoverInspectAbortRef.current = ac;
+
+	                      fetch(`${AGENT_URL}/device/inspect`, {
+	                        method: "POST",
+	                        headers: { "Content-Type": "application/json" },
+	                        body: JSON.stringify({ x: deviceX, y: deviceY, mode: "hover", preferCache: true }),
+	                        signal: ac.signal
+	                      })
+	                        .then(r => r.json())
+	                        .then((data) => {
+	                          if (data?.success && data.inspect) setHoverInspect(data.inspect);
+	                        })
+	                        .catch(() => { });
+	                    }}
+	                    onMouseDown={(e) => {
+	                      if (!captureMode) return;
                       const el = e.currentTarget as HTMLImageElement;
                       const rect = el.getBoundingClientRect();
                       const clickX = e.clientX - rect.left;
@@ -2774,14 +3146,27 @@ ${enabledActions
                           return { res: response, json: data };
                         }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
 
-                        if (res.ok) {
-                          const step = json.step || {};
-                          const meta = step.elementMetadata || {};
+	                        if (res.ok) {
+	                          const step = json.step || {};
+	                          const meta = step.elementMetadata || {};
                           const resourceId = String(meta.resourceId || step.elementId || "").toLowerCase();
                           const className = String(meta.class || step.elementClass || "").toLowerCase();
 
-                          // DEBUG: See exactly what your app is reporting in the Console (F12)
-                          console.log("Tap Metadata:", meta);
+	                          // DEBUG: See exactly what your app is reporting in the Console (F12)
+	                          console.log("Tap Metadata:", meta);
+
+	                          if (inspectorModeEnabled) {
+	                            const lb = step.locatorBundle || null;
+	                            setTapInspect({
+	                              element: meta,
+	                              locatorBundle: lb,
+	                              locators: lb ? [lb.primary, ...(lb.fallbacks || [])] : [],
+	                              best: lb?.primary || null,
+	                              reliabilityScore: (typeof step.reliabilityScore === "number") ? step.reliabilityScore : undefined,
+	                              smartXPath: step.smartXPath || step.xpath || ""
+	                            });
+	                            setTimeout(() => setTapInspect(null), 650);
+	                          }
 
                           const isInput =
                             // Standard Checks
@@ -2842,20 +3227,21 @@ ${enabledActions
                             // setInputCoords({ x: deviceX, y: deviceY });
                             // setShowInputPanel(true);
                           }
-                        }
-                      } catch (err: any) {
-                        toast.error(err.message || "Interaction failed");
-                      }
-                      pressCoordsRef.current = null;
-                    }}
-                    onMouseLeave={() => {
-                      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-                      isDraggingRef.current = false;
-                      pressCoordsRef.current = null;
-                    }}
-                    draggable={false}
-                  />
-                )}
+	                        }
+	                      } catch (err: any) {
+	                        toast.error(err.message || "Interaction failed");
+	                      }
+	                      pressCoordsRef.current = null;
+	                    }}
+	                    onMouseLeave={() => {
+	                      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+	                      isDraggingRef.current = false;
+	                      pressCoordsRef.current = null;
+	                      if (!pinnedInspect) setHoverInspect(null);
+	                    }}
+	                    draggable={false}
+	                  />
+	                )}
               </div>
             )}
           </div>
@@ -3558,11 +3944,13 @@ ${enabledActions
                   ) : (
                     <ScrollArea className="h-[450px] pr-4">
                       <div className="space-y-3">
-                        {actions.map((a, i) => (
-                          <div
-                            key={a.id}
-                            className={`group flex items-start gap-3 p-3 border rounded-lg transition-all duration-200 hover:shadow-sm ${replayIndex === i ? 'bg-primary/5 border-primary ring-1 ring-primary/20' : 'bg-muted/30 border-transparent hover:border-border hover:bg-muted/50'}`}
-                          >
+	                        {actions.map((a, i) => (
+	                          <div
+	                            key={a.id}
+	                            data-action-index={i}
+	                            data-action-id={a.id}
+	                            className={`group flex items-start gap-3 p-3 border rounded-lg transition-all duration-200 hover:shadow-sm ${replayIndex === i ? 'bg-primary/5 border-primary ring-1 ring-primary/20' : 'bg-muted/30 border-transparent hover:border-border hover:bg-muted/50'}`}
+	                          >
                             <div className="flex flex-col items-center gap-1 mt-0.5">
                               <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${replayIndex === i ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors'}`}>
                                 {i + 1}
@@ -3642,7 +4030,7 @@ ${enabledActions
                               <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 break-words mb-1.5 line-clamp-2">
                                 {a.description}
                               </p>
-                              {!a.elementId && !a.elementText && !a.elementContentDesc && a.type === "tap" && (
+                              {!a.elementId && !a.elementText && !a.elementContentDesc && !a.xpath && a.type === "tap" && (
                                 <div className="mb-2 flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded w-fit">
                                   <AlertCircle className="h-3 w-3" />
                                   <span>Coordinate fallback mode</span>
@@ -3661,20 +4049,145 @@ ${enabledActions
                                     ID: {a.elementId.split('/').pop()}
                                   </Badge>
                                 )}
-                                {a.elementText && (
-                                  <Badge variant="outline" className="bg-green-500/5 text-green-600 dark:text-green-400 text-[10px] px-1.5 h-5 border-green-500/20">
-                                    TXT: "{a.elementText.length > 20 ? a.elementText.substring(0, 20) + '...' : a.elementText}"
-                                  </Badge>
-                                )}
-                                {a.value && a.type !== "input" && (
-                                  <Badge variant="outline" className="bg-amber-500/5 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 h-5 border-amber-500/20 font-mono">
-                                    VAL: {a.value}
-                                  </Badge>
-                                )}
-                              </div>
+	                                {a.elementText && (
+	                                  <Badge variant="outline" className="bg-green-500/5 text-green-600 dark:text-green-400 text-[10px] px-1.5 h-5 border-green-500/20">
+	                                    TXT: "{a.elementText.length > 20 ? a.elementText.substring(0, 20) + '...' : a.elementText}"
+	                                  </Badge>
+	                                )}
+	                                {typeof (a as any).reliabilityScore === "number" && (
+	                                  <Badge
+	                                    variant="outline"
+	                                    className={`text-[10px] px-1.5 h-5 border font-mono ${((a as any).reliabilityScore >= 80)
+	                                      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/25 dark:text-emerald-300"
+	                                      : ((a as any).reliabilityScore >= 50)
+	                                        ? "bg-amber-500/10 text-amber-700 border-amber-500/25 dark:text-amber-300"
+	                                        : "bg-red-500/10 text-red-700 border-red-500/25 dark:text-red-300"
+	                                      }`}
+	                                  >
+	                                    SCORE: {(a as any).reliabilityScore}
+	                                  </Badge>
+	                                )}
+	                                {a.value && a.type !== "input" && (
+	                                  <Badge variant="outline" className="bg-amber-500/5 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 h-5 border-amber-500/20 font-mono">
+	                                    VAL: {a.value}
+	                                  </Badge>
+	                                )}
+	                              </div>
 
-                              {a.type === "input" && (
-                                <div className="mt-3 p-2 bg-muted/30 rounded-lg border border-dashed border-muted">
+	                              {(["tap", "input", "longPress", "assert"] as string[]).includes(a.type) && (
+	                                <div className="mt-3 p-2 bg-background/40 rounded-lg border border-border/50">
+	                                  {(() => {
+	                                    const lb = (a as any).locatorBundle || null;
+	                                    const best = lb?.primary || null;
+	                                    const bestXpath =
+	                                      (best?.strategy === "xpath" && best?.value) ? String(best.value) :
+	                                        ((a as any).smartXPath && String((a as any).smartXPath).startsWith("//") ? String((a as any).smartXPath) :
+	                                          (a.xpath && String(a.xpath).startsWith("//") ? String(a.xpath) : ""));
+	                                    const locatorLabel =
+	                                      (a.locatorStrategy && a.locatorStrategy !== "") ? `${a.locatorStrategy}: ${a.locator}` :
+	                                        (best ? `${best.strategy}: ${best.value}` : a.locator);
+
+	                                    if (editingLocatorStepId === a.id) {
+	                                      return (
+	                                        <div className="space-y-2">
+	                                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Locator (XPath)</div>
+	                                          <Input
+	                                            value={editingLocatorValue}
+	                                            onChange={(e: any) => setEditingLocatorValue(e.target.value)}
+	                                            className="h-8 text-xs bg-background font-mono"
+	                                            autoFocus
+	                                            placeholder='//*/[@resource-id="..."]'
+	                                            onKeyDown={(e: any) => {
+	                                              if (e.key === "Enter") {
+	                                                const v = editingLocatorValue.trim();
+	                                                if (!v.startsWith("//")) {
+	                                                  toast.error("Please enter a valid XPath starting with //");
+	                                                  return;
+	                                                }
+	                                                setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, locator: v, locatorStrategy: "xpath" } : p));
+	                                                setSavedManualScript(null);
+	                                                setEditingLocatorStepId(null);
+	                                                toast.success("Locator updated");
+	                                              }
+	                                              if (e.key === "Escape") setEditingLocatorStepId(null);
+	                                            }}
+	                                          />
+	                                          <div className="flex items-center gap-2">
+	                                            <Button
+	                                              size="sm"
+	                                              className="h-8 px-2 text-xs"
+	                                              onClick={() => {
+	                                                const v = editingLocatorValue.trim();
+	                                                if (!v.startsWith("//")) {
+	                                                  toast.error("Please enter a valid XPath starting with //");
+	                                                  return;
+	                                                }
+	                                                setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, locator: v, locatorStrategy: "xpath" } : p));
+	                                                setSavedManualScript(null);
+	                                                setEditingLocatorStepId(null);
+	                                                toast.success("Locator updated");
+	                                              }}
+	                                            >
+	                                              Save
+	                                            </Button>
+	                                            <Button
+	                                              size="sm"
+	                                              variant="ghost"
+	                                              className="h-8 px-2 text-xs"
+	                                              onClick={() => setEditingLocatorStepId(null)}
+	                                            >
+	                                              Cancel
+	                                            </Button>
+	                                          </div>
+	                                        </div>
+	                                      );
+	                                    }
+
+	                                    return (
+	                                      <div className="space-y-1.5">
+	                                        <div className="flex items-center justify-between gap-2">
+	                                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Locator</div>
+	                                          <div className="flex items-center gap-1">
+	                                            {!!bestXpath && (
+	                                              <Button
+	                                                size="sm"
+	                                                variant="ghost"
+	                                                className="h-6 text-[10px] px-1.5"
+	                                                onClick={() => copyText(bestXpath, "XPath copied")}
+	                                              >
+	                                                <Copy className="h-3 w-3 mr-1" />
+	                                                Copy XPath
+	                                              </Button>
+	                                            )}
+	                                            <Button
+	                                              size="sm"
+	                                              variant="ghost"
+	                                              className="h-6 text-[10px] px-1.5"
+	                                              onClick={() => {
+	                                                const seed = bestXpath || (a.locatorStrategy === "xpath" ? a.locator : "");
+	                                                setEditingLocatorStepId(a.id);
+	                                                setEditingLocatorValue(seed || "");
+	                                              }}
+	                                            >
+	                                              <Edit className="h-3 w-3 mr-1" />
+	                                              Edit
+	                                            </Button>
+	                                          </div>
+	                                        </div>
+	                                        <div className="text-[11px] font-mono text-muted-foreground break-all">
+	                                          {locatorLabel || <em>(no locator)</em>}
+	                                        </div>
+	                                        <div className="text-[10px] text-muted-foreground/80">
+	                                          Tip: copy XPath from the Inspector panel and paste here to make replay + script more reliable.
+	                                        </div>
+	                                      </div>
+	                                    );
+	                                  })()}
+	                                </div>
+	                              )}
+
+	                              {a.type === "input" && (
+	                                <div className="mt-3 p-2 bg-muted/30 rounded-lg border border-dashed border-muted">
                                   {editingStepId === a.id ? (
                                     <div className="flex items-center gap-2">
                                       <Input
@@ -3915,12 +4428,23 @@ ${enabledActions
                       </Badge>
                     )}
 
-                    {replaying && (
-                      <Badge variant="secondary" className="animate-pulse bg-primary/10 text-primary border-primary/20">
-                        <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
-                        Running Replay
-                      </Badge>
-                    )}
+	                    {replaying && (
+	                      <div className="flex items-center gap-2">
+	                        <Badge variant="secondary" className="animate-pulse bg-primary/10 text-primary border-primary/20">
+	                          <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
+	                          Running Replay
+	                        </Badge>
+	                        <Button
+	                          variant="destructive"
+	                          size="sm"
+	                          className="h-8 text-xs font-bold shadow-md hover:shadow-lg transition-all"
+	                          onClick={stopReplay}
+	                        >
+	                          <Square className="h-3.5 w-3.5 mr-1.5" />
+	                          Stop
+	                        </Button>
+	                      </div>
+	                    )}
                     {!replaying && executionLogs.length > 0 && (
                       <div className="flex items-center gap-2">
                         {lastReplayStatus === "FAIL" && (
@@ -4007,7 +4531,7 @@ ${enabledActions
 
                       <ScrollArea className="h-[480px] pr-4">
                         <div className="space-y-4">
-                          {executionLogs.map((log, i) => (
+	                          {executionLogs.map((log, i) => (
                             <div
                               key={`${log.id}-${i}`}
                               data-step-index={i}
@@ -4044,15 +4568,57 @@ ${enabledActions
                                 </div>
                               </div>
 
-                              {log.status === "error" && log.error && (
-                                <div className="mt-3 p-3 bg-destructive/10 rounded-lg text-xs text-destructive border border-destructive/20 animate-in fade-in slide-in-from-top-2 duration-300">
+	                              {log.status === "error" && log.error && (
+	                                <div className="mt-3 p-3 bg-destructive/10 rounded-lg text-xs text-destructive border border-destructive/20 animate-in fade-in slide-in-from-top-2 duration-300">
                                   <div className="flex items-center gap-2 mb-1">
                                     <AlertCircle className="h-3.5 w-3.5" />
                                     <span className="font-bold uppercase tracking-tight text-[10px]">Failure Reason</span>
                                   </div>
-                                  <p className="leading-relaxed font-medium opacity-90">{log.error}</p>
-                                </div>
-                              )}
+	                                  <p className="leading-relaxed font-medium opacity-90">{log.error}</p>
+	                                  <div className="mt-3 flex flex-wrap gap-2">
+	                                    <Button
+	                                      variant="outline"
+	                                      size="sm"
+	                                      className="h-7 text-xs"
+	                                      disabled={replaying}
+	                                      onClick={() => {
+	                                        const enabledActions = actions.filter(a => a.enabled !== false);
+	                                        const a = enabledActions[i];
+	                                        if (!a) return toast.error("Step not found");
+	                                        replaySingleAction(a);
+	                                      }}
+	                                    >
+	                                      <Play className="h-3.5 w-3.5 mr-1.5" />
+	                                      Re-run Step
+	                                    </Button>
+	                                    <Button
+	                                      variant="secondary"
+	                                      size="sm"
+	                                      className="h-7 text-xs"
+	                                      disabled={replaying}
+	                                      onClick={() => replayActions(i)}
+	                                    >
+	                                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+	                                      Continue From Here
+	                                    </Button>
+	                                    <Button
+	                                      variant="outline"
+	                                      size="sm"
+	                                      className="h-7 text-xs"
+	                                      onClick={() => {
+	                                        setActiveTab("actions");
+	                                        setTimeout(() => {
+	                                          const element = document.querySelector(`[data-action-index="${i}"]`);
+	                                          element?.scrollIntoView({ behavior: "smooth", block: "center" });
+	                                        }, 50);
+	                                      }}
+	                                    >
+	                                      <Edit className="h-3.5 w-3.5 mr-1.5" />
+	                                      Edit Step
+	                                    </Button>
+	                                  </div>
+	                                </div>
+	                              )}
                             </div>
                           ))}
                         </div>

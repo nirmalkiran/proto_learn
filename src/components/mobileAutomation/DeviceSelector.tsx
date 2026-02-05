@@ -177,8 +177,7 @@ export default function DeviceSelector({
     <div className="relative">
       {loading && !disabled && <p className="text-sm">Checking devices...</p>}
 
-      {/* Dropdown-style device selector */}
-      {/* inline-block prevents the dropdown from stretching to the full flex row width */}
+
       <div className="relative inline-block align-top" ref={dropdownRef}>
         <button
           ref={triggerRef}

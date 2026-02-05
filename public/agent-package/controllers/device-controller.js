@@ -22,11 +22,16 @@ import {
 } from '../utils/adb-utils.js';
 import { CONFIG } from '../config.js';
 import { parseStringPromise } from 'xml2js';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 class DeviceController {
   constructor() {
     this.connectedDevices = [];
     this.primaryDevice = null;
+    this._uiCache = { xml: null, parsed: null, ts: 0 };
+    this._uiCacheTtlMs = 1500;
   }
 
   async _resolveTargetDeviceId(deviceId = null) {
@@ -48,48 +53,190 @@ class DeviceController {
     return primaryId;
   }
 
+  _extractNodeMeta(node) {
+    if (!node || !node.$) return null;
+    return {
+      resourceId: node.$['resource-id'] || '',
+      text: node.$.text || '',
+      class: node.$.class || '',
+      contentDesc: node.$['content-desc'] || '',
+      bounds: node.$.bounds || '',
+      clickable: node.$.clickable || '',
+      enabled: node.$.enabled || '',
+      focusable: node.$.focusable || '',
+      focused: node.$.focused || '',
+      editable: node.$.editable || '',
+      scrollable: node.$.scrollable || '',
+      visibleToUser: node.$['visible-to-user'] || '',
+      package: node.$.package || ''
+    };
+  }
+
+  _parseBounds(boundsStr) {
+    if (!boundsStr) return null;
+    const match = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+    if (!match) return null;
+    const x1 = parseInt(match[1], 10);
+    const y1 = parseInt(match[2], 10);
+    const x2 = parseInt(match[3], 10);
+    const y2 = parseInt(match[4], 10);
+    return { x1, y1, x2, y2, area: Math.max(0, (x2 - x1) * (y2 - y1)) };
+  }
+
+  _pickBestCandidate(current, candidate) {
+    if (!current) return candidate;
+
+    const currentVisible = current.visibleToUser === 'true';
+    const candidateVisible = candidate.visibleToUser === 'true';
+    if (candidateVisible && !currentVisible) return candidate;
+    if (!candidateVisible && currentVisible) return current;
+
+    const currentInteractive = current.clickable === 'true' || current.focusable === 'true' || current.editable === 'true';
+    const candidateInteractive = candidate.clickable === 'true' || candidate.focusable === 'true' || candidate.editable === 'true';
+    if (candidateInteractive && !currentInteractive) return candidate;
+    if (!candidateInteractive && currentInteractive) return current;
+
+    if (candidate.area < current.area) return candidate;
+    if (candidate.area > current.area) return current;
+
+    const currentQuality = (current.resourceId ? 3 : 0) + (current.contentDesc ? 2 : 0) + (current.text ? 1 : 0);
+    const candidateQuality = (candidate.resourceId ? 3 : 0) + (candidate.contentDesc ? 2 : 0) + (candidate.text ? 1 : 0);
+    if (candidateQuality > currentQuality) return candidate;
+    if (candidateQuality < currentQuality) return current;
+
+    if (candidate.depth > current.depth) return candidate;
+    return current;
+  }
+
   /**
    * Helper to find element at coordinates (x, y) from hierarchy object
    */
-  _findElementAt(x, y, node) {
-    if (!node) return null;
+  _findElementAt(x, y, node, opts = {}) {
+    if (!node) return opts.best || null;
 
-    let foundElement = null;
+    const tolerance = opts.tolerance ?? 6;
+    const depth = opts.depth ?? 0;
+    let best = opts.best || null;
 
-    // Check if the current node has bounds and contains (x, y)
-    if (node.$ && node.$.bounds) {
-      const bounds = node.$.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-      if (bounds) {
-        const x1 = parseInt(bounds[1], 10);
-        const y1 = parseInt(bounds[2], 10);
-        const x2 = parseInt(bounds[3], 10);
-        const y2 = parseInt(bounds[4], 10);
+    const bounds = this._parseBounds(node.$?.bounds);
+    if (bounds) {
+      const inBounds =
+        x >= (bounds.x1 - tolerance) &&
+        x <= (bounds.x2 + tolerance) &&
+        y >= (bounds.y1 - tolerance) &&
+        y <= (bounds.y2 + tolerance);
 
-        if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
-          foundElement = {
-            resourceId: node.$['resource-id'] || '',
-            text: node.$.text || '',
-            class: node.$.class || '',
-            contentDesc: node.$['content-desc'] || '',
-            bounds: node.$.bounds
-          };
+      if (inBounds) {
+        const meta = this._extractNodeMeta(node);
+        if (meta) {
+          best = this._pickBestCandidate(best, { ...meta, area: bounds.area, depth });
         }
       }
     }
 
-    // Recursively check children
     if (node.node) {
       const children = Array.isArray(node.node) ? node.node : [node.node];
       for (const child of children) {
-        const result = this._findElementAt(x, y, child);
-        if (result) {
-          // Keep the deepest (most specific) element
-          foundElement = result;
+        best = this._findElementAt(x, y, child, { tolerance, depth: depth + 1, best }) || best;
+      }
+    }
+
+    return best;
+  }
+
+  _distanceToBounds(x, y, bounds) {
+    const dx = x < bounds.x1 ? (bounds.x1 - x) : (x > bounds.x2 ? (x - bounds.x2) : 0);
+    const dy = y < bounds.y1 ? (bounds.y1 - y) : (y > bounds.y2 ? (y - bounds.y2) : 0);
+    return Math.hypot(dx, dy);
+  }
+
+  _findNearestElement(x, y, node, opts = {}) {
+    if (!node) return opts.best || null;
+
+    const radius = opts.radius ?? 24;
+    const depth = opts.depth ?? 0;
+    let best = opts.best || null;
+
+    const bounds = this._parseBounds(node.$?.bounds);
+    if (bounds) {
+      const distance = this._distanceToBounds(x, y, bounds);
+      if (distance <= radius) {
+        const meta = this._extractNodeMeta(node);
+        if (meta) {
+          const candidate = { ...meta, distance, depth };
+          if (!best) {
+            best = candidate;
+          } else {
+            const bestInteractive = best.clickable === 'true' || best.focusable === 'true' || best.editable === 'true';
+            const candInteractive = candidate.clickable === 'true' || candidate.focusable === 'true' || candidate.editable === 'true';
+            if (candInteractive && !bestInteractive) best = candidate;
+            else if (distance < best.distance) best = candidate;
+          }
         }
       }
     }
 
-    return foundElement;
+    if (node.node) {
+      const children = Array.isArray(node.node) ? node.node : [node.node];
+      for (const child of children) {
+        best = this._findNearestElement(x, y, child, { radius, depth: depth + 1, best }) || best;
+      }
+    }
+
+    return best;
+  }
+
+  async _getUiHierarchySnapshot(deviceId, forceFresh = true) {
+    const now = Date.now();
+
+    if (!forceFresh && this._uiCache.xml && now - this._uiCache.ts < this._uiCacheTtlMs) {
+      return { xml: this._uiCache.xml, fromCache: true };
+    }
+
+    const xml = await getUIHierarchy(deviceId);
+    if (xml && xml.includes('<hierarchy')) {
+      this._uiCache = { xml, parsed: null, ts: now };
+      return { xml, fromCache: false };
+    }
+
+    if (this._uiCache.xml && now - this._uiCache.ts < this._uiCacheTtlMs * 2) {
+      return { xml: this._uiCache.xml, fromCache: true };
+    }
+
+    return { xml: null, fromCache: false };
+  }
+
+  _escapeXpathValue(value) {
+    if (value == null) return "";
+    return String(value);
+  }
+
+  _xpathLiteral(value) {
+    const s = this._escapeXpathValue(value);
+    if (!s.includes('"')) return `"${s}"`;
+    if (!s.includes("'")) return `'${s}'`;
+
+    const parts = s.split('"');
+    const concatParts = [];
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].length) concatParts.push(`"${parts[i]}"`);
+      if (i !== parts.length - 1) concatParts.push(`'"'`);
+    }
+    return `concat(${concatParts.join(", ")})`;
+  }
+
+  _buildXPath(meta) {
+    if (!meta) return '';
+
+    const clauses = [];
+    if (meta.class) clauses.push(`@class=${this._xpathLiteral(meta.class)}`);
+
+    if (meta.resourceId) clauses.push(`@resource-id=${this._xpathLiteral(meta.resourceId)}`);
+    else if (meta.contentDesc) clauses.push(`@content-desc=${this._xpathLiteral(meta.contentDesc)}`);
+    else if (meta.text) clauses.push(`@text=${this._xpathLiteral(meta.text)}`);
+
+    if (!clauses.length) return '';
+    return `//*[${clauses.join(" and ")}]`;
   }
 
   /**
@@ -97,19 +244,60 @@ class DeviceController {
    * Useful for recording (input focus) and script generation.
    */
   async getElementAt(x, y, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
-
     try {
-      const xml = await getUIHierarchy(targetDevice);
-      if (!xml) return null;
-      const result = await parseStringPromise(xml);
-      if (result && result.hierarchy && result.hierarchy.node) {
-        return this._findElementAt(x, y, result.hierarchy.node[0]);
-      }
-      return null;
+      const targetDevice = await this._resolveTargetDeviceId(deviceId);
+      const deviceInfo = this.connectedDevices.find(d => d.id === targetDevice);
+
+      const resolveFromXml = async (label) => {
+        const { xml, fromCache } = await this._getUiHierarchySnapshot(targetDevice, true);
+        if (!xml) {
+          console.warn('[DeviceController] UI hierarchy missing', { deviceId: targetDevice, fromCache, x, y, label });
+          return null;
+        }
+
+        const nodeCount = (xml.match(/<node /g) || []).length;
+        const result = await parseStringPromise(xml);
+        if (!result || !result.hierarchy || !result.hierarchy.node) {
+          console.warn('[DeviceController] UI hierarchy parse failed', { deviceId: targetDevice, nodeCount, fromCache, label });
+          return null;
+        }
+
+        const root = result.hierarchy.node[0];
+        const best = this._findElementAt(x, y, root, { tolerance: 8 });
+        if (best) return best;
+
+        const nearest = this._findNearestElement(x, y, root, { radius: 28 });
+        if (nearest) return nearest;
+
+        const xmlSnippet = xml.slice(0, 200);
+        if (process.env.WISPR_UI_SNAPSHOT === '1') {
+          try {
+            const filePath = path.join(os.tmpdir(), `ui_dump_${Date.now()}.xml`);
+            fs.writeFileSync(filePath, xml);
+            console.warn('[DeviceController] UI snapshot saved', { filePath, deviceId: targetDevice });
+          } catch (e) {
+            console.warn('[DeviceController] Failed to save UI snapshot', { error: e.message });
+          }
+        }
+
+        console.warn('[DeviceController] No element match for point', {
+          deviceId: targetDevice,
+          deviceType: deviceInfo?.type,
+          x,
+          y,
+          nodeCount,
+          fromCache,
+          label,
+          xmlSnippet
+        });
+        return null;
+      };
+
+      const first = await resolveFromXml("fresh");
+      if (first) return first;
+
+      await new Promise(resolve => setTimeout(resolve, 120));
+      return await resolveFromXml("retry");
     } catch (error) {
       console.warn('[DeviceController] Failed to get/parse UI Hierarchy:', error.message);
       return null;
@@ -220,21 +408,7 @@ class DeviceController {
   async tap(x, y, deviceId = null) {
     const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
-    let elementMetadata = null;
-
-    try {
-      // Get UI Hierarchy to find element at coordinates
-      const xml = await getUIHierarchy(targetDevice);
-      if (xml) {
-        const result = await parseStringPromise(xml);
-        // Hierarchy object structure: hierarchy -> node (root)
-        if (result && result.hierarchy && result.hierarchy.node) {
-          elementMetadata = this._findElementAt(x, y, result.hierarchy.node[0]);
-        }
-      }
-    } catch (error) {
-      console.warn('[DeviceController] Failed to get/parse UI Hierarchy for tap:', error.message);
-    }
+    const elementMetadata = await this.getElementAt(x, y, targetDevice);
 
     // Perform the actual tap
     await tapDevice(x, y, targetDevice);
@@ -243,7 +417,8 @@ class DeviceController {
       x,
       y,
       deviceId: targetDevice,
-      element: elementMetadata
+      element: elementMetadata,
+      xpath: this._buildXPath(elementMetadata)
     };
   }
 
@@ -253,20 +428,7 @@ class DeviceController {
   async longPress(x, y, duration = 1000, deviceId = null) {
     const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
-    let elementMetadata = null;
-
-    try {
-      // Get UI Hierarchy to find element at coordinates
-      const xml = await getUIHierarchy(targetDevice);
-      if (xml) {
-        const result = await parseStringPromise(xml);
-        if (result && result.hierarchy && result.hierarchy.node) {
-          elementMetadata = this._findElementAt(x, y, result.hierarchy.node[0]);
-        }
-      }
-    } catch (error) {
-      console.warn('[DeviceController] Failed to get/parse UI Hierarchy for long press:', error.message);
-    }
+    const elementMetadata = await this.getElementAt(x, y, targetDevice);
 
     // Perform the actual long press (swipe with same start and end coordinates)
     await swipeDevice(x, y, x, y, duration, targetDevice);
@@ -276,7 +438,8 @@ class DeviceController {
       y,
       duration,
       deviceId: targetDevice,
-      element: elementMetadata
+      element: elementMetadata,
+      xpath: this._buildXPath(elementMetadata)
     };
   }
 

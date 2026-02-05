@@ -22,7 +22,9 @@ FILES=(
   "agent.js" "package.json" "config.js"
   "controllers/appium-controller.js" "controllers/device-controller.js" "controllers/emulator-controller.js"
   "services/recording-service.js" "services/replay-engine.js" "services/screenshot-service.js"
-  "utils/adb-utils.js" "utils/process-manager.js" "README.md" "Dockerfile"
+  "services/inspector-service.js" "services/smart-xpath-builder.js" "services/locator-healing-engine.js"
+  "services/hierarchy-snapshot-store.js" "services/hierarchy-diff.js" "services/locator-history-store.js"
+  "utils/adb-utils.js" "utils/process-manager.js" "utils/ui-hierarchy-fast.js" "README.md" "Dockerfile"
 )
 
 for f in "${FILES[@]}"; do
