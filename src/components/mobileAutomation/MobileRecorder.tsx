@@ -156,6 +156,15 @@ export default function MobileRecorder({
   const [deviceSize, setDeviceSize] = useState<{ width: number; height: number } | null>(null);
   const [inputText, setInputText] = useState("");
   const [inputCoords, setInputCoords] = useState<{ x: number; y: number } | null>(null);
+  const inputFieldRef = useRef<HTMLInputElement>(null);
+  const [inputTargetMeta, setInputTargetMeta] = useState<{
+    resourceId?: string;
+    text?: string;
+    class?: string;
+    contentDesc?: string;
+    bounds?: string;
+  } | null>(null);
+  const [inputTargetBounds, setInputTargetBounds] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [appPackage, setAppPackage] = useState("");
   const [isAppInstalled, setIsAppInstalled] = useState<boolean | null>(null);
   const [checkingInstall, setCheckingInstall] = useState(false);
@@ -230,9 +239,22 @@ export default function MobileRecorder({
               if (match) {
                 x = Math.round((parseInt(match[1]) + parseInt(match[3])) / 2);
                 y = Math.round((parseInt(match[2]) + parseInt(match[4])) / 2);
+                setInputTargetBounds({
+                  x1: parseInt(match[1], 10),
+                  y1: parseInt(match[2], 10),
+                  x2: parseInt(match[3], 10),
+                  y2: parseInt(match[4], 10),
+                });
               }
             }
 
+            setInputTargetMeta({
+              resourceId: data.focusedElement.resourceId,
+              text: data.focusedElement.text,
+              class: data.focusedElement.class,
+              contentDesc: data.focusedElement.contentDesc,
+              bounds: data.focusedElement.bounds,
+            });
             setInputText("");
             setInputCoords({ x, y });
             setShowInputPanel(true);
@@ -262,6 +284,16 @@ export default function MobileRecorder({
       if (burstTimeout2) clearTimeout(burstTimeout2);
     };
   }, [recording, isPaused, mirrorActive, showInputPanel, inputPending]);
+
+  // Auto-focus the text input panel when it opens (auto or manual)
+  useEffect(() => {
+    if (!showInputPanel) return;
+    const raf = requestAnimationFrame(() => {
+      inputFieldRef.current?.focus();
+      inputFieldRef.current?.select?.();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [showInputPanel]);
 
 
   const [executionLogs, setExecutionLogs] = useState<{
@@ -418,17 +450,47 @@ export default function MobileRecorder({
           // Handle real-time step recording from server
           if (!recording || isPaused) return;
 
-          const newStep = {
-            ...event.step,
-            id: event.step.id || crypto.randomUUID(), // Prefer server ID
-            enabled: true
+          const rawStep = event.step || {};
+          if (!rawStep.type) return;
+
+          const meta = rawStep.elementMetadata || null;
+          const elementId = rawStep.elementId || meta?.resourceId || "";
+          const elementText = rawStep.elementText || meta?.text || "";
+          const elementClass = rawStep.elementClass || meta?.class || "";
+          const elementContentDesc = rawStep.elementContentDesc || meta?.contentDesc || "";
+
+          const coords = rawStep.coordinates || null;
+          const coordsLocator = (coords && typeof coords.x === "number" && typeof coords.y === "number")
+            ? `${coords.x},${coords.y}`
+            : "";
+
+          let locator = rawStep.locator || "";
+          if (!locator || locator === "system") {
+            locator = elementId || elementContentDesc || elementText || coordsLocator || "";
+          }
+
+          const newStep: RecordedAction = {
+            id: String(rawStep.id ?? crypto.randomUUID()),
+            type: rawStep.type,
+            description: rawStep.description || `${rawStep.type} action`,
+            locator,
+            value: rawStep.value,
+            enabled: rawStep.enabled ?? true,
+            coordinates: coords,
+            timestamp: (typeof rawStep.timestamp === "number") ? rawStep.timestamp : Date.now(),
+            elementId,
+            elementText,
+            elementClass,
+            elementContentDesc,
+            elementMetadata: meta,
+            assertionType: rawStep.assertionType,
           };
 
           setActions(prev => {
             // Deduplicate based on ID if server provides it, otherwise use type+timestamp
             const isDuplicate = prev.some(a =>
               (a.id === newStep.id) ||
-              (a.type === newStep.type && Math.abs(a.timestamp - newStep.timestamp) < 300)
+              (a.type === newStep.type && Math.abs((a.timestamp || 0) - (newStep.timestamp || 0)) < 300)
             );
             if (isDuplicate) return prev;
             return [...prev, newStep];
@@ -860,6 +922,17 @@ export default function MobileRecorder({
         setMirrorLoading(false);
         toast.error("No device connected");
         return;
+      }
+
+      // If user selected an AVD name (e.g. "Pixel_4a"), bind to the actual ADB device id (e.g. "emulator-5554")
+      // so replay/shell commands target a real connected device. Keep `selectedDevice.device` unchanged so we can
+      // still refer to the AVD name for emulator start UX.
+      const resolvedDeviceId =
+        deviceData.primaryDevice ||
+        (Array.isArray(deviceData.devices) ? deviceData.devices[0]?.id : null);
+
+      if (resolvedDeviceId && selectedDevice.id !== resolvedDeviceId) {
+        setSelectedDevice(prev => prev ? { ...prev, id: resolvedDeviceId } : prev);
       }
 
       // Test screenshot endpoint first
@@ -1348,15 +1421,18 @@ ${enabledActions
           let javaCode = "";
 
           switch (a.type) {
-            case "tap":
+            case "tap": {
               if (a.elementId) {
-                javaCode = `driver.findElement(AppiumBy.id("${a.elementId}")).click();`;
+                javaCode = `WebElement el${stepNum} = driver.findElement(AppiumBy.id("${a.elementId}"));\n            el${stepNum}.click();`;
               } else if (a.elementContentDesc) {
-                javaCode = `driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}")).click();`;
+                javaCode = `WebElement el${stepNum} = driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}"));\n            el${stepNum}.click();`;
               } else if (a.elementText) {
-                javaCode = `driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")")).click();`;
+                javaCode = `WebElement el${stepNum} = driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")"));\n            el${stepNum}.click();`;
               } else if (a.locator && a.locator !== "system") {
-                javaCode = `driver.findElement(AppiumBy.xpath("${a.locator}")).click();`;
+                const looksLikeXpath = a.locator.startsWith("/") || a.locator.startsWith("(");
+                javaCode = looksLikeXpath
+                  ? `WebElement el${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            el${stepNum}.click();`
+                  : `WebElement el${stepNum} = driver.findElement(AppiumBy.id("${a.locator}"));\n            el${stepNum}.click();`;
               } else if (a.coordinates) {
                 javaCode = `// Coordinate tap at (${a.coordinates.x}, ${a.coordinates.y})
             // Use W3C Actions for coordinates if needed
@@ -1368,12 +1444,33 @@ ${enabledActions
                 javaCode = `// Action missing locator and coordinates`;
               }
               break;
+            }
 
-            case "input":
-              const value = a.value || `System.getenv("INPUT_${stepNum}")`;
-              const valueStr = a.value ? `"${a.value}"` : value;
-              javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`;
+            case "input": {
+              const valueEnv = `System.getenv("INPUT_${stepNum}")`;
+              const escapedValue = (typeof a.value === "string")
+                ? a.value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")
+                : "";
+              const valueStr = a.value ? `"${escapedValue}"` : valueEnv;
+
+              if (a.elementId) {
+                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.id("${a.elementId}"));\n            input${stepNum}.sendKeys(${valueStr});`;
+              } else if (a.elementContentDesc) {
+                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.accessibilityId("${a.elementContentDesc}"));\n            input${stepNum}.sendKeys(${valueStr});`;
+              } else if (a.elementText) {
+                javaCode = `WebElement input${stepNum} = driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\\\"${a.elementText}\\\")"));\n            input${stepNum}.sendKeys(${valueStr});`;
+              } else if (a.locator && a.locator !== "system") {
+                const looksLikeXpath = a.locator.startsWith("/") || a.locator.startsWith("(");
+                javaCode = looksLikeXpath
+                  ? `WebElement input${stepNum} = driver.findElement(AppiumBy.xpath("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`
+                  : `WebElement input${stepNum} = driver.findElement(AppiumBy.id("${a.locator}"));\n            input${stepNum}.sendKeys(${valueStr});`;
+              } else if (a.coordinates) {
+                javaCode = `// Fallback: coordinate-based input (no stable locator found)\n            driver.executeScript("mobile: clickGesture", java.util.Map.of(\n                "x", ${a.coordinates.x},\n                "y", ${a.coordinates.y}\n            ));\n            driver.getKeyboard().sendKeys(${valueStr});`;
+              } else {
+                javaCode = `// Input action missing locator and coordinates`;
+              }
               break;
+            }
 
             case "longPress":
               if (a.coordinates) {
@@ -1575,6 +1672,13 @@ ${enabledActions
       return;
     }
 
+    // Keep behavior consistent with the disabled Send button:
+    // never send an input step without a target (coords/field).
+    if (!inputCoords || typeof inputCoords.x !== "number" || typeof inputCoords.y !== "number") {
+      toast.error("Tap the target input field on the device screen first");
+      return;
+    }
+
     try {
       setInputPending(true);
 
@@ -1617,6 +1721,8 @@ ${enabledActions
     } finally {
       setInputPending(false);
       setShowInputPanel(false);
+      setInputTargetMeta(null);
+      setInputTargetBounds(null);
 
       setInputText("");
       setInputCoords(null);
@@ -2557,6 +2663,33 @@ ${enabledActions
                   </div>
                 )}
 
+                {/* INPUT TARGET HIGHLIGHT (visual cue for auto text entry) */}
+                {captureMode && showInputPanel && (inputTargetBounds || inputCoords) && (
+                  <div
+                    className="absolute pointer-events-none z-30 rounded-md border-2 border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
+                    style={(() => {
+                      const devW = deviceSize?.width || 1080;
+                      const devH = deviceSize?.height || 1920;
+
+                      if (inputTargetBounds) {
+                        const left = (inputTargetBounds.x1 / devW) * 100;
+                        const top = (inputTargetBounds.y1 / devH) * 100;
+                        const width = ((inputTargetBounds.x2 - inputTargetBounds.x1) / devW) * 100;
+                        const height = ((inputTargetBounds.y2 - inputTargetBounds.y1) / devH) * 100;
+                        return { left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` };
+                      }
+
+                      if (inputCoords) {
+                        const left = (inputCoords.x / devW) * 100;
+                        const top = (inputCoords.y / devH) * 100;
+                        return { left: `${left}%`, top: `${top}%`, width: `3%`, height: `3%`, transform: "translate(-50%, -50%)" };
+                      }
+
+                      return {};
+                    })()}
+                  />
+                )}
+
                 {mirrorImage && (
                   <img
                     src={mirrorImage}
@@ -2642,18 +2775,20 @@ ${enabledActions
                         }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
 
                         if (res.ok) {
-                          const meta = json.step?.elementMetadata || {};
-                          const resourceId = (meta.resourceId || "").toLowerCase();
-                          const className = (meta.class || "").toLowerCase();
+                          const step = json.step || {};
+                          const meta = step.elementMetadata || {};
+                          const resourceId = String(meta.resourceId || step.elementId || "").toLowerCase();
+                          const className = String(meta.class || step.elementClass || "").toLowerCase();
 
                           // DEBUG: See exactly what your app is reporting in the Console (F12)
                           console.log("Tap Metadata:", meta);
 
                           const isInput =
                             // Standard Checks
-                            json.step?.isInputCandidate ||
-                            meta.attributes?.editable === "true" ||
-                            className.includes("edit") ||
+                            step.isInputCandidate ||
+                            className.includes("edittext") ||
+                            className.includes("textfield") ||
+                            className.includes("textinput") ||
                             className.includes("input") ||
                             resourceId.includes("search") ||
                             resourceId.includes("input") ||
@@ -2669,13 +2804,39 @@ ${enabledActions
                               !className.includes("button") &&
                               !className.includes("image"));
 
-                          if (isInput) {
-                            toast.info("Input Panel Opened");
+                          if (recording && !isPaused && isInput) {
+                            // Capture element hint + bounds for UX cue (highlight + label)
+                            const boundsStr = String(meta.bounds || "");
+                            const boundsMatch = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+                            if (boundsMatch) {
+                              setInputTargetBounds({
+                                x1: parseInt(boundsMatch[1], 10),
+                                y1: parseInt(boundsMatch[2], 10),
+                                x2: parseInt(boundsMatch[3], 10),
+                                y2: parseInt(boundsMatch[4], 10),
+                              });
+                            } else {
+                              setInputTargetBounds(null);
+                            }
+
+                            setInputTargetMeta({
+                              resourceId: meta.resourceId || step.elementId,
+                              text: meta.text || step.elementText,
+                              class: meta.class || step.elementClass,
+                              contentDesc: meta.contentDesc || step.elementContentDesc,
+                              bounds: meta.bounds,
+                            });
+
+                            toast.info("Text entry detected", {
+                              description: "Type your text and press Enter (or Send)"
+                            });
                             setInputText("");
                             setInputCoords({ x: deviceX, y: deviceY });
                             setInputPending(false);
                             setShowInputPanel(true);
                           } else {
+                            setInputTargetMeta(null);
+                            setInputTargetBounds(null);
                             // OPTIONAL: Fallback if auto-detect STILL fails
                             // You can uncomment this to force it open on EVERY tap if needed:
                             // setInputCoords({ x: deviceX, y: deviceY });
@@ -3249,13 +3410,22 @@ ${enabledActions
                         Target: ({inputCoords.x}, {inputCoords.y})
                       </span>
                     )}
+                    {inputTargetMeta && (
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        Field: {inputTargetMeta.resourceId || inputTargetMeta.contentDesc || inputTargetMeta.text || "input"}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive rounded-full"
-                  onClick={() => setShowInputPanel(false)}
+                  onClick={() => {
+                    setShowInputPanel(false);
+                    setInputTargetMeta(null);
+                    setInputTargetBounds(null);
+                  }}
                 >
                   <XCircle className="h-4 w-4" />
                 </Button>
@@ -3263,6 +3433,7 @@ ${enabledActions
               <CardContent className="py-4 px-4 flex gap-3 items-start">
                 <div className="flex-1 space-y-2">
                   <Input
+                    ref={inputFieldRef}
                     value={inputText}
                     onChange={(e: any) => setInputText(e.target.value)}
                     placeholder="Type text to send..."
@@ -3270,7 +3441,11 @@ ${enabledActions
                     autoFocus={true}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleConfirmInput();
-                      if (e.key === 'Escape') setShowInputPanel(false);
+                      if (e.key === 'Escape') {
+                        setShowInputPanel(false);
+                        setInputTargetMeta(null);
+                        setInputTargetBounds(null);
+                      }
                     }}
                   />
                   <div className="flex items-center justify-between px-1">

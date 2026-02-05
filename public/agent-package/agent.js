@@ -205,7 +205,30 @@ class MobileAutomationAgent {
         const { x, y } = req.body; if (x == null || y == null) throw new Error("Coordinates required");
         const result = await deviceController.tap(x, y);
         const { element } = result;
-        const step = { type: "tap", description: element?.text ? `Tap on "${element.text}"` : `Tap at (${x}, ${y})`, coordinates: { x, y }, elementMetadata: element, timestamp: Date.now() };
+
+        const elementId = element?.resourceId || "";
+        const elementText = element?.text || "";
+        const elementClass = element?.class || "";
+        const elementContentDesc = element?.contentDesc || "";
+
+        const locator =
+          elementId ||
+          elementContentDesc ||
+          elementText ||
+          `${x},${y}`;
+
+        const step = {
+          type: "tap",
+          description: elementText ? `Tap on "${elementText}"` : `Tap at (${x}, ${y})`,
+          locator,
+          coordinates: { x, y },
+          elementId,
+          elementText,
+          elementClass,
+          elementContentDesc,
+          elementMetadata: element,
+          timestamp: Date.now()
+        };
         if (recordingService.isRecording) recordingService.addStep(step);
         res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) { res.status(500).json({ error: e.message }); }
@@ -215,7 +238,31 @@ class MobileAutomationAgent {
       try {
         const { x, y, duration } = req.body; if (x == null || y == null) throw new Error("Coordinates required");
         const result = await deviceController.longPress(x, y, duration || 1000);
-        const step = { type: "longPress", description: `Long Press at (${x}, ${y})`, coordinates: { x, y }, timestamp: Date.now() };
+        const { element } = result || {};
+
+        const elementId = element?.resourceId || "";
+        const elementText = element?.text || "";
+        const elementClass = element?.class || "";
+        const elementContentDesc = element?.contentDesc || "";
+
+        const locator =
+          elementId ||
+          elementContentDesc ||
+          elementText ||
+          `${x},${y}`;
+
+        const step = {
+          type: "longPress",
+          description: elementText ? `Long press on "${elementText}"` : `Long press at (${x}, ${y})`,
+          locator,
+          coordinates: { x, y },
+          elementId,
+          elementText,
+          elementClass,
+          elementContentDesc,
+          elementMetadata: element || null,
+          timestamp: Date.now()
+        };
         if (recordingService.isRecording) recordingService.addStep(step);
         res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) { res.status(500).json({ error: e.message }); }
@@ -223,8 +270,37 @@ class MobileAutomationAgent {
 
     this.app.post("/device/input", async (req, res) => {
       try {
-        const { text } = req.body; await deviceController.input(text);
-        const step = { type: "input", description: `Input "${text}"`, value: text, timestamp: Date.now() };
+        const { text, x, y } = req.body;
+        await deviceController.input(text);
+
+        let element = null;
+        if (typeof x === "number" && typeof y === "number") {
+          element = await deviceController.getElementAt(x, y);
+        }
+
+        const elementId = element?.resourceId || "";
+        const elementText = element?.text || "";
+        const elementClass = element?.class || "";
+        const elementContentDesc = element?.contentDesc || "";
+        const locator =
+          elementId ||
+          elementContentDesc ||
+          elementText ||
+          (typeof x === "number" && typeof y === "number" ? `${x},${y}` : "");
+
+        const step = {
+          type: "input",
+          description: elementId ? `Input "${text}" into ${elementId}` : `Input "${text}"`,
+          value: text,
+          locator,
+          coordinates: (typeof x === "number" && typeof y === "number") ? { x, y } : null,
+          elementId,
+          elementText,
+          elementClass,
+          elementContentDesc,
+          elementMetadata: element || null,
+          timestamp: Date.now()
+        };
         if (recordingService.isRecording) recordingService.addStep(step);
         res.json({ success: true, step: { ...step, id: crypto.randomUUID() } });
       } catch (e) { res.status(500).json({ error: e.message }); }
@@ -357,10 +433,12 @@ class MobileAutomationAgent {
       try {
         const { steps, deviceId: reqDeviceId } = req.body;
         const status = await deviceController.getStatus();
-        const deviceId = reqDeviceId || status.primaryDevice;
+        const deviceId = (reqDeviceId && status.devices?.some(d => d.id === reqDeviceId))
+          ? reqDeviceId
+          : status.primaryDevice;
         if (!deviceId) throw new Error("No connected device found");
         await this.replayEngine.startReplay(steps, deviceId, req.body.startIndex || 0);
-        res.json({ success: true, message: "Replay completed" });
+        res.json({ success: true, message: "Replay completed", deviceId });
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
 

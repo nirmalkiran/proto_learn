@@ -180,7 +180,15 @@ export class ReplayEngine extends EventEmitter {
         targetCoords = await this.findElementCoordinates(locator);
       }
 
-      if (!targetCoords) {
+      // 2b. Final fallback: if we have no target but the app already has focus (common when a tap
+      // step occurred immediately before), still attempt to type. This keeps older recordings
+      // from hard-failing when metadata is missing.
+      if (!targetCoords || typeof targetCoords.x !== 'number' || typeof targetCoords.y !== 'number') {
+        if (typeof value === 'string' && value.length > 0) {
+          console.warn(`[Replay] Input step missing target (locator/coords). Sending keys to current focus as fallback.`);
+          await inputText(value, this.deviceId);
+          return;
+        }
         throw new Error(`Target coordinates or locator ${locator} not found for input step`);
       }
 

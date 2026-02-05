@@ -29,6 +29,25 @@ class DeviceController {
     this.primaryDevice = null;
   }
 
+  async _resolveTargetDeviceId(deviceId = null) {
+    await this.refreshDevices().catch(() => { });
+
+    if (deviceId && this.connectedDevices.some(d => d.id === deviceId)) {
+      return deviceId;
+    }
+
+    const primaryId = this.primaryDevice?.id || null;
+    if (!primaryId) {
+      throw new Error('No device connected');
+    }
+
+    if (deviceId && deviceId !== primaryId) {
+      console.warn(`[DeviceController] Requested device '${deviceId}' not found. Falling back to '${primaryId}'.`);
+    }
+
+    return primaryId;
+  }
+
   /**
    * Helper to find element at coordinates (x, y) from hierarchy object
    */
@@ -71,6 +90,30 @@ class DeviceController {
     }
 
     return foundElement;
+  }
+
+  /**
+   * Return element metadata at coordinates without performing an action.
+   * Useful for recording (input focus) and script generation.
+   */
+  async getElementAt(x, y, deviceId = null) {
+    const targetDevice = deviceId || this.primaryDevice?.id;
+    if (!targetDevice) {
+      throw new Error('No device connected');
+    }
+
+    try {
+      const xml = await getUIHierarchy(targetDevice);
+      if (!xml) return null;
+      const result = await parseStringPromise(xml);
+      if (result && result.hierarchy && result.hierarchy.node) {
+        return this._findElementAt(x, y, result.hierarchy.node[0]);
+      }
+      return null;
+    } catch (error) {
+      console.warn('[DeviceController] Failed to get/parse UI Hierarchy:', error.message);
+      return null;
+    }
   }
 
 
@@ -157,10 +200,7 @@ class DeviceController {
    * Get device screen size
    */
   async getScreenSize(deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     return await getDeviceSize(targetDevice);
   }
@@ -169,10 +209,7 @@ class DeviceController {
    * Take device screenshot
    */
   async takeScreenshot(deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     return await takeScreenshot(targetDevice);
   }
@@ -181,10 +218,7 @@ class DeviceController {
    * Send tap to device and return element metadata
    */
   async tap(x, y, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     let elementMetadata = null;
 
@@ -217,10 +251,7 @@ class DeviceController {
    * Send long press to device and return element metadata
    */
   async longPress(x, y, duration = 1000, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     let elementMetadata = null;
 
@@ -253,10 +284,7 @@ class DeviceController {
    * Send text input to device
    */
   async input(text, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     await inputText(text, targetDevice);
     return { text, deviceId: targetDevice };
@@ -266,8 +294,7 @@ class DeviceController {
    * Send swipe to device
    */
   async swipe(x1, y1, x2, y2, duration = 500, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
     return await swipeDevice(x1, y1, x2, y2, duration, targetDevice);
   }
 
@@ -275,8 +302,7 @@ class DeviceController {
    * Send key event to device
    */
   async pressKey(keyCode, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
     return await sendKeyEvent(keyCode, targetDevice);
   }
 
@@ -284,10 +310,7 @@ class DeviceController {
    * Get UI hierarchy
    */
   async getUIHierarchy(deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) {
-      throw new Error('No device connected');
-    }
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     return await getUIHierarchy(targetDevice);
   }
@@ -296,7 +319,7 @@ class DeviceController {
    * Get device properties
    */
   async getProperties(deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
+    const targetDevice = await this._resolveTargetDeviceId(deviceId).catch(() => null);
     if (!targetDevice) {
       return {};
     }
@@ -308,7 +331,7 @@ class DeviceController {
    * Check if device is ready for automation
    */
   async isDeviceReady(deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
+    const targetDevice = await this._resolveTargetDeviceId(deviceId).catch(() => null);
     if (!targetDevice) {
       return false;
     }
@@ -345,8 +368,7 @@ class DeviceController {
    * Clear app data
    */
   async clearApp(packageName, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
     return await clearAppData(packageName, targetDevice);
   }
 
@@ -354,8 +376,7 @@ class DeviceController {
    * Force stop app
    */
   async stopApp(packageName, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
     return await forceStopApp(packageName, targetDevice);
   }
 
@@ -363,7 +384,7 @@ class DeviceController {
    * Check if app is installed
    */
   async isInstalled(packageName, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
+    const targetDevice = await this._resolveTargetDeviceId(deviceId).catch(() => null);
     if (!targetDevice) return false;
     return await isAppInstalled(packageName, targetDevice);
   }
@@ -372,8 +393,7 @@ class DeviceController {
    * Launch app
    */
   async openApp(packageName, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
     return await launchApp(packageName, targetDevice);
   }
 
@@ -381,8 +401,7 @@ class DeviceController {
    * Hide keyboard
    */
   async hideKeyboard(deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     // Send KEYCODE_BACK (4) to dismiss keyboard
     const { adbCommand } = await import('../utils/adb-utils.js');
@@ -398,8 +417,7 @@ class DeviceController {
    * Run arbitrary shell command
    */
   async shell(command, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
 
     const { adbCommand } = await import('../utils/adb-utils.js');
     return await adbCommand(['shell', command], {
@@ -412,8 +430,7 @@ class DeviceController {
    * Uninstall app
    */
   async uninstall(packageName, deviceId = null) {
-    const targetDevice = deviceId || this.primaryDevice?.id;
-    if (!targetDevice) throw new Error('No device connected');
+    const targetDevice = await this._resolveTargetDeviceId(deviceId);
     return await uninstallApp(packageName, targetDevice);
   }
 }

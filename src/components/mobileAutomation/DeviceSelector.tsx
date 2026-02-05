@@ -4,7 +4,8 @@
  * Integrates with the local agent to fetch both connected physical devices
  * and available Virtual Devices (AVDs).
  */
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Smartphone } from "lucide-react";
@@ -40,6 +41,9 @@ export default function DeviceSelector({
   const [loading, setLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownPortalRef = useRef<HTMLDivElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   /* ---------------- FETCH DEVICES ---------------- */
 
@@ -106,10 +110,44 @@ export default function DeviceSelector({
     }
   }, [disabled, refreshKey]);
 
+  const updateDropdownPosition = useCallback(() => {
+    const triggerEl = triggerRef.current;
+    if (!triggerEl) return;
+
+    const rect = triggerEl.getBoundingClientRect();
+    setDropdownPosition({
+      top: rect.bottom + 8,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!dropdownOpen) return;
+    updateDropdownPosition();
+  }, [dropdownOpen, updateDropdownPosition]);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    const onScrollOrResize = () => updateDropdownPosition();
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [dropdownOpen, updateDropdownPosition]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const clickedTriggerArea = dropdownRef.current?.contains(target);
+      const clickedDropdown = dropdownPortalRef.current?.contains(target);
+
+      if (!clickedTriggerArea && !clickedDropdown) {
         setDropdownOpen(false);
       }
     };
@@ -140,9 +178,11 @@ export default function DeviceSelector({
       {loading && !disabled && <p className="text-sm">Checking devices...</p>}
 
       {/* Dropdown-style device selector */}
-      <div className="relative" ref={dropdownRef}>
+      {/* inline-block prevents the dropdown from stretching to the full flex row width */}
+      <div className="relative inline-block align-top" ref={dropdownRef}>
         <button
-          className={`flex items-center gap-2 p-2 border rounded-lg transition-all duration-200 min-w-[200px] text-left ${disabled
+          ref={triggerRef}
+          className={`flex w-full items-center gap-2 p-2 border rounded-lg transition-all duration-200 min-w-[200px] text-left ${disabled
             ? 'cursor-not-allowed bg-primary/5 border-primary/20 text-primary font-bold shadow-none'
             : 'bg-background hover:bg-muted/30 border-border/60 hover:border-border shadow-sm'
             }`}
@@ -160,8 +200,17 @@ export default function DeviceSelector({
         </button>
 
         {/* Device list dropdown */}
-        {dropdownOpen && !disabled && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-card z-[60] max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200">
+        {dropdownOpen && !disabled && dropdownPosition && createPortal((
+          <div
+            ref={dropdownPortalRef}
+            className="bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-card z-[9999] max-h-60 overflow-y-auto overflow-x-hidden animate-in fade-in slide-in-from-top-1 duration-200"
+            style={{
+              position: "fixed",
+              top: dropdownPosition.top,
+              left: dropdownPosition.left,
+              width: dropdownPosition.width,
+            }}
+          >
             {/* Show all available devices */}
             {devices.length === 0 ? (
               <div className="p-4 space-y-3">
@@ -233,7 +282,7 @@ export default function DeviceSelector({
               ))
             )}
           </div>
-        )}
+        ), document.body)}
       </div>
     </div>
   );

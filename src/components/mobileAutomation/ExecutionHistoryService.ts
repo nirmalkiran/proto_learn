@@ -25,6 +25,35 @@ export interface ExecutionResult {
 }
 
 export const ExecutionHistoryService = {
+    async insertWithFallback<T extends Record<string, any>>(
+        primaryTable: string,
+        fallbackTable: string,
+        payload: T
+    ) {
+        const attempt = async (table: string) => {
+            const { data, error } = await supabase
+                .from(table)
+                .insert(payload)
+                .select()
+                .single();
+
+            return { data, error };
+        };
+
+        const primary = await attempt(primaryTable);
+        if (!primary.error) return primary.data;
+
+        // If the table doesn't exist in this Supabase project, try the fallback name.
+        const msg = (primary.error as any)?.message || "";
+        const code = (primary.error as any)?.code || "";
+        const isMissingTable = code === "PGRST205" || msg.includes("Could not find the table");
+        if (!isMissingTable) throw primary.error;
+
+        const fallback = await attempt(fallbackTable);
+        if (fallback.error) throw fallback.error;
+        return fallback.data;
+    },
+
     /**
      * Purpose:
      * Saves a single test execution record to the 'nocodemobile_test_executions' table.
@@ -51,18 +80,11 @@ export const ExecutionHistoryService = {
             // Remove undefined/null test_id to avoid constraint issues
             if (!payload.test_id) delete payload.test_id;
 
-            const { data, error } = await supabase
-                .from("nocodemobile_test_executions")
-                .insert(payload)
-                .select()
-                .single();
-
-            if (error) {
-                console.error("[ExecutionHistoryService] Supabase insertion error:", error);
-                throw error;
-            }
-
-            return data;
+            return await ExecutionHistoryService.insertWithFallback(
+                "nocodemobile_test_executions",
+                "nocode_test_executions",
+                payload
+            );
         } catch (err) {
             console.error("[ExecutionHistoryService] Failed to save execution:", err);
             // We don't want to break the UI if logging fails
@@ -97,14 +119,11 @@ export const ExecutionHistoryService = {
             // Avoid inserting null suite_id if not present
             if (!payload.suite_id) delete payload.suite_id;
 
-            const { data, error } = await supabase
-                .from("nocodemobile_suite_executions")
-                .insert(payload)
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
+            return await ExecutionHistoryService.insertWithFallback(
+                "nocodemobile_suite_executions",
+                "nocode_suite_executions",
+                payload
+            );
         } catch (err) {
             console.error("[ExecutionHistoryService] Failed to save suite execution:", err);
             return null;

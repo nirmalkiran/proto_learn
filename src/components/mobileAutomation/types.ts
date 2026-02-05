@@ -9,6 +9,7 @@ export interface CheckResult {
 /**
  * Purpose: Supported user interaction and system action types for mobile automation.
  */
+export type ActionType =
     | "tap"
     | "doubleTap"
     | "longPress"
@@ -21,7 +22,17 @@ export interface CheckResult {
     | "stopApp"
     | "clearCache"
     | "hideKeyboard"
-    | "pressKey";
+    | "pressKey"
+    // Backward-compatible: some agent steps emit extra types
+    | "uninstallApp";
+
+export interface ElementMetadata {
+    resourceId?: string;
+    text?: string;
+    class?: string;
+    contentDesc?: string;
+    bounds?: string;
+}
 
 /**
  * Purpose: Represents a single recorded user interaction or system command.
@@ -46,6 +57,8 @@ export interface RecordedAction {
     elementText?: string;
     elementClass?: string;
     elementContentDesc?: string;
+    /** Raw metadata from the agent (optional, backward-compatible) */
+    elementMetadata?: ElementMetadata | null;
     /** Assertion configurations */
     assertionType?: "visible" | "text_equals" | "enabled" | "disabled" | "toast" | "screen_loaded";
 }
