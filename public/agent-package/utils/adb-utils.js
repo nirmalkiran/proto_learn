@@ -16,6 +16,61 @@ const uiHierarchyLast = new Map(); // deviceId -> { xml: string, ts: number }
 const uiHierarchyLastFail = new Map(); // deviceId -> { ts: number, code?: number, signal?: string }
 const uiHierarchyDisabledUntil = new Map(); // deviceId -> ts
 
+async function fetchJson(url, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function sanitizeHierarchyXml(raw) {
+  const s = String(raw || "");
+  const start = s.indexOf("<?xml");
+  const altStart = s.indexOf("<hierarchy");
+  const from = start >= 0 ? start : altStart;
+  if (from < 0) return s;
+  const endTag = "</hierarchy>";
+  const end = s.lastIndexOf(endTag);
+  if (end < 0) return s.slice(from);
+  return s.slice(from, end + endTag.length);
+}
+
+async function tryGetAppiumPageSource() {
+  const baseUrls = [
+    `http://${CONFIG.APPIUM_HOST}:${CONFIG.APPIUM_PORT}/wd/hub`,
+    `http://${CONFIG.APPIUM_HOST}:${CONFIG.APPIUM_PORT}`,
+  ];
+
+  for (const base of baseUrls) {
+    const sessions = await fetchJson(`${base}/sessions`, 2000);
+    const list =
+      sessions?.value?.sessions ||
+      sessions?.value ||
+      sessions?.sessions ||
+      sessions ||
+      [];
+    const arr = Array.isArray(list) ? list : [];
+    const session = arr.find(s => s?.id || s?.sessionId) || null;
+    const sessionId = session?.id || session?.sessionId;
+    if (!sessionId) continue;
+
+    const source = await fetchJson(`${base}/session/${sessionId}/source`, 3000);
+    const xml = source?.value || source?.source || null;
+    if (xml && String(xml).length > 20) {
+      return sanitizeHierarchyXml(xml);
+    }
+  }
+
+  return null;
+}
+
 /**
  * Execute ADB command with timeout
  */
@@ -283,7 +338,7 @@ export async function swipeDevice(x1, y1, x2, y2, duration = 500, deviceId = nul
 
 
 export async function getUIHierarchy(deviceId = null) {
-  let tempPath = null;
+  let tempPaths = [];
   const defaultDumpPath = '/sdcard/view.xml';
   const debugDump = process.env.WISPR_UI_DUMP_LOG === '1';
   const cacheTtlMs = parseInt(process.env.WISPR_UI_DUMP_CACHE_TTL_MS || "0", 10) || 0;
@@ -321,12 +376,26 @@ export async function getUIHierarchy(deviceId = null) {
     try {
     const readViaExecOut = async () => {
       if (debugDump) console.warn('[ADB] exec-out dump attempt');
+
+      const extractHierarchyXml = (raw) => {
+        const s = String(raw || "");
+        const start = s.indexOf("<?xml");
+        const altStart = s.indexOf("<hierarchy");
+        const from = start >= 0 ? start : altStart;
+        if (from < 0) return s;
+        const endTag = "</hierarchy>";
+        const end = s.lastIndexOf(endTag);
+        if (end < 0) return s.slice(from);
+        return s.slice(from, end + endTag.length);
+      };
+
       try {
         const { stdout } = await adbCommand(['exec-out', 'uiautomator', 'dump', '/dev/tty'], {
           deviceId,
           timeout: 15000
         });
-        if (stdout && stdout.includes('<hierarchy')) return stdout;
+        const cleaned = extractHierarchyXml(stdout);
+        if (cleaned && cleaned.includes('<hierarchy')) return cleaned;
         if (debugDump) console.warn('[ADB] exec-out returned empty/invalid XML');
       } catch (e) {
         if (debugDump) console.warn('[ADB] exec-out dump failed', { error: e.message });
@@ -338,10 +407,11 @@ export async function getUIHierarchy(deviceId = null) {
         deviceId,
         timeout: 15000
       });
-      if (!compressedOut || !compressedOut.includes('<hierarchy')) {
+      const cleanedCompressed = extractHierarchyXml(compressedOut);
+      if (!cleanedCompressed || !cleanedCompressed.includes('<hierarchy')) {
         throw new Error('exec-out returned empty or invalid XML');
       }
-      return compressedOut;
+      return cleanedCompressed;
     };
 
     // 1. Cleanup previous dump on device to ensure fresh state
@@ -355,9 +425,9 @@ export async function getUIHierarchy(deviceId = null) {
       // Ignore if file didn't exist
     }
 
-    const parseDumpPath = (stdout) => {
-      if (!stdout) return null;
-      const match = stdout.match(/dumped to:\s*(\/[\w\/\.\-\_]+\.xml)/i);
+    const parseDumpPath = (out) => {
+      if (!out) return null;
+      const match = String(out).match(/dumped to:\s*(\/[\w\/\.\-\_]+\.xml)/i);
       return match ? match[1] : null;
     };
 
@@ -365,8 +435,9 @@ export async function getUIHierarchy(deviceId = null) {
       const args = useCompressed
         ? ['shell', 'uiautomator', 'dump', '--compressed', defaultDumpPath]
         : ['shell', 'uiautomator', 'dump', defaultDumpPath];
-      const { stdout } = await adbCommand(args, { deviceId, timeout: 15000 });
-      return { dumpPath: parseDumpPath(stdout) || defaultDumpPath, stdout };
+      const { stdout, stderr } = await adbCommand(args, { deviceId, timeout: 15000 });
+      const combined = [stdout, stderr].filter(Boolean).join("\n");
+      return { dumpPath: parseDumpPath(combined) || defaultDumpPath, combined };
     };
 
     // 2. First try exec-out (no /sdcard dependency)
@@ -400,56 +471,92 @@ export async function getUIHierarchy(deviceId = null) {
             "Temporarily disabling hover inspector can also reduce retries."
           );
         }
+        // Fallback: use Appium page source when UiAutomation is locked
+        const appiumXml = await tryGetAppiumPageSource();
+        if (appiumXml && appiumXml.includes("<hierarchy")) {
+          if (debugDump) console.warn("[ADB] Using Appium page source fallback");
+          return appiumXml;
+        }
         throw new Error(`uiautomator dump failed: ${retryError.message}`);
       }
     }
 
-    const readViaPull = async () => {
-      tempPath = path.join(process.cwd(), `temp_view_${Date.now()}.xml`);
-      await adbCommand(['pull', dumpPathUsed, tempPath], {
+    const extractHierarchyXml = (raw) => {
+      const s = String(raw || "");
+      const start = s.indexOf("<?xml");
+      const altStart = s.indexOf("<hierarchy");
+      const from = start >= 0 ? start : altStart;
+      if (from < 0) return s;
+      const endTag = "</hierarchy>";
+      const end = s.lastIndexOf(endTag);
+      if (end < 0) return s.slice(from);
+      return s.slice(from, end + endTag.length);
+    };
+
+    const readViaPull = async (dumpPath) => {
+      const localTemp = path.join(process.cwd(), `temp_view_${Date.now()}_${Math.random().toString(16).slice(2)}.xml`);
+      tempPaths.push(localTemp);
+      await adbCommand(['pull', dumpPath, localTemp], {
         deviceId,
         timeout: 10000
       });
 
-      if (!fs.existsSync(tempPath)) {
+      if (!fs.existsSync(localTemp)) {
         throw new Error('Failed to pull UI hierarchy file');
       }
 
-      const xml = fs.readFileSync(tempPath, 'utf-8');
+      const xml = extractHierarchyXml(fs.readFileSync(localTemp, 'utf-8'));
       if (!xml || xml.trim().length === 0 || !xml.includes('<hierarchy')) {
         throw new Error('Retrieved XML is empty or invalid');
       }
       return xml;
     };
 
-    const readViaCat = async () => {
-      const { stdout } = await adbCommand(['shell', 'cat', dumpPathUsed], {
+    const readViaCat = async (dumpPath) => {
+      const { stdout } = await adbCommand(['shell', 'cat', dumpPath], {
         deviceId,
         timeout: 10000
       });
-      if (!stdout || !stdout.includes('<hierarchy')) {
+      const cleaned = extractHierarchyXml(stdout);
+      if (!cleaned || !cleaned.includes('<hierarchy')) {
         throw new Error('ADB cat returned empty or invalid XML');
       }
-      return stdout;
+      return cleaned;
     };
 
-    try {
-      return await readViaPull();
-    } catch (pullError) {
-      if (debugDump) {
-        console.warn('[ADB] Pull failed, falling back to cat', { error: pullError.message });
-      }
-      return await readViaCat();
+    const candidatePaths = [dumpPathUsed, "/sdcard/window_dump.xml"].filter(Boolean);
+    const uniqPaths = [];
+    for (const p of candidatePaths) {
+      if (!uniqPaths.includes(p)) uniqPaths.push(p);
     }
+
+    let lastErr = null;
+    for (const dumpPath of uniqPaths) {
+      try {
+        return await readViaPull(dumpPath);
+      } catch (pullError) {
+        lastErr = pullError;
+        if (debugDump) console.warn('[ADB] Pull failed, falling back to cat', { dumpPath, error: pullError.message });
+        try {
+          return await readViaCat(dumpPath);
+        } catch (catError) {
+          lastErr = catError;
+          if (debugDump) console.warn('[ADB] Cat failed', { dumpPath, error: catError.message });
+        }
+      }
+    }
+
+    throw lastErr || new Error("Failed to read UI hierarchy dump");
   } catch (error) {
     // Log warning but don't crash - allow fallback to coordinates
     console.warn(`[ADB] Failed to get UI hierarchy (will fallback to coordinates): ${error.message}`);
     return null;
   } finally {
     // Clean up temp file locally
-    if (tempPath) {
+    for (const p of tempPaths) {
+      if (!p) continue;
       try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
       } catch (cleanupError) {
         console.warn('[ADB] Failed to cleanup temp XML file:', cleanupError.message);
       }

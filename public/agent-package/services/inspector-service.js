@@ -59,6 +59,15 @@ function matchesCriteria(attrs, criteria) {
   return true;
 }
 
+function findMatchingNodesByXPath(nodes, xpath) {
+  const criteria = parseXPathCriteria(xpath);
+  const matches = [];
+  for (const n of nodes) {
+    if (matchesCriteria(n.attrs, criteria)) matches.push(n);
+  }
+  return matches;
+}
+
 function estimateXPathMatches(nodes, xpath) {
   const criteria = parseXPathCriteria(xpath);
   let count = 0;
@@ -150,6 +159,7 @@ export class InspectorService {
     const deviceId = await this._resolveDeviceId(params?.deviceId);
     const mode = params?.mode === "tap" ? "tap" : "hover";
     const preferCache = Boolean(params?.preferCache) || mode === "hover";
+    const preferXPath = Boolean(params?.preferXPath) || mode === "hover";
 
     // Throttle hover traffic per-device (tap is never throttled)
     if (mode === "hover") {
@@ -175,27 +185,49 @@ export class InspectorService {
       }
 
       const nodes = parseHierarchyNodesFast(xml);
-      const node = pickBestNodeAtPoint(nodes, x, y, { tolerance: 8, radius: 28 });
-      const element = node ? toElementMetadataFromAttrs(node.attrs) : null;
+      const nodeAtPoint = pickBestNodeAtPoint(nodes, x, y, { tolerance: 8, radius: 28 });
+      let element = nodeAtPoint ? toElementMetadataFromAttrs(nodeAtPoint.attrs) : null;
+      let resolvedBy = "coordinates";
+
+      const buildXpathLocators = (meta) => {
+        const xpathCandidates = buildSmartXPathCandidates(meta);
+        return xpathCandidates.map(c => {
+          const matchCount = nodes.length ? estimateXPathMatches(nodes, c.value) : 0;
+          let score = c.score;
+          if (matchCount === 1) score += 10;
+          else if (matchCount >= 5) score -= 10;
+          return {
+            strategy: "xpath",
+            value: c.value,
+            score: clamp(score, 0, 100),
+            source: "inspector",
+            reason: c.reason,
+            matchCount
+          };
+        });
+      };
+
+      let xpathLocators = buildXpathLocators(element);
+      if (preferXPath && xpathLocators.length) {
+        const unique = xpathLocators.find(l => l.matchCount === 1);
+        if (unique?.value) {
+          const matches = findMatchingNodesByXPath(nodes, unique.value);
+          if (matches.length === 1) {
+            element = toElementMetadataFromAttrs(matches[0].attrs);
+            resolvedBy = "xpath";
+          }
+        }
+      }
+
+      if (resolvedBy === "xpath") {
+        // Recompute XPath candidates based on resolved element
+        xpathLocators = buildXpathLocators(element);
+      }
+
       const elementFingerprint = element ? computeElementFingerprint(element) : "";
 
       // Build candidate locators
       const baseLocators = scoreLocatorCandidates({ meta: element, nodes });
-      const xpathCandidates = buildSmartXPathCandidates(element);
-      const xpathLocators = xpathCandidates.map(c => {
-        const matchCount = nodes.length ? estimateXPathMatches(nodes, c.value) : 0;
-        let score = c.score;
-        if (matchCount === 1) score += 10;
-        else if (matchCount >= 5) score -= 10;
-        return {
-          strategy: "xpath",
-          value: c.value,
-          score: clamp(score, 0, 100),
-          source: "inspector",
-          reason: c.reason,
-          matchCount
-        };
-      });
 
       // Merge locators (de-dupe by strategy+value)
       const merged = [];
@@ -230,6 +262,7 @@ export class InspectorService {
         best,
         reliabilityScore,
         smartXPath,
+        resolvedBy,
         hierarchySnapshotId: snapshotId || null,
         screenContext,
         fromCache,

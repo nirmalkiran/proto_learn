@@ -5,6 +5,7 @@
  * and automated replay with visual progress tracking.
  */
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -162,13 +163,14 @@ export default function MobileRecorder({
       return true;
     }
 	  }, []);
-	  const [hoverInspect, setHoverInspect] = useState<any>(null);
-	  const [tapInspect, setTapInspect] = useState<any>(null);
-	  const [pinnedInspect, setPinnedInspect] = useState<any>(null);
-	  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false);
-	  const [inspectorSpotlight, setInspectorSpotlight] = useState(true);
-	  const lastHoverInspectTsRef = useRef(0);
-	  const hoverInspectAbortRef = useRef<AbortController | null>(null);
+  const [hoverInspect, setHoverInspect] = useState<any>(null);
+  const [tapInspect, setTapInspect] = useState<any>(null);
+  const [pinnedInspect, setPinnedInspect] = useState<any>(null);
+  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false);
+  const [inspectorSpotlight, setInspectorSpotlight] = useState(true);
+  const tapInspectDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastHoverInspectTsRef = useRef(0);
+  const hoverInspectAbortRef = useRef<AbortController | null>(null);
   const [inputText, setInputText] = useState("");
   const [inputCoords, setInputCoords] = useState<{ x: number; y: number } | null>(null);
   const inputFieldRef = useRef<HTMLInputElement>(null);
@@ -229,6 +231,261 @@ export default function MobileRecorder({
       toast.error("Copy failed");
     }
   };
+
+  const showInspectorFloating = inspectorModeEnabled && captureMode && mirrorActive;
+  const hasBounds = (ins: any) => {
+    const s = String(ins?.element?.bounds || "");
+    return /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.test(s);
+  };
+  const hasUsefulInspectorData = (ins: any) => {
+    if (!ins) return false;
+    if (hasBounds(ins)) return true;
+    const el = ins?.element || {};
+    if (el?.resourceId || el?.contentDesc || el?.text || el?.class) return true;
+    if (ins?.best?.value || ins?.smartXPath || ins?.xpath) return true;
+    if (ins?.locatorBundle?.primary?.value) return true;
+    if (Array.isArray(ins?.locators) && ins.locators.length) return true;
+    return false;
+  };
+  // Prevent a stale/empty pinned target from freezing updates.
+  const activeInspect = (pinnedInspect && hasUsefulInspectorData(pinnedInspect))
+    ? pinnedInspect
+    : (tapInspect ?? hoverInspect);
+  const inspectorDerived = useMemo(() => {
+    const active = activeInspect;
+    const el = active?.element || {};
+    const lb = active?.locatorBundle || null;
+    const locators = (active?.locators && Array.isArray(active.locators))
+      ? active.locators
+      : (lb ? [lb.primary, ...(lb.fallbacks || [])] : []);
+    const best = active?.best || (lb?.primary ?? null);
+    const score = (typeof active?.reliabilityScore === "number") ? active.reliabilityScore : undefined;
+
+    const getBestValue = (strategy: string) => {
+      const found = locators.find((c: any) => c?.strategy === strategy && c?.value)?.value;
+      return found ? String(found) : "";
+    };
+
+    const xpathValue =
+      (best?.strategy === "xpath" && best?.value) ? String(best.value) :
+        (String(active?.smartXPath || "").startsWith("//") ? String(active.smartXPath) :
+          (String(active?.xpath || "").startsWith("//") ? String(active.xpath) : getBestValue("xpath")));
+
+    const a11yValue = getBestValue("accessibilityId") || String(el.contentDesc || "");
+    const idValue = getBestValue("id") || String(el.resourceId || "");
+    const textValue = getBestValue("text") || String(el.text || "");
+    const classValue = String(el.class || "");
+    const boundsValue = String(el.bounds || "");
+
+    const targetName =
+      String(el.text || "") ||
+      String(el.contentDesc || "") ||
+      (String(el.resourceId || "").split("/").pop() || "") ||
+      classValue ||
+      "Element";
+
+    const band = (score == null) ? "bg-slate-400" : score >= 80 ? "bg-emerald-500" : score >= 50 ? "bg-amber-500" : "bg-red-500";
+
+    return {
+      active,
+      el,
+      lb,
+      locators,
+      best,
+      score,
+      band,
+      targetName,
+      xpathValue,
+      a11yValue,
+      idValue,
+      textValue,
+      classValue,
+      boundsValue,
+    };
+  }, [activeInspect]);
+
+  const inspectorPortal = useMemo(() => {
+    if (!showInspectorFloating) return null;
+    if (typeof document === "undefined") return null;
+
+    const d = inspectorDerived;
+    const minimized = !inspectorPanelOpen;
+
+    return createPortal(
+      <div className="fixed right-4 top-24 z-[10000] pointer-events-auto">
+        {minimized ? (
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full border border-border/60 bg-background/85 backdrop-blur px-3 py-1.5 shadow-lg hover:bg-background/95 transition-colors"
+            onClick={() => setInspectorPanelOpen(true)}
+            title="Open Inspector"
+          >
+            <div className={`h-2 w-2 rounded-full ${d.band}`} />
+            <span className="text-xs font-semibold">Inspector</span>
+            <span className="text-[11px] font-mono text-muted-foreground">{typeof d.score === "number" ? d.score : "--"}</span>
+          </button>
+        ) : (
+          <div className="w-[380px] max-w-[92vw] max-h-[calc(100vh-140px)] rounded-xl border border-border/60 bg-background/90 backdrop-blur shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`h-2.5 w-2.5 rounded-full ${d.band}`} />
+                <div className="text-sm font-semibold">Inspector</div>
+                <div className="text-xs font-mono text-muted-foreground">{typeof d.score === "number" ? d.score : "--"}</div>
+                {pinnedInspect && <div className="text-[10px] font-semibold text-primary">PINNED</div>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={`text-xs rounded-md px-2 py-1 border ${pinnedInspect ? "border-primary/40 text-primary bg-primary/10" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => {
+                    if (pinnedInspect) {
+                      setPinnedInspect(null);
+                      toast.info("Inspector unpinned");
+                      return;
+                    }
+                    const b = String(activeInspect?.element?.bounds || "");
+                    if (!b || !b.includes("[")) {
+                      toast.info("No element to pin yet (hover an element first)");
+                      return;
+                    }
+                    if (activeInspect) {
+                      setPinnedInspect(activeInspect);
+                      toast.success("Inspector pinned");
+                    }
+                  }}
+                  title={pinnedInspect ? "Unpin target" : "Pin current target"}
+                >
+                  {pinnedInspect ? "Unpin" : "Pin"}
+                </button>
+                <button
+                  type="button"
+                  className={`text-xs rounded-md px-2 py-1 border ${inspectorSpotlight ? "border-foreground/20 text-foreground/80 bg-foreground/5" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => setInspectorSpotlight(v => !v)}
+                  title="Toggle spotlight"
+                >
+                  Spotlight
+                </button>
+                <button
+                  type="button"
+                  className="text-xs rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground"
+                  onClick={() => setInspectorPanelOpen(false)}
+                  title="Minimize"
+                >
+                  Minimize
+                </button>
+              </div>
+            </div>
+
+            <div className="px-3 py-2 space-y-3 overflow-auto">
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                <div className="text-xs font-semibold text-foreground truncate">{d.targetName}</div>
+                <div className="mt-1 grid grid-cols-[96px_1fr] gap-x-2 gap-y-1 text-[11px]">
+                  <div className="text-muted-foreground">XPath</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={`font-mono break-all ${d.xpathValue ? "text-foreground" : "text-muted-foreground"}`}>
+                      {d.xpathValue || "XPath unavailable — fallback locator available"}
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40"
+                      onClick={() => {
+                        if (!d.xpathValue) return toast.info("XPath unavailable — fallback locator available");
+                        copyText(d.xpathValue, "XPath copied");
+                      }}
+                      disabled={!d.xpathValue}
+                      title="Copy XPath"
+                    >
+                      Copy
+                    </button>
+                  </div>
+
+                  <div className="text-muted-foreground">Accessibility</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-mono break-all text-muted-foreground">{d.a11yValue || "-"}</div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40"
+                      onClick={() => {
+                        if (!d.a11yValue) return toast.info("Accessibility ID unavailable");
+                        copyText(d.a11yValue, "Accessibility ID copied");
+                      }}
+                      disabled={!d.a11yValue}
+                      title="Copy accessibility-id"
+                    >
+                      Copy
+                    </button>
+                  </div>
+
+                  <div className="text-muted-foreground">Resource ID</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-mono break-all text-muted-foreground">{d.idValue || "-"}</div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40"
+                      onClick={() => {
+                        if (!d.idValue) return toast.info("Resource ID unavailable");
+                        copyText(d.idValue, "Resource ID copied");
+                      }}
+                      disabled={!d.idValue}
+                      title="Copy resource-id"
+                    >
+                      Copy
+                    </button>
+                  </div>
+
+                  <div className="text-muted-foreground">Text</div>
+                  <div className="font-mono break-all text-muted-foreground">{d.textValue || "-"}</div>
+                  <div className="text-muted-foreground">Class</div>
+                  <div className="font-mono break-all text-muted-foreground">{d.classValue || "-"}</div>
+                  <div className="text-muted-foreground">Bounds</div>
+                  <div className="font-mono break-all text-muted-foreground">{d.boundsValue || "-"}</div>
+                </div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                    onClick={() => copyText(JSON.stringify(d.lb || { best: d.best, locators: d.locators, element: d.el }, null, 2), "Locator bundle copied")}
+                    title="Copy full locator bundle (JSON)"
+                  >
+                    Copy Bundle JSON
+                  </button>
+                  <div className="text-[10px] text-muted-foreground/80">
+                    Copying locators never records steps.
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/50 bg-muted/10 p-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">Locator Candidates</div>
+                  <div className="text-[11px] font-mono text-muted-foreground">{d.best ? `${d.best.strategy}` : "none"}</div>
+                </div>
+                <div className="mt-2 space-y-1">
+                  {d.locators?.length ? (
+                    d.locators.slice(0, 8).map((c: any, idx: number) => (
+                      <button
+                        key={`${c.strategy}-${idx}`}
+                        type="button"
+                        className={`w-full text-left text-[11px] font-mono break-all rounded-md px-2 py-1 border ${idx === 0 ? "border-foreground/15 bg-foreground/5 text-foreground" : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/30"} transition-colors`}
+                        onClick={() => copyText(String(c.value || ""), `${c.strategy} copied`)}
+                        title="Click to copy"
+                      >
+                        {c.strategy}: {String(c.value || "")}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground">No locator candidates available (coordinate fallback remains active).</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>,
+      document.body
+    );
+  }, [showInspectorFloating, inspectorDerived, inspectorPanelOpen, pinnedInspect, activeInspect, inspectorSpotlight]);
 
   /**
      * Purpose:
@@ -560,13 +817,24 @@ export default function MobileRecorder({
     };
   }, [recording]);
 
-	  useEffect(() => {
-	    if (!mirrorActive || !captureMode) {
-	      setHoverInspect(null);
-	      setPinnedInspect(null);
-	      setInspectorPanelOpen(false);
-	    }
-	  }, [mirrorActive, captureMode]);
+  useEffect(() => {
+    if (!mirrorActive || !captureMode) {
+      setHoverInspect(null);
+      setPinnedInspect(null);
+      setTapInspect(null);
+      if (tapInspectDismissRef.current) {
+        clearTimeout(tapInspectDismissRef.current);
+        tapInspectDismissRef.current = null;
+      }
+      setInspectorPanelOpen(false);
+    }
+  }, [mirrorActive, captureMode]);
+
+  useEffect(() => {
+    if (inspectorModeEnabled && captureMode && mirrorActive) {
+      setInspectorPanelOpen(true);
+    }
+  }, [inspectorModeEnabled, captureMode, mirrorActive]);
 
   /* =====================================================
    * SCENARIO MANAGEMENT HANDLERS
@@ -2584,6 +2852,7 @@ ${enabledActions
   };
   return (
     <div className="space-y-4" id="recorder-container">
+      {inspectorPortal}
       {/* NEW PREMIUM HEADER ROW */}
       <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 mb-4" id="device-selector-header">
         {/* LEFT: Title & Device Selector Grouped Tightly */}
@@ -2732,11 +3001,11 @@ ${enabledActions
             style={{ width: `${previewDimensions.width}px`, height: `${previewDimensions.height}px` }}
           >
 
-            {/* FLOATING BADGE: INSPECT MODE */}
+            {/* FLOATING BADGE: INSPECT MODE (theme-aligned) */}
             {captureMode && mirrorActive && (
               <div className="absolute top-4 left-4 z-50 animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-none">
-                <div className="bg-[#18181b]/90 backdrop-blur-md border border-zinc-700 text-zinc-100 px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-pink-400 animate-pulse shadow-[0_0_8px_rgba(236,72,153,0.6)]" />
+                <div className="bg-background/85 backdrop-blur-md border border-border/60 text-foreground px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.35)]" />
                   <span className="text-[10px] font-bold tracking-wide">Inspect Mode</span>
                 </div>
               </div>
@@ -2747,7 +3016,7 @@ ${enabledActions
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-300">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">
-                    <div className="h-12 w-12 border-[3px] border-zinc-800 border-t-pink-500 rounded-full animate-spin" />
+                    <div className="h-12 w-12 border-[3px] border-zinc-800/60 border-t-primary rounded-full animate-spin" />
                   </div>
                   <div className="text-center space-y-1">
                     <p className="text-sm font-bold text-zinc-200">{isPreparingDevice ? 'Booting Agent...' : 'Connecting...'}</p>
@@ -2794,14 +3063,17 @@ ${enabledActions
               // ACTIVE SCREEN STREAM
               <div className="relative w-full h-full flex items-center justify-center bg-[#000]">
 
-                {/* CAPTURE MODE OVERLAY (PINK THEME) */}
+                {/* CAPTURE MODE INDICATOR (minimal, non-blocking) */}
                 {captureMode && (
-                  <div className="absolute inset-4 pointer-events-none z-20 border-[2px] border-dashed border-pink-500/60 rounded-lg shadow-[0_0_30px_rgba(236,72,153,0.15)] animate-in fade-in duration-300">
-                    {/* Corner Markers */}
-                    <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-pink-500 bg-transparent" />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-pink-500 bg-transparent" />
-                    <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-pink-500 bg-transparent" />
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-pink-500 bg-transparent" />
+                  <div className="absolute inset-0 pointer-events-none z-20 animate-in fade-in duration-300">
+                    {/* Inner frame stays readable across small/large devices */}
+                    <div className="absolute inset-2 sm:inset-3 md:inset-4 rounded-xl border border-primary/30 ring-1 ring-primary/15 shadow-[0_0_0_1px_rgba(59,130,246,0.18)]">
+                      {/* Corner brackets (premium replacement for dotted outline) */}
+                      <div className="absolute -top-1 -left-1 h-4 w-4 sm:h-5 sm:w-5 rounded-[6px] border-l-2 border-t-2 border-primary/80 shadow-[0_0_14px_rgba(59,130,246,0.20)]" />
+                      <div className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 rounded-[6px] border-r-2 border-t-2 border-primary/80 shadow-[0_0_14px_rgba(59,130,246,0.20)]" />
+                      <div className="absolute -bottom-1 -left-1 h-4 w-4 sm:h-5 sm:w-5 rounded-[6px] border-l-2 border-b-2 border-primary/80 shadow-[0_0_14px_rgba(59,130,246,0.20)]" />
+                      <div className="absolute -bottom-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 rounded-[6px] border-r-2 border-b-2 border-primary/80 shadow-[0_0_14px_rgba(59,130,246,0.20)]" />
+                    </div>
                   </div>
                 )}
 
@@ -2834,7 +3106,11 @@ ${enabledActions
 
 	                {/* INSPECTOR HIGHLIGHT + PANEL (additive, does not change layout) */}
 	                {(() => {
-	                  const active = pinnedInspect ?? tapInspect ?? hoverInspect;
+	                  const active =
+	                    (pinnedInspect && hasBounds(pinnedInspect)) ? pinnedInspect :
+	                      (tapInspect && hasBounds(tapInspect)) ? tapInspect :
+	                        (hoverInspect && hasBounds(hoverInspect)) ? hoverInspect :
+	                          null;
 	                  const boundsStr = String(active?.element?.bounds || "");
 	                  const m = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
 	                  if (!inspectorModeEnabled || !captureMode || !mirrorImage || !m) return null;
@@ -2855,6 +3131,18 @@ ${enabledActions
 	                  const score = (typeof active?.reliabilityScore === "number") ? active.reliabilityScore : undefined;
 	                  const best = active?.best || (lb?.primary ?? null);
 
+	                  const getBestValue = (strategy: string) => {
+	                    const fromList = locators.find((c: any) => c?.strategy === strategy && c?.value)?.value;
+	                    return fromList ? String(fromList) : "";
+	                  };
+	                  const xpathValue =
+	                    (best?.strategy === "xpath" && best?.value) ? String(best.value) :
+	                      (String(active?.smartXPath || "").startsWith("//") ? String(active.smartXPath) : (String(active?.xpath || "").startsWith("//") ? String(active.xpath) : getBestValue("xpath")));
+	                  const a11yValue = getBestValue("accessibilityId") || String(el.contentDesc || "");
+	                  const idValue = getBestValue("id") || String(el.resourceId || "");
+	                  const textValue = getBestValue("text") || String(el.text || "");
+	                  const classValue = String(el.class || "");
+
 	                  const targetName =
 	                    String(el.text || "") ||
 	                    String(el.contentDesc || "") ||
@@ -2863,8 +3151,9 @@ ${enabledActions
 	                    "Element";
 
 	                  const band = (score == null) ? "bg-slate-400" : score >= 80 ? "bg-emerald-500" : score >= 50 ? "bg-amber-500" : "bg-red-500";
-	                  const outline = pinnedInspect ? "border-cyan-400/90" : tapInspect ? "border-cyan-400/80" : "border-fuchsia-400/80";
-	                  const glow = pinnedInspect ? "shadow-[0_0_28px_rgba(34,211,238,0.22)]" : tapInspect ? "shadow-[0_0_26px_rgba(34,211,238,0.22)]" : "shadow-[0_0_22px_rgba(217,70,239,0.16)]";
+	                  const resolvedBy = String(active?.resolvedBy || (best?.strategy === "xpath" ? "xpath" : "coordinates"));
+	                  const outline = pinnedInspect ? "border-primary/90" : tapInspect ? "border-primary/85" : "border-primary/70";
+	                  const glow = pinnedInspect ? "shadow-[0_0_30px_rgba(59,130,246,0.22)]" : tapInspect ? "shadow-[0_0_26px_rgba(59,130,246,0.20)]" : "shadow-[0_0_22px_rgba(59,130,246,0.14)]";
 
 	                  const pillLeft = clamp(leftPct, 1, 78);
 	                  const pillTop = clamp(topPct - 3, 1, 92);
@@ -2881,9 +3170,27 @@ ${enabledActions
 	                        </div>
 	                      )}
 
+	                      {/* Crosshair guides (video-style) - only for hover */}
+	                      {!pinnedInspect && !tapInspect && hoverInspect && (
+	                        <>
+	                          <div
+	                            className="absolute pointer-events-none z-30"
+	                            style={{ left: `${clamp((Number(active?.x || 0) / devW) * 100, 0, 100)}%`, top: 0, width: "1px", height: "100%" }}
+	                          >
+	                            <div className="h-full w-px bg-gradient-to-b from-transparent via-primary/40 to-transparent" />
+	                          </div>
+	                          <div
+	                            className="absolute pointer-events-none z-30"
+	                            style={{ top: `${clamp((Number(active?.y || 0) / devH) * 100, 0, 100)}%`, left: 0, height: "1px", width: "100%" }}
+	                          >
+	                            <div className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+	                          </div>
+	                        </>
+	                      )}
+
 	                      {/* Target outline + handles */}
 	                      <div
-	                        className={`absolute pointer-events-none z-40 rounded-md border-2 ${outline} ${glow} ${tapInspect && !pinnedInspect ? "animate-pulse" : ""}`}
+	                        className={`absolute pointer-events-none z-40 rounded-lg border-2 ${outline} ${glow} ${tapInspect && !pinnedInspect ? "animate-pulse" : ""}`}
 	                        style={{ left: `${leftPct}%`, top: `${topPct}%`, width: `${widthPct}%`, height: `${heightPct}%` }}
 	                      >
 	                        {/* Corner handles */}
@@ -2911,123 +3218,27 @@ ${enabledActions
 	                          {typeof score === "number" && (
 	                            <div className="text-[10px] font-mono text-muted-foreground">{score}</div>
 	                          )}
+	                          {resolvedBy === "xpath" && (
+	                            <div className="text-[10px] font-semibold text-primary">XPATH</div>
+	                          )}
 	                          {pinnedInspect && (
-	                            <div className="text-[10px] font-semibold text-cyan-500">PINNED</div>
+	                            <div className="text-[10px] font-semibold text-primary">PINNED</div>
 	                          )}
 	                        </div>
 	                      </div>
 
-	                      {/* Docked inspector panel (collapsible, stays out of the way) */}
-	                      <div className="absolute z-50 bottom-3 right-3 pointer-events-auto">
-	                        {!inspectorPanelOpen ? (
-	                          <button
-	                            type="button"
-	                            className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 backdrop-blur px-3 py-1.5 shadow-lg hover:bg-background/90 transition-colors"
-	                            onClick={() => setInspectorPanelOpen(true)}
-	                            title="Open Inspector details"
-	                          >
-	                            <div className={`h-2 w-2 rounded-full ${band}`} />
-	                            <span className="text-xs font-semibold">Inspector</span>
-	                            <span className="text-[11px] font-mono text-muted-foreground">{typeof score === "number" ? score : "--"}</span>
-	                          </button>
-	                        ) : (
-	                          <div className="w-[360px] max-w-[92vw] rounded-xl border border-border/60 bg-background/90 backdrop-blur shadow-2xl overflow-hidden">
-	                            <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
-	                              <div className="flex items-center gap-2">
-	                                <div className={`h-2.5 w-2.5 rounded-full ${band}`} />
-	                                <div className="text-sm font-semibold">Inspector</div>
-	                                <div className="text-xs font-mono text-muted-foreground">{typeof score === "number" ? score : "--"}</div>
-	                              </div>
-	                              <div className="flex items-center gap-2">
-	                                <button
-	                                  type="button"
-	                                  className={`text-xs rounded-md px-2 py-1 border ${pinnedInspect ? "border-cyan-500/60 text-cyan-600 bg-cyan-500/10" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
-	                                  onClick={() => {
-	                                    if (pinnedInspect) setPinnedInspect(null);
-	                                    else if (hoverInspect) setPinnedInspect(hoverInspect);
-	                                  }}
-	                                  title={pinnedInspect ? "Unpin target" : "Pin current hover target"}
-	                                >
-	                                  {pinnedInspect ? "Unpin" : "Pin"}
-	                                </button>
-	                                <button
-	                                  type="button"
-	                                  className={`text-xs rounded-md px-2 py-1 border ${inspectorSpotlight ? "border-foreground/20 text-foreground/80 bg-foreground/5" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
-	                                  onClick={() => setInspectorSpotlight(v => !v)}
-	                                  title="Toggle spotlight"
-	                                >
-	                                  Spotlight
-	                                </button>
-	                                <button
-	                                  type="button"
-	                                  className="text-xs rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground"
-	                                  onClick={() => setInspectorPanelOpen(false)}
-	                                  title="Close"
-	                                >
-	                                  Close
-	                                </button>
-	                              </div>
-	                            </div>
+                      {/* Hover hint (compact, non-blocking) */}
+                      {!pinnedInspect && !tapInspect && hoverInspect && (
+                        <div className="absolute pointer-events-none z-50 left-3 top-3">
+                          <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 backdrop-blur px-2.5 py-1 shadow-md text-[10px] text-muted-foreground">
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/80" />
+                            <span>Click to record</span>
+                            <span className="text-muted-foreground/60">•</span>
+                            <span>Right‑click to pin</span>
+                          </div>
+                        </div>
+                      )}
 
-	                            <div className="px-3 py-2 space-y-2">
-	                              <div className="text-xs text-muted-foreground">Target</div>
-	                              <div className="rounded-lg border border-border/50 bg-muted/30 p-2">
-	                                <div className="text-xs font-semibold text-foreground truncate">{targetName}</div>
-	                                <div className="mt-1 grid grid-cols-[88px_1fr] gap-x-2 gap-y-1 text-[11px]">
-	                                  <div className="text-muted-foreground">resource-id</div>
-	                                  <div className="font-mono break-all">{String(el.resourceId || "") || "-"}</div>
-	                                  <div className="text-muted-foreground">content-desc</div>
-	                                  <div className="font-mono break-all">{String(el.contentDesc || "") || "-"}</div>
-	                                  <div className="text-muted-foreground">text</div>
-	                                  <div className="font-mono break-all">{String(el.text || "") || "-"}</div>
-	                                  <div className="text-muted-foreground">class</div>
-	                                  <div className="font-mono break-all">{String(el.class || "") || "-"}</div>
-	                                  <div className="text-muted-foreground">bounds</div>
-	                                  <div className="font-mono break-all">{String(el.bounds || "") || "-"}</div>
-	                                </div>
-	                              </div>
-
-	                              <div className="flex items-center justify-between">
-	                                <div className="text-xs text-muted-foreground">Locators</div>
-	                                <div className="flex items-center gap-2">
-	                                  <div className="text-[11px] font-mono text-muted-foreground">{best ? `${best.strategy}` : "none"}</div>
-	                                  {!!best?.value && best?.strategy === "xpath" && (
-	                                    <button
-	                                      type="button"
-	                                      className="text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-	                                      onClick={() => copyText(String(best.value), "XPath copied")}
-	                                      title="Copy best XPath"
-	                                    >
-	                                      Copy XPath
-	                                    </button>
-	                                  )}
-	                                </div>
-	                              </div>
-	                              <div className="rounded-lg border border-border/50 bg-muted/20 p-2 max-h-[160px] overflow-auto">
-	                                {locators?.length ? (
-	                                  <div className="space-y-1">
-	                                    {locators.slice(0, 6).map((c: any, idx: number) => (
-	                                      <div key={`${c.strategy}-${idx}`} className="flex items-start justify-between gap-2">
-	                                        <button
-	                                          type="button"
-	                                          className={`text-left text-[11px] font-mono break-all ${idx === 0 ? "text-foreground" : "text-muted-foreground"} hover:underline`}
-	                                          onClick={() => copyText(String(c.value || ""), `${c.strategy} copied`)}
-	                                          title="Click to copy"
-	                                        >
-	                                          {c.strategy}: {String(c.value || "")}
-	                                        </button>
-	                                        <div className="text-[10px] font-mono text-muted-foreground">{typeof c.score === "number" ? c.score : ""}</div>
-	                                      </div>
-	                                    ))}
-	                                  </div>
-	                                ) : (
-	                                  <div className="text-[11px] text-muted-foreground">No locator candidates available (fallback to coordinates remains active).</div>
-	                                )}
-	                              </div>
-	                            </div>
-	                          </div>
-	                        )}
-	                      </div>
 	                    </>
 	                  );
 	                })()}
@@ -3037,7 +3248,27 @@ ${enabledActions
 	                    src={mirrorImage}
                     alt="Device Screen"
                     className={`w-full h-full object-contain select-none transition-all duration-200 ${captureMode ? 'cursor-pointer opacity-90' : 'cursor-default'}`}
-	                    // --- INTERACTION LOGIC ---
+                    // --- INTERACTION LOGIC ---
+	                    onContextMenu={(e) => {
+	                      if (!captureMode || !inspectorModeEnabled) return;
+	                      e.preventDefault();
+	                      // Toggle pin (video-style "right click to inspect/pin")
+	                      if (pinnedInspect) {
+	                        setPinnedInspect(null);
+	                        toast.info("Inspector unpinned");
+	                        return;
+	                      }
+
+	                      const boundsStr = String(hoverInspect?.element?.bounds || "");
+	                      if (!hoverInspect || !boundsStr.includes("[")) {
+	                        toast.info("No element to pin yet (hover an element first)");
+	                        return;
+	                      }
+
+	                      setPinnedInspect(hoverInspect);
+	                      setInspectorPanelOpen(true);
+	                      toast.success("Inspector pinned");
+	                    }}
 	                    onMouseMove={(e) => {
 	                      if (!captureMode || !inspectorModeEnabled) return;
 	                      const now = Date.now();
@@ -3056,20 +3287,28 @@ ${enabledActions
 	                      const ac = new AbortController();
 	                      hoverInspectAbortRef.current = ac;
 
-	                      fetch(`${AGENT_URL}/device/inspect`, {
-	                        method: "POST",
-	                        headers: { "Content-Type": "application/json" },
-	                        body: JSON.stringify({ x: deviceX, y: deviceY, mode: "hover", preferCache: true }),
-	                        signal: ac.signal
-	                      })
-	                        .then(r => r.json())
-	                        .then((data) => {
-	                          if (data?.success && data.inspect) setHoverInspect(data.inspect);
-	                        })
-	                        .catch(() => { });
-	                    }}
+                      fetch(`${AGENT_URL}/device/inspect`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ x: deviceX, y: deviceY, mode: "hover", preferCache: true, preferXPath: true }),
+                        signal: ac.signal
+                      })
+                        .then(r => r.json())
+                        .then((data) => {
+                          if (!data?.success || !data.inspect) return;
+                          const b = String(data.inspect?.element?.bounds || "");
+                          if (b && b.includes("[")) {
+                            setHoverInspect(data.inspect);
+                          } else {
+                            setHoverInspect(null);
+                          }
+                        })
+                        .catch(() => { });
+                    }}
 	                    onMouseDown={(e) => {
 	                      if (!captureMode) return;
+	                      // Right click is reserved for "inspect/pin" (handled in onContextMenu).
+	                      if (e.button !== 0) return;
                       const el = e.currentTarget as HTMLImageElement;
                       const rect = el.getBoundingClientRect();
                       const clickX = e.clientX - rect.left;
@@ -3093,6 +3332,16 @@ ${enabledActions
                     }}
                     onMouseUp={async (e) => {
                       if (!captureMode || !pressCoordsRef.current) return;
+                      // Avoid recording actions on right/middle click.
+                      if (e.button !== 0) {
+                        if (longPressTimerRef.current) {
+                          clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                        isDraggingRef.current = false;
+                        pressCoordsRef.current = null;
+                        return;
+                      }
 
                       if (longPressTimerRef.current) {
                         clearTimeout(longPressTimerRef.current);
@@ -3157,15 +3406,45 @@ ${enabledActions
 
 	                          if (inspectorModeEnabled) {
 	                            const lb = step.locatorBundle || null;
-	                            setTapInspect({
-	                              element: meta,
-	                              locatorBundle: lb,
-	                              locators: lb ? [lb.primary, ...(lb.fallbacks || [])] : [],
-	                              best: lb?.primary || null,
-	                              reliabilityScore: (typeof step.reliabilityScore === "number") ? step.reliabilityScore : undefined,
-	                              smartXPath: step.smartXPath || step.xpath || ""
-	                            });
-	                            setTimeout(() => setTapInspect(null), 650);
+	                            if (tapInspectDismissRef.current) {
+	                              clearTimeout(tapInspectDismissRef.current);
+	                              tapInspectDismissRef.current = null;
+	                            }
+
+	                            // Prefer bounds-bearing element for highlight; if missing, ask inspector endpoint once (best-effort).
+	                            const metaBounds = String(meta?.bounds || "");
+	                            let elementForInspect = meta;
+	                            if (!metaBounds || !metaBounds.includes("[")) {
+	                              try {
+	                                const ir = await fetch(`${AGENT_URL}/device/inspect`, {
+	                                  method: "POST",
+	                                  headers: { "Content-Type": "application/json" },
+	                                  body: JSON.stringify({ x: deviceX, y: deviceY, mode: "tap", preferCache: true }),
+	                                });
+	                                const ij = await ir.json().catch(() => ({}));
+	                                if (ij?.success && ij?.inspect?.element?.bounds) {
+	                                  elementForInspect = ij.inspect.element;
+	                                }
+	                              } catch { /* ignore */ }
+	                            }
+	                            const boundsStr = String(elementForInspect?.bounds || "");
+	                            if (boundsStr && boundsStr.includes("[")) {
+	                              setTapInspect({
+	                                element: elementForInspect || meta,
+	                                locatorBundle: lb,
+	                                locators: lb ? [lb.primary, ...(lb.fallbacks || [])] : [],
+	                                best: lb?.primary || null,
+	                                reliabilityScore: (typeof step.reliabilityScore === "number") ? step.reliabilityScore : undefined,
+	                                smartXPath: step.smartXPath || step.xpath || "",
+	                                xpath: step.xpath || ""
+	                              });
+	                              tapInspectDismissRef.current = setTimeout(() => {
+	                                setTapInspect(null);
+	                                tapInspectDismissRef.current = null;
+	                              }, 4000);
+	                            } else {
+	                              setTapInspect(null);
+	                            }
 	                          }
 
                           const isInput =
