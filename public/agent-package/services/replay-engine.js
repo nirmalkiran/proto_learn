@@ -18,7 +18,11 @@ export class ReplayEngine extends EventEmitter {
       screenSettleDelayMs: 0,
       strict: true,
       stepTimeoutMs: 7000,
-      pollMs: 250
+      pollMs: 250,
+      verifyUiChange: true,
+      failOnNoChange: true,
+      uiChangeTimeoutMs: 2500,
+      postActionDelayMs: 150
     };
   }
 
@@ -136,7 +140,11 @@ export class ReplayEngine extends EventEmitter {
       screenSettleDelayMs: parseInt(options?.screenSettleDelayMs || "0", 10) || 0,
       strict: options?.strict !== false,
       stepTimeoutMs: parseInt(options?.stepTimeoutMs || process.env.WISPR_REPLAY_STEP_TIMEOUT_MS || "7000", 10) || 7000,
-      pollMs: parseInt(options?.pollMs || process.env.WISPR_REPLAY_POLL_MS || "250", 10) || 250
+      pollMs: parseInt(options?.pollMs || process.env.WISPR_REPLAY_POLL_MS || "250", 10) || 250,
+      verifyUiChange: options?.verifyUiChange !== false,
+      failOnNoChange: options?.failOnNoChange !== false,
+      uiChangeTimeoutMs: parseInt(options?.uiChangeTimeoutMs || process.env.WISPR_REPLAY_UI_CHANGE_TIMEOUT_MS || "2500", 10) || 2500,
+      postActionDelayMs: parseInt(options?.postActionDelayMs || process.env.WISPR_REPLAY_POST_ACTION_DELAY_MS || "150", 10) || 150
     };
 
     this.emit('replay-started', { steps: steps.length, deviceId, startIndex });
@@ -169,6 +177,16 @@ export class ReplayEngine extends EventEmitter {
 
   async executeStep(step) {
     const { type, locator, value, coordinates } = step;
+    const verifyTypes = new Set(["tap", "input", "scroll", "pressKey", "openApp", "longPress"]);
+    const shouldVerifyChange = this.options?.verifyUiChange && verifyTypes.has(type);
+    let preHash = null;
+
+    if (shouldVerifyChange) {
+      const preXml = await this._getUiXml({ stabilize: true });
+      if (preXml && typeof preXml === "string") {
+        preHash = this._hashXml(preXml);
+      }
+    }
 
     if (this.options?.screenSettleDelayMs > 0) {
       await new Promise(r => setTimeout(r, this.options.screenSettleDelayMs));
@@ -205,6 +223,37 @@ export class ReplayEngine extends EventEmitter {
       default:
         throw new Error(`Unknown step type: ${type}`);
     }
+
+    if (shouldVerifyChange && preHash) {
+      if (this.options?.postActionDelayMs > 0) {
+        await new Promise(r => setTimeout(r, this.options.postActionDelayMs));
+      }
+      const changed = await this._waitForUiChange(preHash);
+      if (!changed) {
+        this.emit('step-no-change', { step, stepIndex: this.currentStepIndex });
+        if (this.options?.failOnNoChange) {
+          throw new Error(`UI did not change after ${type} step`);
+        }
+      }
+    }
+  }
+
+  async _waitForUiChange(previousHash) {
+    if (!previousHash) return false;
+    const timeoutMs = this.options?.uiChangeTimeoutMs || 2500;
+    const pollMs = this.options?.pollMs || 250;
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      if (!this.isReplaying) return false;
+      const xml = await this._getUiXml({ stabilize: true });
+      if (xml && typeof xml === "string") {
+        const nextHash = this._hashXml(xml);
+        if (nextHash && nextHash !== previousHash) return true;
+      }
+      await new Promise(r => setTimeout(r, pollMs));
+    }
+    return false;
   }
 
   _hasNonCoordinateLocator(step) {

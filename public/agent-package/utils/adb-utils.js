@@ -78,6 +78,9 @@ export async function adbCommand(args, options = {}) {
   const timeout = options.timeout || CONFIG.COMMAND_TIMEOUT;
   const deviceId = options.deviceId;
   const silent = options.silent === true;
+  const maxBuffer = (typeof options.maxBuffer === "number" && options.maxBuffer > 0)
+    ? options.maxBuffer
+    : 10 * 1024 * 1024; // 10MB default
 
   const command = CONFIG.ADB_COMMAND;
   const fullArgs = deviceId ? ['-s', deviceId, ...args] : args;
@@ -85,7 +88,7 @@ export async function adbCommand(args, options = {}) {
   try {
     const { stdout, stderr } = await execAsync(`"${command}" ${fullArgs.join(' ')}`, {
       timeout,
-      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+      maxBuffer
     });
 
     return { stdout: stdout.trim(), stderr: stderr.trim() };
@@ -862,8 +865,13 @@ export async function forceStopApp(packageName, deviceId = null) {
  */
 export async function isAppInstalled(packageName, deviceId = null) {
   try {
+    let resolvedDeviceId = deviceId;
+    if (!resolvedDeviceId) {
+      const devices = await getConnectedDevices().catch(() => []);
+      resolvedDeviceId = devices?.[0]?.id || null;
+    }
     const { stdout } = await adbCommand(['shell', 'pm', 'list', 'packages', packageName], {
-      deviceId,
+      deviceId: resolvedDeviceId,
       timeout: 5000
     });
     return stdout.includes(`package:${packageName}`);
@@ -981,24 +989,77 @@ async function findAapt() {
  */
 export async function getInstalledPackages(deviceId = null, excludeSystem = true) {
   try {
-    // 1. Get the list of third-party packages
-    const { stdout: pkgListRaw } = await adbCommand(['shell', 'pm', 'list', 'packages', '-3'], {
-      deviceId,
-      timeout: 10000
-    });
+    let resolvedDeviceId = deviceId;
+    if (!resolvedDeviceId) {
+      const devices = await getConnectedDevices().catch(() => []);
+      resolvedDeviceId = devices?.[0]?.id || null;
+    }
 
-    const thirdPartyPkgs = pkgListRaw
+    const parsePkgList = (raw) => raw
       .split('\n')
-      .map(line => line.replace('package:', '').trim())
+      .map(line => String(line).replace('package:', '').trim())
       .filter(pkg => pkg.length > 0);
 
-    if (thirdPartyPkgs.length === 0) return [];
+    // 1) Prefer third-party packages (-3). Some OEM/OS versions can behave oddly, so fall back safely.
+    let thirdPartyPkgs = [];
+    try {
+      const { stdout: pkgListRaw } = await adbCommand(['shell', 'pm', 'list', 'packages', '-3'], {
+        deviceId: resolvedDeviceId,
+        timeout: 10000
+      });
+      thirdPartyPkgs = parsePkgList(pkgListRaw);
+    } catch {
+      thirdPartyPkgs = [];
+    }
 
-    // 2. Get install times for ALL packages in one go (more efficient than loop)
-    const { stdout: dumpsysRaw } = await adbCommand(['shell', 'dumpsys', 'package'], {
-      deviceId,
-      timeout: 20000
-    });
+    if (thirdPartyPkgs.length === 0) {
+      try {
+        const { stdout: pkgListRaw2 } = await adbCommand(['shell', 'cmd', 'package', 'list', 'packages', '-3'], {
+          deviceId: resolvedDeviceId,
+          timeout: 10000
+        });
+        thirdPartyPkgs = parsePkgList(pkgListRaw2);
+      } catch {
+        thirdPartyPkgs = [];
+      }
+    }
+
+    // All packages list (used when excludeSystem=false, and as a last resort when -3 is empty).
+    let allPkgs = [];
+    if (!excludeSystem || thirdPartyPkgs.length === 0) {
+      try {
+        const { stdout: pkgListRawAll } = await adbCommand(['shell', 'pm', 'list', 'packages'], {
+          deviceId: resolvedDeviceId,
+          timeout: 15000
+        });
+        allPkgs = parsePkgList(pkgListRawAll);
+      } catch {
+        allPkgs = [];
+      }
+    }
+
+    // Absolute fallback: if -3 is empty, return *something* so the UI can find the app package.
+    // This avoids the confusing "No user apps found" when ADB returns an empty -3 list.
+    const pkgsToConsider = excludeSystem
+      ? (thirdPartyPkgs.length ? thirdPartyPkgs : allPkgs)
+      : allPkgs;
+
+    if (pkgsToConsider.length === 0) return [];
+
+    // 2) Best-effort: try to enrich with install time + installer.
+    // On some OEM devices `dumpsys package` is extremely large and can exceed Node's exec buffer.
+    // If enrichment fails, we still return the package list (sorted) so the UI can proceed.
+    let dumpsysRaw = "";
+    try {
+      const res = await adbCommand(['shell', 'dumpsys', 'package'], {
+        deviceId: resolvedDeviceId,
+        timeout: 40000,
+        maxBuffer: 80 * 1024 * 1024 // allow large OEM outputs
+      });
+      dumpsysRaw = res.stdout || "";
+    } catch (e) {
+      return [...pkgsToConsider].sort();
+    }
 
     const installTimes = new Map();
     const installers = new Map();
@@ -1023,24 +1084,25 @@ export async function getInstalledPackages(deviceId = null, excludeSystem = true
     }
 
     // 3. Filter for external APKs and sort by install time (latest first)
-    // We keep apps where installer is null, com.android.shell (ADB), or empty
-    const sortedPackages = thirdPartyPkgs
-      .filter(pkg => {
-        const installer = installers.get(pkg);
-        // Exclude Play Store installs
-        if (installer === 'com.android.vending') return false;
-        // Keep ADB installs (com.android.shell), null installers (likely APK side-load), 
-        // or specific target apps like the user's project app
-        return !installer || installer === 'com.android.shell';
-      })
-      .map(pkg => ({
-        name: pkg,
-        time: installTimes.get(pkg) || 0
-      }))
+    // NOTE: previous behavior filtered out Play Store installs to focus on side-load/ADB apps.
+    // That can hide legitimate user apps (including the user-under-test). We now:
+    //   1) prefer the filtered list when it returns results
+    //   2) fall back to ALL third-party packages when filtering would produce an empty list
+    const sortByInstallTimeDesc = (pkgs) => pkgs
+      .map(pkg => ({ name: pkg, time: installTimes.get(pkg) || 0 }))
       .sort((a, b) => b.time - a.time)
       .map(item => item.name);
 
-    return sortedPackages;
+    const filtered = pkgsToConsider.filter(pkg => {
+      const installer = installers.get(pkg);
+      // Keep ADB installs (com.android.shell), null installers (likely APK side-load),
+      // and anything unknown. Only exclude Play Store by default.
+      if (installer === 'com.android.vending') return false;
+      return !installer || installer === 'com.android.shell';
+    });
+
+    const preferred = filtered.length ? filtered : pkgsToConsider;
+    return sortByInstallTimeDesc(preferred);
   } catch (error) {
     console.error('[ADB] Failed to get installed packages:', error.message);
     return [];

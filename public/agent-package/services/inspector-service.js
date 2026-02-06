@@ -77,6 +77,21 @@ function estimateXPathMatches(nodes, xpath) {
   return count;
 }
 
+function parseBoundsCenter(bounds) {
+  const raw = String(bounds || "");
+  const m = raw.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+  if (!m) return null;
+  const x1 = Number(m[1]);
+  const y1 = Number(m[2]);
+  const x2 = Number(m[3]);
+  const y2 = Number(m[4]);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  return {
+    x: Math.round((x1 + x2) / 2),
+    y: Math.round((y1 + y2) / 2),
+  };
+}
+
 async function getFocusedScreenContext(deviceId) {
   const enabled = process.env.WISPR_INSPECTOR_CONTEXT === "1";
   if (!enabled) return { ts: Date.now() };
@@ -275,6 +290,50 @@ export class InspectorService {
     }
 
     return await work;
+  }
+
+  async inspectByLocator(params) {
+    const locator = String(params?.locator || "").trim();
+    if (!locator) throw new Error("Locator is required");
+    const strategy = String(params?.strategy || "").trim();
+    const deviceId = await this._resolveDeviceId(params?.deviceId);
+    const preferCache = Boolean(params?.preferCache);
+
+    const { xml } = await this._getXml(deviceId, preferCache);
+    if (!xml) {
+      throw new Error("UI hierarchy unavailable");
+    }
+
+    const nodes = parseHierarchyNodesFast(xml);
+    let match = null;
+    if (strategy === "xpath" || locator.startsWith("//")) {
+      const matches = findMatchingNodesByXPath(nodes, locator);
+      match = matches[0] || null;
+    } else if (strategy === "id") {
+      match = nodes.find((n) => String(n?.attrs?.["resource-id"] || "") === locator) || null;
+    } else if (strategy === "accessibilityId") {
+      match = nodes.find((n) => String(n?.attrs?.["content-desc"] || "") === locator) || null;
+    } else if (strategy === "text") {
+      match = nodes.find((n) => String(n?.attrs?.text || "") === locator) || null;
+    }
+
+    if (!match) {
+      throw new Error("No matching element found for locator");
+    }
+
+    const center = parseBoundsCenter(match?.attrs?.bounds);
+    if (!center) {
+      throw new Error("Matched element has no usable bounds");
+    }
+
+    return await this.inspectAtPoint({
+      x: center.x,
+      y: center.y,
+      deviceId,
+      mode: "tap",
+      preferCache: true,
+      preferXPath: true,
+    });
   }
 }
 

@@ -25,6 +25,10 @@ import inspectorService from "./services/inspector-service.js";
 import { HierarchySnapshotStore } from "./services/hierarchy-snapshot-store.js";
 import { diffHierarchies } from "./services/hierarchy-diff.js";
 import { LocatorHistoryStore } from "./services/locator-history-store.js";
+import sharp from "sharp";
+import { PNG } from "pngjs";
+import * as jpegJs from "jpeg-js";
+import { once } from "events";
 
 /* =====================================================
  * WISPR WEB AGENT CONFIG & LOGIC
@@ -159,6 +163,21 @@ class MobileAutomationAgent {
     this.replayEngine = new ReplayEngine();
   }
 
+  async encodeJpeg(buffer, quality = 70) {
+    if (sharp) {
+      try {
+        return await sharp(buffer).jpeg({ quality, chromaSubsampling: "4:2:0" }).toBuffer();
+      } catch { /* fall through */ }
+    }
+    try {
+      const png = PNG.sync.read(buffer);
+      const raw = { data: png.data, width: png.width, height: png.height };
+      return jpegJs.encode(raw, quality).data;
+    } catch {
+      return buffer; // fallback to original buffer (likely PNG)
+    }
+  }
+
   async initialize() {
     log("info", "MOBILE AUTOMATION AGENT INITIALIZING...");
     try {
@@ -204,6 +223,56 @@ class MobileAutomationAgent {
     this.app.get("/device/check", async (req, res) => { try { res.json(await deviceController.getStatus()); } catch (e) { res.status(500).json({ connected: false, error: e.message }); } });
     this.app.get("/device/size", async (req, res) => { try { res.json({ success: true, size: await deviceController.getScreenSize() }); } catch (e) { res.status(500).json({ success: false, error: e.message }); } });
     this.app.get("/device/screenshot", async (req, res) => { try { const img = await deviceController.takeScreenshot(); res.setHeader("Content-Type", "image/png"); res.send(img); } catch (e) { log("error", "Screenshot failed", { error: e.message }); res.status(500).json({ error: e.message }); } });
+
+    this.app.get("/device/stream/mjpeg", async (req, res) => {
+      const fpsRaw = Number(req.query.fps || process.env.MJPEG_DEFAULT_FPS || 8);
+      const maxFps = Number(process.env.MJPEG_MAX_FPS || 15);
+      const fps = Math.max(1, Math.min(Number.isFinite(fpsRaw) ? fpsRaw : 8, maxFps));
+      const frameInterval = Math.max(30, Math.floor(1000 / fps));
+      const qualityRaw = Number(req.query.quality || process.env.MJPEG_QUALITY || 70);
+      const quality = Math.max(30, Math.min(Number.isFinite(qualityRaw) ? qualityRaw : 70, 95));
+      const deviceId = req.query.deviceId || null;
+      const boundary = "frame";
+
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("Content-Type", `multipart/x-mixed-replace; boundary=${boundary}`);
+
+      let active = true;
+      req.on("close", () => { active = false; });
+
+      const sendFrame = async () => {
+        if (!active || res.writableEnded) return;
+        const start = Date.now();
+        try {
+          const pngBuffer = await deviceController.takeScreenshot(deviceId);
+          const jpegBuffer = await this.encodeJpeg(pngBuffer, quality);
+          if (res.writableEnded) return;
+
+          const header =
+            `--${boundary}\r\n` +
+            `Content-Type: image/jpeg\r\n` +
+            `Content-Length: ${jpegBuffer.length}\r\n\r\n`;
+
+          if (!res.write(header)) await once(res, "drain");
+          if (!res.write(jpegBuffer)) await once(res, "drain");
+          if (!res.write("\r\n")) await once(res, "drain");
+        } catch (e) {
+          // Avoid noisy logs when device is temporarily absent
+          if (!String(e?.message || "").includes("No device connected")) {
+            log("warn", "MJPEG frame failed", { error: e.message });
+          }
+        } finally {
+          const elapsed = Date.now() - start;
+          const nextDelay = Math.max(10, frameInterval - elapsed);
+          if (active && !res.writableEnded) {
+            setTimeout(sendFrame, nextDelay);
+          }
+        }
+      };
+
+      sendFrame();
+    });
     this.app.post("/device/shell", async (req, res) => { try { const { command, deviceId } = req.body; if (!command) throw new Error("Command is required"); res.json({ success: true, ...await deviceController.shell(command, deviceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
     this.app.get("/device/ui", async (req, res) => { try { res.json({ success: true, xml: await deviceController.getUIHierarchy() }); } catch (e) { res.status(500).json({ success: false, error: e.message }); } });
 
@@ -212,6 +281,22 @@ class MobileAutomationAgent {
       try {
         const { x, y, deviceId, mode, preferCache } = req.body || {};
         const inspect = await inspectorService.inspectAtPoint({ x, y, deviceId, mode, preferCache });
+        res.json({ success: true, inspect });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
+
+    this.app.post("/device/inspect-locator", async (req, res) => {
+      try {
+        const { locator, strategy, deviceId, preferCache } = req.body || {};
+        if (typeof inspectorService.inspectByLocator !== "function") {
+          return res.status(501).json({
+            success: false,
+            error: "inspectByLocator is unavailable in current agent runtime. Restart the agent to load latest inspector service.",
+          });
+        }
+        const inspect = await inspectorService.inspectByLocator({ locator, strategy, deviceId, preferCache });
         res.json({ success: true, inspect });
       } catch (e) {
         res.status(500).json({ success: false, error: e.message });
@@ -506,8 +591,28 @@ class MobileAutomationAgent {
         res.json({ success: true });
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
-    this.app.get("/app/installed-packages", async (req, res) => { try { const { getInstalledPackages } = await import("./utils/adb-utils.js"); res.json({ success: true, packages: await getInstalledPackages() }); } catch (e) { res.status(500).json({ error: e.message }); } });
-    this.app.get("/app/check-install/:packageName", async (req, res) => { try { const { isAppInstalled } = await import("./utils/adb-utils.js"); res.json({ success: true, installed: await isAppInstalled(req.params.packageName) }); } catch (e) { res.status(500).json({ error: e.message }); } });
+    this.app.get("/app/installed-packages", async (req, res) => {
+      try {
+        const { getInstalledPackages } = await import("./utils/adb-utils.js");
+        const deviceId = (typeof req.query.deviceId === "string" && req.query.deviceId.trim())
+          ? req.query.deviceId.trim()
+          : null;
+        res.json({ success: true, packages: await getInstalledPackages(deviceId) });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+    this.app.get("/app/check-install/:packageName", async (req, res) => {
+      try {
+        const { isAppInstalled } = await import("./utils/adb-utils.js");
+        const deviceId = (typeof req.query.deviceId === "string" && req.query.deviceId.trim())
+          ? req.query.deviceId.trim()
+          : null;
+        res.json({ success: true, installed: await isAppInstalled(req.params.packageName, deviceId) });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
     this.app.post("/app/upload", async (req, res) => { try { const { base64, fileName } = req.body; const buffer = Buffer.from(base64, "base64"); const filePath = path.join(os.tmpdir(), fileName || `temp_${Date.now()}.apk`); fs.writeFileSync(filePath, buffer); res.json({ success: true, path: filePath }); } catch (e) { res.status(500).json({ error: e.message }); } });
     this.app.post("/app/install", async (req, res) => { try { const { installApk } = await import("./utils/adb-utils.js"); await installApk(req.body.apkPath); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
     this.app.post("/device/uninstall", async (req, res) => {

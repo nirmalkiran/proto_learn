@@ -125,7 +125,7 @@ const Project = () => {
       case 'nocode-automation':
         return <NoCodeAutomation projectId={selectedProject.id} />;
       case "mobile-no-code-automation":
-        return <MobileAutomation />;
+        return <MobileAutomation projectId={selectedProject.id} />;
       case "performance-testing":
         return <EnhancedPerformanceTestGenerator />;
       case "agents":

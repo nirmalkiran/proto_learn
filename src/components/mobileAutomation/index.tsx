@@ -1,7 +1,7 @@
 /**
  * Purpose:
  * Main entry point for the Mobile No-Code Automation module.
- * Manages the high-level navigation (Tabs) between Setup and Recorder,
+ * Manages the high-level navigation (Tabs) between Setup, Recorder, and AI Assistant,
  * while maintaining shared connection state.
  */
 import { useState } from "react";
@@ -11,33 +11,28 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Smartphone,
   Circle,
-  Terminal,
   Wand2,
-  AlertCircle,
   Settings,
   Cloud,
-  History,
 } from "lucide-react";
 
 import MobileRecorder from "./MobileRecorder";
 import MobileSetupWizard from "./MobileSetupWizard";
+import MobileAIAssistant from "./MobileAIAssistant";
 
-import { ActionType, RecordedAction, SelectedDevice } from "./types";
+import { SelectedDevice } from "./types";
 
-export default function MobileAutomation() {
-  /** Project context (can later come from route / selector) */
-  const projectId = "c4a1b02d-7682-4c28-874b-6e9f9024c0e9";
+const DEFAULT_PROJECT_ID = "c4a1b02d-7682-4c28-874b-6e9f9024c0e9";
+
+interface MobileAutomationProps {
+  projectId?: string;
+}
+
+export default function MobileAutomation({ projectId = DEFAULT_PROJECT_ID }: MobileAutomationProps) {
 
   /** Active tab */
   const [activeTab, setActiveTab] = useState("setup");
@@ -73,7 +68,7 @@ export default function MobileAutomation() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="setup">
             <Settings className="mr-2 h-4 w-4" />
             Setup
@@ -82,6 +77,11 @@ export default function MobileAutomation() {
           <TabsTrigger value="recorder">
             <Circle className="mr-2 h-4 w-4" />
             Recorder
+          </TabsTrigger>
+
+          <TabsTrigger value="assistant">
+            <Wand2 className="mr-2 h-4 w-4" />
+            AI Assistant
           </TabsTrigger>
         </TabsList>
 
@@ -108,6 +108,14 @@ export default function MobileAutomation() {
           />
         </TabsContent>
 
+        {/* ================= AI ASSISTANT ================= */}
+        <TabsContent value="assistant" forceMount className={activeTab !== "assistant" ? "hidden" : "mt-6"}>
+          <MobileAIAssistant
+            projectId={projectId}
+            setupState={setupState}
+            selectedDevice={selectedDevice}
+          />
+        </TabsContent>
       </Tabs>
     </div>
   );
