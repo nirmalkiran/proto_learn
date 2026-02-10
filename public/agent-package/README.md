@@ -196,6 +196,42 @@ docker run -p 3000:3000 agent-package
 ### Manual Mobile Setup (Self-Healing)
 The agent automatically initializes mobile controllers. If you encounter issues, ensure `adb` is in your PATH.
 
+## Mobile Agent Quick Start (after downloading the WISPR ZIP)
+Use these steps when you download the WISPR agent ZIP and want to run it as a Mobile agent.
+
+1) Unzip the package and `cd` into the folder (where `package.json` and `agent.js` live).  
+2) Install deps:
+   ```bash
+   npm install
+   ```
+3) (Optional) If you need Playwright for screenshots:
+   ```bash
+   npx playwright install chromium
+   ```
+4) Set environment variables (PowerShell example):
+   ```powershell
+   $env:WISPR_API_TOKEN="paste-token-from-WISPR-registration"
+   $env:AGENT_ID="mobile-runner-01"          # must match what you registered
+   $env:PROJECT_ID="c07eb315-5ab4-43af-b455-6196f29dc04b"
+   $env:API_BASE_URL="https://vqoxcgbilzqxmxuxwicr.supabase.co/functions/v1/agent-api"
+   # Mobile runtime settings (adjust to your setup)
+   $env:APPIUM_HOST="127.0.0.1"
+   $env:APPIUM_PORT="4723"
+   $env:DEVICE_NAME="emulator-5554"
+   $env:PLATFORM_NAME="Android"
+   ```
+5) Run the agent:
+   ```bash
+   node agent.js
+   ```
+6) In the WISPR “Self-Hosted Agents” page, confirm the Mobile agent shows online after heartbeats.
+7) Trigger a mobile job from WISPR; the agent claims it and executes via your Appium/ADB setup.
+
+Notes
+- Agent ID in env must match the ID you registered in WISPR.
+- Keep the heartbeat/polling code; swap execution logic in `agent.js` to your mobile runner if needed.
+- If heartbeats fail, recheck token, `API_BASE_URL`, and network access.
+
 ## Contributing
 
 1. Fork the repository

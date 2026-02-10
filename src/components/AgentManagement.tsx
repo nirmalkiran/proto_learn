@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,16 +64,11 @@ import {
   Ban,
   Play,
   RotateCcw,
-  Smartphone,
-  HelpCircle,
-  PlayCircle,
-  Monitor,
-  Terminal,
-  Zap,
+  Calendar,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import JSZip from "jszip";
-import { useNavigate } from "react-router-dom";
+import { AgentScheduledTriggers } from "./AgentScheduledTriggers";
 
 interface AgentManagementProps {
   projectId: string;
@@ -74,56 +76,67 @@ interface AgentManagementProps {
 
 interface Agent {
   id: string;
-  agent_id?: string;
-  agent_name?: string;
-  name?: string;
-  agent_type?: string;
-  status: string | null;
+  agent_id: string;
+  agent_name: string;
+  status: string;
   last_heartbeat: string | null;
-  capacity?: number;
-  running_jobs?: number;
-  browsers?: string[] | null;
-  config?: any;
-  capabilities?: any;
+  capacity: number;
+  running_jobs: number;
+  browsers: string[] | null;
+  config: any;
   created_at: string;
-  endpoint_url?: string | null;
-  api_key?: string | null;
-  project_id?: string | null;
-  user_id?: string;
-  updated_at?: string;
+  agent_type?: string;
 }
 
 interface JobQueueItem {
   id: string;
-  job_type: string;
-  job_data: any;
-  status: string | null;
+  run_id: string;
+  test_id: string;
+  status: string;
+  priority: number;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
   agent_id: string | null;
-  error_message: string | null;
-  result: any;
-  user_id: string;
+  retries: number;
+  max_retries: number;
 }
 
 interface ExecutionResult {
   id: string;
+  job_id: string;
   status: string;
+  passed_steps: number;
+  failed_steps: number;
+  total_steps: number;
   duration_ms: number | null;
-  logs: string | null;
-  result: any;
-  test_case_id: string | null;
+  error_message: string | null;
   created_at: string;
-  user_id: string;
+  screenshots: any;
+  video_url: string | null;
+  trace_url: string | null;
+}
+
+interface PerformanceJob {
+  id: string;
+  agent_id: string;
+  jmx_id: string;
+  project_id: string;
+  threads: number;
+  rampup: number;
+  duration: number;
+  status: string;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   const { toast } = useToast();
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"agents" | "jobs" | "history">("agents");
+  const [activeTab, setActiveTab] = useState<"agents" | "jobs" | "history" | "schedules">("agents");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [jobs, setJobs] = useState<JobQueueItem[]>([]);
+  const [performanceJobs, setPerformanceJobs] = useState<PerformanceJob[]>([]);
   const [executionResults, setExecutionResults] = useState<ExecutionResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -136,145 +149,16 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   // Register form states
   const [registerAgentName, setRegisterAgentName] = useState("");
   const [registerAgentId, setRegisterAgentId] = useState("");
+  const [registerAgentType, setRegisterAgentType] = useState<"selenium" | "playwright" | "performance" | "mobile">(
+    "selenium",
+  );
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Mobile agent status
-  const [mobileAgentStatus, setMobileAgentStatus] = useState<{
-    running: boolean;
-    uptime: number;
-    port: number;
-    lastChecked: Date | null;
-  }>({
-    running: false,
-    uptime: 0,
-    port: 3001,
-    lastChecked: null
-  });
-
-  const lastStatusCheckFail = useRef<number | null>(null);
-
-  const [mobileDetails, setMobileDetails] = useState<{
-    devices: any[];
-    physicalDevice: boolean;
-    appium: boolean;
-    emulator: boolean;
-  }>({
-    devices: [],
-    physicalDevice: false,
-    appium: false,
-    emulator: false
-  });
-
-  const [showMobileWizard, setShowMobileWizard] = useState(false);
-  const [mobileWizardStep, setMobileWizardStep] = useState(1);
-
-  // Browser Agent States
-  const [isBrowserAgentActive, setIsBrowserAgentActive] = useState(false);
-  const [browserAgentId] = useState(() => `browser-${Math.random().toString(36).substr(2, 9)}`);
-  const [browserAgentStatus, setBrowserAgentStatus] = useState<string>("idle");
-
-  // Mobile Agent States (for background heartbeating to Supabase)
-  const [mobileAgentId] = useState(() => `mobile-${Math.random().toString(36).substr(2, 9)}`);
-
-  useEffect(() => {
-    let isMounted = true;
-    const mobileHeartbeat = async () => {
-      if (!isMounted || !mobileAgentStatus.running) return;
-      try {
-        await supabase.functions.invoke("agent-api", {
-          body: {
-            action: "heartbeat",
-            agentId: mobileAgentId,
-            projectId: projectId,
-            status: "online",
-            capacity: mobileDetails.devices.length || 1,
-            browsers: ["Android (ADB)"],
-            system_info: {
-              platform: navigator.platform,
-              devices: mobileDetails.devices.length,
-              port: 3001
-            }
-          },
-        });
-      } catch (err) {
-        console.error("Mobile Agent heartbeat failed:", err);
-      }
-    };
-
-    if (mobileAgentStatus.running) {
-      const hbInterval = setInterval(mobileHeartbeat, 30000);
-      mobileHeartbeat();
-      return () => { isMounted = false; clearInterval(hbInterval); };
-    }
-  }, [mobileAgentStatus.running, mobileAgentId, projectId, mobileDetails.devices.length]);
-
-  useEffect(() => {
-    if (!isBrowserAgentActive) return;
-    let isMounted = true;
-    const heartbeat = async () => {
-      if (!isMounted) return;
-      try {
-        await supabase.functions.invoke("agent-api", {
-          body: {
-            action: "heartbeat",
-            agentId: browserAgentId,
-            projectId: projectId, // FIX: Pass projectId for auto-registration
-            status: browserAgentStatus === "busy" ? "busy" : "online",
-            capacity: 1,
-            browsers: ["chrome"],
-            system_info: { browser: navigator.userAgent, platform: navigator.platform }
-          },
-        });
-      } catch (err) {
-        console.error("Browser Agent heartbeat failed:", err);
-      }
-    };
-
-    const poll = async () => {
-      if (!isMounted || browserAgentStatus === "busy") return;
-      try {
-        const { data, error } = await supabase.functions.invoke("agent-api", {
-          body: { action: "poll", agentId: browserAgentId },
-        });
-
-        if (error || !data?.jobs?.length) return;
-
-        const job = data.jobs[0];
-        setBrowserAgentStatus("busy");
-
-        // Mark job as started
-        await supabase.functions.invoke("agent-api", {
-          body: { action: "start", jobId: job.id, agentId: browserAgentId },
-        });
-
-        // Simulate execution (In a real scenario, this would execute script/commands in the current tab)
-        setTimeout(async () => {
-          if (!isMounted) return;
-          await supabase.functions.invoke("agent-api", {
-            body: {
-              action: "result",
-              jobId: job.id,
-              status: "completed",
-              result_data: { message: "Successfully executed in Browser Agent (Simulated)" }
-            },
-          });
-          setBrowserAgentStatus("idle");
-        }, 3000);
-      } catch (err) {
-        console.error("Browser Agent poll failed:", err);
-      }
-    };
-
-    const hbInterval = setInterval(heartbeat, 30000);
-    const pInterval = setInterval(poll, 5000);
-    heartbeat();
-
-    return () => {
-      isMounted = false;
-      clearInterval(hbInterval);
-      clearInterval(pInterval);
-    };
-  }, [isBrowserAgentActive, browserAgentId, browserAgentStatus]);
+  // Download dialog state
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [downloadAgentType, setDownloadAgentType] = useState<"selenium" | "playwright" | "performance" | "mobile">(
+    "selenium",
+  );
 
   useEffect(() => {
     loadData();
@@ -285,10 +169,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Load mobile agent status first to ensure it's fresh
-      await checkMobileAgentStatus();
-      // Then load other data
-      await Promise.all([loadAgents(), loadJobs(), loadExecutionResults()]);
+      await Promise.all([loadAgents(), loadJobs(), loadPerformanceJobs(), loadExecutionResults()]);
     } catch (error) {
       console.error("Error loading agent data:", error);
       toast({
@@ -302,150 +183,50 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
   };
 
   const loadAgents = async () => {
-    const { data: dbAgents, error } = await supabase
+    const { data, error } = await supabase
       .from("self_hosted_agents")
       .select("*")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-
-    const localAgents: Agent[] = (dbAgents || []).map(agent => ({
-      ...agent,
-      agent_name: agent.name || "Unnamed Agent",
-      browsers: (agent.capabilities as any)?.browsers || [],
-      capacity: (agent.capabilities as any)?.capacity || 1
-    }));
-
-    // Deduplicate ephemeral agents (don't push virtual ones if they are already in the DB)
-    const dbAgentIds = new Set(localAgents.map(a => a.agent_id));
-
-    // Add Mobile Agent if running and not in DB
-    if (mobileAgentStatus.running && !dbAgentIds.has(mobileAgentId)) {
-      localAgents.push({
-        id: mobileAgentId,
-        agent_id: mobileAgentId,
-        agent_name: "Mobile Automation Helper",
-        status: "online",
-        last_heartbeat: new Date().toISOString(),
-        capacity: mobileDetails.devices.length || 1,
-        running_jobs: 0,
-        browsers: ["Android (ADB)"],
-        config: { port: 3001 },
-        created_at: new Date().toISOString()
-      });
-    }
-
-    // Add Browser Agent if active and not in DB
-    if (isBrowserAgentActive && !dbAgentIds.has(browserAgentId)) {
-      localAgents.push({
-        id: browserAgentId,
-        agent_id: browserAgentId,
-        agent_name: "Local Browser Agent",
-        status: browserAgentStatus === "busy" ? "busy" : "online",
-        last_heartbeat: new Date().toISOString(),
-        capacity: 1,
-        running_jobs: browserAgentStatus === "busy" ? 1 : 0,
-        browsers: ["chrome"],
-        config: {},
-        created_at: new Date().toISOString()
-      });
-    }
-
-    setAgents(localAgents);
+    setAgents(data || []);
   };
 
   const loadJobs = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("agent_job_queue")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-      if (error) {
-        console.warn("Could not load jobs:", error.message);
-        setJobs([]);
-        return;
-      }
-      setJobs((data || []) as unknown as JobQueueItem[]);
-    } catch (err) {
-      console.warn("Error loading jobs:", err);
-      setJobs([]);
-    }
-  };
-
-  const loadExecutionResults = async () => {
-    // Note: agent_execution_results table doesn't exist in the current schema
-    // Using automation_results as a fallback
     const { data, error } = await supabase
-      .from("automation_results")
+      .from("agent_job_queue")
       .select("*")
+      .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (error) {
-      console.warn("Could not load execution results:", error.message);
-      setExecutionResults([]);
-      return;
-    }
-
-    // Map to expected format
-    const mapped = (data || []).map(r => ({
-      id: r.id,
-      status: r.status,
-      duration_ms: r.duration_ms,
-      logs: r.logs,
-      result: r.result,
-      test_case_id: r.test_case_id,
-      created_at: r.created_at,
-      user_id: r.user_id
-    }));
-    setExecutionResults(mapped as ExecutionResult[]);
+    if (error) throw error;
+    setJobs(data || []);
   };
 
-  const checkMobileAgentStatus = async () => {
-    // If it recently failed, skip the check to avoid console spam (1 minute cooldown)
-    if (lastStatusCheckFail.current && (Date.now() - lastStatusCheckFail.current < 60000)) {
-      return;
-    }
+  const loadPerformanceJobs = async () => {
+    const { data, error } = await supabase
+      .from("performance_jobs")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-    try {
-      const res = await fetch('http://localhost:3001/setup/status', {
-        signal: AbortSignal.timeout(5000)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        lastStatusCheckFail.current = null; // Clear failure on success
-        setMobileAgentStatus({
-          running: true,
-          uptime: data.uptime || 0,
-          port: data.port || 3001,
-          lastChecked: new Date()
-        });
-        setMobileDetails({
-          devices: data.devices || [],
-          physicalDevice: data.physicalDevice || false,
-          appium: data.appium || false,
-          emulator: data.emulator || false
-        });
-      } else {
-        throw new Error('Not running');
-      }
-    } catch (err) {
-      lastStatusCheckFail.current = Date.now();
-      setMobileAgentStatus(prev => ({
-        ...prev,
-        running: false,
-        lastChecked: new Date()
-      }));
-      setMobileDetails({
-        devices: [],
-        physicalDevice: false,
-        appium: false,
-        emulator: false
-      });
-    }
+    if (error) throw error;
+    setPerformanceJobs(data || []);
+  };
+
+  const loadExecutionResults = async () => {
+    const { data, error } = await supabase
+      .from("agent_execution_results")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+    setExecutionResults(data || []);
   };
 
   const handleRegisterAgent = async () => {
@@ -466,8 +247,10 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           projectId,
           agentId: registerAgentId,
           agentName: registerAgentName,
-          browsers: ["chromium"],
-          capacity: 3,
+          agentType: registerAgentType,
+          // Default capabilities; mobile agents typically report device info via heartbeats
+          browsers: registerAgentType === "mobile" ? ["mobile"] : ["chromium"],
+          capacity: registerAgentType === "mobile" ? 1 : 3,
         },
       });
 
@@ -490,18 +273,9 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
       }
     } catch (error: any) {
       console.error("Registration error:", error);
-
-      // Attempt to extract meaningful error message from Edge Function
-      let errorMessage = "Failed to register agent";
-      if (error.context?.json?.error) {
-        errorMessage = error.context.json.error;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
       toast({
         title: "Registration Failed",
-        description: errorMessage,
+        description: error.message || "Failed to register agent",
         variant: "destructive",
       });
     } finally {
@@ -538,7 +312,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
 
       toast({
         title: "Job Deleted",
-        description: `Job "${job.id}" has been removed`,
+        description: `Job "${job.run_id}" has been removed`,
       });
       await loadJobs();
       setJobToDelete(null);
@@ -569,7 +343,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
 
       toast({
         title: "Status Updated",
-        description: `Job "${job.id}" status changed to ${newStatus}`,
+        description: `Job "${job.run_id}" status changed to ${newStatus}`,
       });
       await loadJobs();
     } catch (error: any) {
@@ -589,98 +363,210 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
     });
   };
 
-	  const downloadAgentPackage = async (agentToken?: string) => {
-	    const zip = new JSZip();
-	    const token = agentToken || newAgentToken || "YOUR_API_TOKEN_HERE";
+  const downloadAgentPackage = async (
+    agentType: "selenium" | "playwright" | "performance" | "mobile",
+    agentToken?: string,
+  ) => {
+    const zip = new JSZip();
+    const token = agentToken || newAgentToken || "YOUR_API_TOKEN_HERE";
 
     try {
-      // Fetch the latest files from the public folder
-      const [agentJsResponse, packageJsonResponse, readmeResponse, dockerfileResponse] = await Promise.all([
-        fetch('/agent-package/agent.js'),
-        fetch('/agent-package/package.json'),
-        fetch('/agent-package/README.md'),
-        fetch('/agent-package/Dockerfile'),
-      ]);
+      if (agentType === "playwright") {
+        // Download Playwright agent package
+        const [agentJsResponse, packageJsonResponse, readmeResponse, dockerfileResponse] = await Promise.all([
+          fetch('/agent-package/agent.js'),
+          fetch('/agent-package/package.json'),
+          fetch('/agent-package/README.md'),
+          fetch('/agent-package/Dockerfile'),
+        ]);
 
-      if (!agentJsResponse.ok || !packageJsonResponse.ok || !readmeResponse.ok || !dockerfileResponse.ok) {
-        throw new Error('Failed to fetch agent package files');
-      }
-
-      let agentJs = await agentJsResponse.text();
-      const packageJson = await packageJsonResponse.text();
-      const readme = await readmeResponse.text();
-      const dockerfile = await dockerfileResponse.text();
-
-      // Replace the placeholder token and base URL in agent.js
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://vqoxcgbilzqxmxuxwicr.supabase.co";
-      const apiBaseUrl = `${supabaseUrl}/functions/v1/agent-api`;
-
-      agentJs = agentJs.replace(
-        /API_TOKEN:\s*process\.env\.WISPR_API_TOKEN\s*\|\|\s*['"][^'"]*['"]/,
-        `API_TOKEN: process.env.WISPR_API_TOKEN || '${token}'`
-      );
-
-	      agentJs = agentJs.replace(
-	        /API_BASE_URL:\s*['"][^'"]*['"]/,
-	        `API_BASE_URL: "${apiBaseUrl}"`
-	      );
-
-	      // Stamp build so downloaded agent clearly reflects current package
-	      agentJs = agentJs.replace(
-	        /const AGENT_BUILD\s*=\s*['"][^'"]*['"]\s*;/,
-	        `const AGENT_BUILD = "${new Date().toISOString()}";`
-	      );
-
-      zip.file("package.json", packageJson);
-      zip.file("agent.js", agentJs);
-      zip.file("README.md", readme);
-      zip.file("Dockerfile", dockerfile);
-
-	      // Add Mobile Automation components directly into the package structure
-	      const mobileFiles = [
-	        "config.js",
-	        "controllers/appium-controller.js",
-	        "controllers/device-controller.js",
-	        "controllers/emulator-controller.js",
-	        "services/recording-service.js",
-	        "services/replay-engine.js",
-	        "services/screenshot-service.js",
-	        "services/inspector-service.js",
-	        "services/smart-xpath-builder.js",
-	        "services/locator-healing-engine.js",
-	        "services/hierarchy-snapshot-store.js",
-	        "services/hierarchy-diff.js",
-	        "services/locator-history-store.js",
-	        "utils/adb-utils.js",
-	        "utils/process-manager.js",
-	        "utils/ui-hierarchy-fast.js",
-	      ];
-
-      const mobileResponses = await Promise.all(
-        mobileFiles.map(file => fetch(`/agent-package/${file}`))
-      );
-
-      for (let i = 0; i < mobileFiles.length; i++) {
-        if (mobileResponses[i].ok) {
-          const content = await mobileResponses[i].text();
-          // We place these directly in the zip root (so they end up in controllers/, services/, etc.)
-          zip.file(mobileFiles[i], content);
+        if (!agentJsResponse.ok || !packageJsonResponse.ok || !readmeResponse.ok || !dockerfileResponse.ok) {
+          throw new Error('Failed to fetch Playwright agent package files');
         }
+
+        let agentJs = await agentJsResponse.text();
+        const packageJson = await packageJsonResponse.text();
+        const readme = await readmeResponse.text();
+        const dockerfile = await dockerfileResponse.text();
+
+        // Replace the placeholder token in agent.js with the actual token
+        agentJs = agentJs.replace(
+          /API_TOKEN:\s*process\.env\.WISPR_API_TOKEN\s*\|\|\s*['"][^'"]*['"]/,
+          `API_TOKEN: process.env.WISPR_API_TOKEN || '${token}'`
+        );
+
+        zip.file("package.json", packageJson);
+        zip.file("agent.js", agentJs);
+        zip.file("README.md", readme);
+        zip.file("Dockerfile", dockerfile);
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "wispr-playwright-agent.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else if (agentType === "performance") {
+        // Download Performance agent package
+        const [agentJsResponse, packageJsonResponse, readmeResponse, dockerfileResponse] = await Promise.all([
+          fetch('/lovable-performance-agent/run-agent.js'),
+          fetch('/lovable-performance-agent/package.json'),
+          fetch('/lovable-performance-agent/README.md'),
+          fetch('/lovable-performance-agent/Dockerfile'),
+        ]);
+
+        if (!agentJsResponse.ok || !packageJsonResponse.ok || !readmeResponse.ok || !dockerfileResponse.ok) {
+          throw new Error('Failed to fetch Performance agent package files');
+        }
+
+        let runAgent = await agentJsResponse.text();
+        const packageJson = await packageJsonResponse.text();
+        const readme = await readmeResponse.text();
+        const dockerfile = await dockerfileResponse.text();
+
+        // Replace the placeholder token in run-agent.js with the actual token (if present)
+        runAgent = runAgent.replace(
+          /API_TOKEN:\s*process\.env\.WISPR_API_TOKEN\s*\|\|\s*['"][^'\"]*['\"]/,
+          `API_TOKEN: process.env.WISPR_API_TOKEN || '${token}'`
+        );
+
+        zip.file("package.json", packageJson);
+        zip.file("run-agent.js", runAgent);
+        zip.file("README.md", readme);
+        zip.file("Dockerfile", dockerfile);
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "wispr-performance-agent.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else if (agentType === "mobile") {
+        // Download Mobile agent package (mobile-only, Appium/ADB focused)
+        const filesToInclude = [
+          "package.json",
+          "mobile-agent.js",
+          "README.md",
+          "Dockerfile",
+          "config.js",
+          "controllers/device-controller.js",
+          "controllers/appium-controller.js",
+          "controllers/emulator-controller.js",
+          "services/recording-service.js",
+          "services/replay-engine.js",
+          "services/screenshot-service.js",
+          "services/inspector-service.js",
+          "services/hierarchy-snapshot-store.js",
+          "services/hierarchy-diff.js",
+          "services/locator-history-store.js",
+          "services/locator-healing-engine.js",
+          "services/smart-xpath-builder.js",
+          "utils/process-manager.js",
+          "utils/adb-utils.js",
+          "utils/ui-hierarchy-fast.js",
+        ];
+
+        for (const filePath of filesToInclude) {
+          const res = await fetch(`/mobile-agent/${filePath}`);
+          if (!res.ok) throw new Error(`Failed to fetch Mobile agent file: ${filePath}`);
+          let content = await res.text();
+          if (filePath === "mobile-agent.js") {
+            content = content
+              .replace(
+                /const API_TOKEN = process\.env\.WISPR_API_TOKEN \|\| ['"][^'"]*['"];/,
+                `const API_TOKEN = process.env.WISPR_API_TOKEN || '${token}';`,
+              )
+              .replace(
+                /const PROJECT_ID = process\.env\.PROJECT_ID \|\| ['"][^'"]*['"];/,
+                `const PROJECT_ID = process.env.PROJECT_ID || '${projectId || ""}';`,
+              )
+              .replace(
+                /const AGENT_ID = process\.env\.AGENT_ID \|\| ['"][^'"]*['"];/,
+                `const AGENT_ID = process.env.AGENT_ID || '${registerAgentId || ""}';`,
+              )
+              .replace(
+                /const AGENT_NAME = process\.env\.AGENT_NAME \|\| ['"][^'"]*['"];/,
+                `const AGENT_NAME = process.env.AGENT_NAME || '${registerAgentName || ""}';`,
+              )
+              .replace(
+                /if \(!API_TOKEN .*?YOUR_API_TOKEN_HERE.*?\)\s*\{/,
+                `if (!API_TOKEN) {`,
+              );
+          }
+          zip.file(filePath, content);
+        }
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "wispr-mobile-agent.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Download Selenium agent package
+        const [agentJavaResponse, pomResponse, readmeResponse, runShResponse, runBatResponse] = await Promise.all([
+          fetch('/selenium-agent/src/main/java/com/wispr/agent/SeleniumAgent.java'),
+          fetch('/selenium-agent/pom.xml'),
+          fetch('/selenium-agent/README.md'),
+          fetch('/selenium-agent/run-agent.sh'),
+          fetch('/selenium-agent/run-agent.bat'),
+        ]);
+
+        if (!agentJavaResponse.ok || !pomResponse.ok || !readmeResponse.ok || !runShResponse.ok || !runBatResponse.ok) {
+          throw new Error('Failed to fetch Selenium agent package files');
+        }
+
+        let agentJava = await agentJavaResponse.text();
+        const pom = await pomResponse.text();
+        const readme = await readmeResponse.text();
+        const runSh = await runShResponse.text();
+        const runBat = await runBatResponse.text();
+
+        // Replace the placeholder token in SeleniumAgent.java with the actual token
+        agentJava = agentJava.replace(
+          /: "YOUR_API_TOKEN_HERE"/,
+          `: "${token}"`
+        );
+
+        zip.file("src/main/java/com/wispr/agent/SeleniumAgent.java", agentJava);
+        zip.file("pom.xml", pom);
+        zip.file("README.md", readme);
+        zip.file("run-agent.sh", runSh);
+        zip.file("run-agent.bat", runBat);
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "wispr-selenium-agent.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       }
 
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "wispr-agent.zip";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setShowDownloadDialog(false);
+      const agentLabel =
+        agentType === "selenium"
+          ? "Selenium"
+          : agentType === "playwright"
+            ? "Playwright"
+            : agentType === "performance"
+              ? "Performance"
+              : "Mobile";
 
       toast({
         title: "Download Started",
-        description: "Agent package downloaded. Follow the README to set up.",
+        description: `${agentLabel} agent package downloaded. Follow the README to set up.`,
       });
     } catch (error) {
       console.error('Error downloading agent package:', error);
@@ -812,7 +698,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Online</p>
-                <p className="text-2xl font-bold text-green-500">{agents.filter(a => (a.status === 'online' || a.status === 'busy') && !isHeartbeatStale(a.last_heartbeat)).length}</p>
+                <p className="text-2xl font-bold text-green-500">{onlineAgents.length}</p>
               </div>
             </div>
           </CardContent>
@@ -826,7 +712,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pending Jobs</p>
-                <p className="text-2xl font-bold text-yellow-500">{jobs.filter(j => j.status === 'pending').length}</p>
+                <p className="text-2xl font-bold text-yellow-500">{pendingJobs.length}</p>
               </div>
             </div>
           </CardContent>
@@ -840,7 +726,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Running</p>
-                <p className="text-2xl font-bold text-blue-500">{jobs.filter(j => j.status === 'running').length}</p>
+                <p className="text-2xl font-bold text-blue-500">{runningJobs.length}</p>
               </div>
             </div>
           </CardContent>
@@ -859,7 +745,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
               <CardDescription>Manage your self-hosted test execution agents</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => downloadAgentPackage()}>
+              <Button variant="outline" size="sm" onClick={() => setShowDownloadDialog(true)}>
                 <Download className="h-4 w-4 mr-2" />
                 Download Agent
               </Button>
@@ -889,11 +775,16 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                 <History className="h-4 w-4" />
                 Execution History
               </TabsTrigger>
+              <TabsTrigger value="schedules" className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Scheduled Triggers
+              </TabsTrigger>
             </TabsList>
 
+            {/* Agents Tab */}
             <TabsContent value="agents">
-              {agents.length === 0 && !isLoading ? (
-                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/20">
+              {agents.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
                   <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <h3 className="text-lg font-medium mb-2">No Agents Registered</h3>
                   <p className="mb-4">Register a self-hosted agent to start running tests.</p>
@@ -924,71 +815,49 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                               <p className="text-xs text-muted-foreground font-mono">{agent.agent_id}</p>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            {getStatusBadge(agent.status, agent.last_heartbeat)}
-                          </TableCell>
+                          <TableCell>{getStatusBadge(agent.status, agent.last_heartbeat)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Cpu className="h-4 w-4 text-muted-foreground" />
-                              {agent.agent_id?.startsWith('mobile') ? (
-                                <Smartphone className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <Monitor className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <span>{agent.running_jobs}/{agent.capacity} {agent.agent_id?.startsWith('mobile') ? 'Devices' : 'Slots'}</span>
+                              <span>
+                                {agent.running_jobs}/{agent.capacity}
+                              </span>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-1 flex-wrap">
                               {(agent.browsers || []).map((browser) => (
-                                <Badge key={browser} variant="outline" className="text-[10px]">
+                                <Badge key={browser} variant="outline" className="text-xs">
                                   {browser}
                                 </Badge>
                               ))}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              {agent.last_heartbeat
-                                ? formatDistanceToNow(new Date(agent.last_heartbeat), { addSuffix: true })
-                                : "Never"}
-                            </div>
+                            {agent.last_heartbeat ? (
+                              <span className="text-sm text-muted-foreground">
+                                {formatDistanceToNow(new Date(agent.last_heartbeat), { addSuffix: true })}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Never</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => {
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
                                   setSelectedAgent(agent);
                                   setShowAgentDetails(true);
-                                }}>
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                {agent.agent_id?.startsWith('mobile') && (
-                                  <DropdownMenuItem onClick={() => {
-                                    setMobileWizardStep(1);
-                                    setShowMobileWizard(true);
-                                  }}>
-                                    <Settings className="h-4 w-4 mr-2" />
-                                    Mobile Setup
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:bg-destructive focus:text-destructive-foreground font-medium"
-                                  onClick={() => setAgentToDelete(agent)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Agent
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => setAgentToDelete(agent)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -998,99 +867,153 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
               )}
             </TabsContent>
 
+            {/* Jobs Tab */}
             <TabsContent value="jobs">
-              <ScrollArea className="h-[400px]">
-                {jobs.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium mb-2">No Jobs in Queue</h3>
-                    <p>Jobs will appear here when tests are scheduled for execution.</p>
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Run ID</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Retries</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead>Started</TableHead>
-                        <TableHead>Agent</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {jobs.map((job) => (
-                        <TableRow key={job.id}>
-                          <TableCell className="font-mono text-sm">{job.job_type || job.id.slice(0, 8)}</TableCell>
-                          <TableCell>{getJobStatusBadge(job.status || "unknown")}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{(job as any).priority ?? "-"}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            {(job as any).retries ?? 0}/{(job as any).max_retries ?? 3}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {job.started_at ? formatDistanceToNow(new Date(job.started_at), { addSuffix: true }) : "-"}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {job.agent_id ? job.agent_id.slice(0, 8) : "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {job.status === "pending" && (
-                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
-                                    <Ban className="h-4 w-4 mr-2" />
-                                    Cancel Job
-                                  </DropdownMenuItem>
-                                )}
-                                {job.status === "running" && (
-                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
-                                    <Ban className="h-4 w-4 mr-2" />
-                                    Cancel Job
-                                  </DropdownMenuItem>
-                                )}
-                                {(job.status === "failed" || job.status === "cancelled") && (
-                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                    Retry Job
-                                  </DropdownMenuItem>
-                                )}
-                                {job.status === "completed" && (
-                                  <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
-                                    <Play className="h-4 w-4 mr-2" />
-                                    Re-run Job
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => setJobToDelete(job)}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Job
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
+              <ScrollArea className="h-[500px]">
+                {/* Automation Jobs Section */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Automation Jobs
+                  </h4>
+                  {jobs.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground border rounded-lg">
+                      <p className="text-sm">No automation jobs in queue</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Run ID</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Priority</TableHead>
+                          <TableHead>Retries</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Started</TableHead>
+                          <TableHead>Agent</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                      </TableHeader>
+                      <TableBody>
+                        {jobs.map((job) => (
+                          <TableRow key={job.id}>
+                            <TableCell className="font-mono text-sm">{job.run_id}</TableCell>
+                            <TableCell>{getJobStatusBadge(job.status)}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{job.priority}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              {job.retries}/{job.max_retries}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {job.started_at ? formatDistanceToNow(new Date(job.started_at), { addSuffix: true }) : "-"}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {job.agent_id ? job.agent_id.slice(0, 8) : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {job.status === "pending" && (
+                                    <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
+                                      <Ban className="h-4 w-4 mr-2" />
+                                      Cancel Job
+                                    </DropdownMenuItem>
+                                  )}
+                                  {job.status === "running" && (
+                                    <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "cancelled")}>
+                                      <Ban className="h-4 w-4 mr-2" />
+                                      Cancel Job
+                                    </DropdownMenuItem>
+                                  )}
+                                  {(job.status === "failed" || job.status === "cancelled") && (
+                                    <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
+                                      <RotateCcw className="h-4 w-4 mr-2" />
+                                      Retry Job
+                                    </DropdownMenuItem>
+                                  )}
+                                  {job.status === "completed" && (
+                                    <DropdownMenuItem onClick={() => handleChangeJobStatus(job, "pending")}>
+                                      <Play className="h-4 w-4 mr-2" />
+                                      Re-run Job
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setJobToDelete(job)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Job
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+
+                {/* Performance Jobs Section */}
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                    <Cpu className="h-4 w-4" />
+                    Performance Jobs
+                  </h4>
+                  {performanceJobs.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground border rounded-lg">
+                      <p className="text-sm">No performance jobs in queue</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Job ID</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Threads</TableHead>
+                          <TableHead>Ramp-up</TableHead>
+                          <TableHead>Duration</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Agent</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {performanceJobs.map((job) => (
+                          <TableRow key={job.id}>
+                            <TableCell className="font-mono text-sm">{job.id.slice(0, 8)}...</TableCell>
+                            <TableCell>{getJobStatusBadge(job.status)}</TableCell>
+                            <TableCell>{job.threads}</TableCell>
+                            <TableCell>{job.rampup}s</TableCell>
+                            <TableCell>{job.duration}s</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {job.created_at ? formatDistanceToNow(new Date(job.created_at), { addSuffix: true }) : "-"}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {(() => {
+                                const agent = agents.find(a => a.id === job.agent_id);
+                                return agent ? agent.agent_name : (job.agent_id ? job.agent_id.slice(0, 8) : "-");
+                              })()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
               </ScrollArea>
             </TabsContent>
 
+            {/* History Tab */}
             <TabsContent value="history">
               <ScrollArea className="h-[400px]">
                 {executionResults.length === 0 ? (
@@ -1116,17 +1039,29 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                           <TableCell>{getJobStatusBadge(result.status)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-muted-foreground">
-                                {result.result ? "Result available" : "No result data"}
-                              </span>
+                              <span className="text-green-500">{result.passed_steps} passed</span>
+                              <span className="text-muted-foreground">/</span>
+                              <span className="text-red-500">{result.failed_steps} failed</span>
+                              <span className="text-muted-foreground">/</span>
+                              <span>{result.total_steps} total</span>
                             </div>
                           </TableCell>
                           <TableCell>{formatDuration(result.duration_ms)}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              {result.logs && (
+                              {result.screenshots && result.screenshots.length > 0 && (
                                 <Badge variant="outline" className="text-xs">
-                                  Logs available
+                                  {result.screenshots.length} screenshots
+                                </Badge>
+                              )}
+                              {result.video_url && (
+                                <Badge variant="outline" className="text-xs">
+                                  Video
+                                </Badge>
+                              )}
+                              {result.trace_url && (
+                                <Badge variant="outline" className="text-xs">
+                                  Trace
                                 </Badge>
                               )}
                             </div>
@@ -1141,6 +1076,11 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                 )}
               </ScrollArea>
             </TabsContent>
+
+            {/* Schedules Tab */}
+            <TabsContent value="schedules">
+              <AgentScheduledTriggers projectId={projectId} />
+            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
@@ -1153,6 +1093,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
             setShowRegisterDialog(false);
             setRegisterAgentName("");
             setRegisterAgentId("");
+            setRegisterAgentType("selenium");
             setNewAgentToken(null);
           }
         }}
@@ -1184,6 +1125,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                     setNewAgentToken(null);
                     setRegisterAgentName("");
                     setRegisterAgentId("");
+                    setRegisterAgentType("selenium");
                   }}
                 >
                   Done
@@ -1212,6 +1154,26 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
                   />
                   <p className="text-xs text-muted-foreground">A unique identifier for this agent</p>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agentType">Agent Type *</Label>
+                  <Select
+                    value={registerAgentType}
+                    onValueChange={(value: "selenium" | "playwright" | "performance" | "mobile") =>
+                      setRegisterAgentType(value)
+                    }
+                  >
+                    <SelectTrigger id="agentType">
+                      <SelectValue placeholder="Select agent type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="selenium">Selenium</SelectItem>
+                      <SelectItem value="playwright">Playwright</SelectItem>
+                      <SelectItem value="performance">Performance</SelectItem>
+                      <SelectItem value="mobile">Mobile</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">The automation framework this agent will use</p>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setShowRegisterDialog(false)}>
@@ -1224,6 +1186,109 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Download Agent Dialog */}
+      <Dialog open={showDownloadDialog} onOpenChange={setShowDownloadDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Download Agent</DialogTitle>
+            <DialogDescription>
+              Select the agent type to download. The agent will run on your local machine or server.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <Label>Select Agent Type</Label>
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  name="downloadAgentType"
+                  value="selenium"
+                  checked={downloadAgentType === "selenium"}
+                  onChange={() => setDownloadAgentType("selenium")}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium">Selenium Agent</p>
+                  <p className="text-sm text-muted-foreground">
+                    Java/Maven-based agent for Selenium framework execution. Requires Java 11+ and Maven.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  name="downloadAgentType"
+                  value="playwright"
+                  checked={downloadAgentType === "playwright"}
+                  onChange={() => setDownloadAgentType("playwright")}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium">Playwright Agent</p>
+                  <p className="text-sm text-muted-foreground">
+                    Node.js-based agent for Playwright no-code test execution. Requires Node.js 18+.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  name="downloadAgentType"
+                  value="performance"
+                  checked={downloadAgentType === "performance"}
+                  onChange={() => setDownloadAgentType("performance")}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium">Performance Agent</p>
+                  <p className="text-sm text-muted-foreground">
+                    Download and configure agent for running performance tests.
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  name="downloadAgentType"
+                  value="mobile"
+                  checked={downloadAgentType === "mobile"}
+                  onChange={() => setDownloadAgentType("mobile")}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium">Mobile Agent</p>
+                  <p className="text-sm text-muted-foreground">
+                    Node.js + Appium/ADB agent dedicated to mobile execution. Requires Node.js 18+, Appium, and an
+                    emulator or device.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDownloadDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => downloadAgentPackage(downloadAgentType)}>
+              <Download className="h-4 w-4 mr-2" />
+              Download
+              {downloadAgentType === "selenium"
+                ? " Selenium"
+                : downloadAgentType === "playwright"
+                  ? " Playwright"
+                  : downloadAgentType === "performance"
+                    ? " Performance"
+                    : " Mobile"}{" "}
+              Agent
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1297,154 +1362,6 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
         </DialogContent>
       </Dialog>
 
-      {/* Mobile Setup Wizard */}
-      <Dialog open={showMobileWizard} onOpenChange={setShowMobileWizard}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5 text-primary" />
-              Mobile Automation Setup Wizard
-            </DialogTitle>
-            <DialogDescription>
-              Step-by-step guide to prepare your environment for mobile testing.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-6">
-            <div className="flex justify-between mb-8 relative">
-              <div className="absolute top-1/2 left-0 w-full h-0.5 bg-muted -translate-y-1/2 z-0" />
-              {[1, 2, 3, 4].map((step) => (
-                <div
-                  key={step}
-                  className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${mobileWizardStep >= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                    }`}
-                >
-                  {step}
-                </div>
-              ))}
-            </div>
-
-            {mobileWizardStep === 1 && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                <h3 className="text-lg font-semibold">Step 1: System Requirements</h3>
-                <p className="text-sm text-muted-foreground">Ensure your machine has the necessary tools installed.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <Card className={`p-3 border-l-4 ${mobileAgentStatus.running ? 'border-l-green-500' : 'border-l-yellow-500'}`}>
-                    <div className="flex items-center gap-2">
-                      <Cpu className="h-4 w-4" />
-                      <span className="text-sm font-medium">Node.js / NPM</span>
-                    </div>
-                    <Badge variant="outline" className="mt-2 text-[10px]">Required</Badge>
-                  </Card>
-                  <Card className={`p-3 border-l-4 ${mobileDetails.devices.length > 0 ? 'border-l-green-500' : 'border-l-muted'}`}>
-                    <div className="flex items-center gap-2">
-                      <Settings className="h-4 w-4" />
-                      <span className="text-sm font-medium">Android ADB</span>
-                    </div>
-                    <Badge variant="outline" className="mt-2 text-[10px]">In PATH</Badge>
-                  </Card>
-                </div>
-                {!mobileAgentStatus.running && (
-                  <div className="p-3 bg-yellow-500/10 rounded-md border border-yellow-500/20 text-xs text-yellow-700 flex gap-2">
-                    <HelpCircle className="h-4 w-4 shrink-0" />
-                    <span>Self-Hosted Agent is not detected. Please start the agent first to perform system verification.</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {mobileWizardStep === 2 && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                <h3 className="text-lg font-semibold">Step 2: Connect Devices</h3>
-                <p className="text-sm text-muted-foreground">Attach a physical device via USB or start an Android Emulator.</p>
-
-                <div className="space-y-3">
-                  {mobileDetails.devices.length > 0 ? (
-                    mobileDetails.devices.map((d: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Smartphone className="h-5 w-5 text-green-600" />
-                          <div>
-                            <p className="text-sm font-medium">{d.model || d.id}</p>
-                            <p className="text-[10px] text-muted-foreground font-mono">{d.id}</p>
-                          </div>
-                        </div>
-                        <Badge className="bg-green-500">{d.status}</Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-8 text-center border-2 border-dashed rounded-lg bg-muted/20">
-                      <Smartphone className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-30" />
-                      <p className="text-sm text-muted-foreground">Waiting for device connection...</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {mobileWizardStep === 3 && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                <h3 className="text-lg font-semibold">Step 3: Appium Initialization</h3>
-                <p className="text-sm text-muted-foreground">Start the Appium server to enable UI automation and recording.</p>
-
-                <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <Activity className={`h-6 w-6 ${mobileDetails.appium ? 'text-green-500' : 'text-muted-foreground'}`} />
-                    <div>
-                      <p className="text-sm font-medium">Appium Service</p>
-                      <p className="text-xs text-muted-foreground">
-                        {mobileDetails.appium ? 'Service is running correctly.' : 'Waiting for service to start...'}
-                      </p>
-                    </div>
-                  </div>
-                  {!mobileDetails.appium && (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        fetch('http://localhost:3001/terminal', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ command: 'appium:start' })
-                        });
-                        toast({ title: "Appium Command Sent", description: "Requested agent to start Appium server." });
-                      }}
-                    >
-                      Start Appium
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {mobileWizardStep === 4 && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 text-center py-6">
-                <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="h-10 w-10 text-green-500" />
-                </div>
-                <h3 className="text-2xl font-bold">You're All Set!</h3>
-                <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                  Mobile Automation is configured and ready. You can now use the Mobile Recorder to create test cases.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="border-t pt-4">
-            <Button variant="ghost" onClick={() => setShowMobileWizard(false)}>Cancel</Button>
-            <div className="flex gap-2">
-              {mobileWizardStep > 1 && (
-                <Button variant="outline" onClick={() => setMobileWizardStep(s => s - 1)}>Back</Button>
-              )}
-              {mobileWizardStep < 4 ? (
-                <Button onClick={() => setMobileWizardStep(s => s + 1)}>Next</Button>
-              ) : (
-                <Button onClick={() => setShowMobileWizard(false)}>Finish</Button>
-              )}
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation */}
       <AlertDialog open={!!agentToDelete} onOpenChange={() => setAgentToDelete(null)}>
         <AlertDialogContent>
@@ -1472,7 +1389,7 @@ export const AgentManagement = ({ projectId }: AgentManagementProps) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Job</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete job "{jobToDelete?.id}"? This action cannot be undone.
+              Are you sure you want to delete job "{jobToDelete?.run_id}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

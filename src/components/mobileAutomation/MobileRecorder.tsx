@@ -26,10 +26,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import DeviceSelector from "./DeviceSelector";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import InteractionTools from "./recorder/InteractionTools";
+import AppManagement from "./recorder/AppManagement";
+import RecordingCommandBar from "./recorder/RecordingCommandBar";
 
 import { ActionType, LocatorBundleV1, LocatorCandidate, LocatorStrategy, RecordedAction, SelectedDevice } from "./types";
 import { ExecutionHistoryService } from "./ExecutionHistoryService";
@@ -515,6 +520,7 @@ export default function MobileRecorder({
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [activeTab, setActiveTab] = useState<"actions" | "script" | "history">("actions");
   const [showAISuggestions, setShowAISuggestions] = useState(true);
+  const [openAISuggestionActionIds, setOpenAISuggestionActionIds] = useState<string[]>([]);
   const [dismissedAISuggestionIds, setDismissedAISuggestionIds] = useState<string[]>([]);
   const [lastAIChange, setLastAIChange] = useState<{ title: string; previousActions: RecordedAction[] } | null>(null);
   const [showScriptExplanation, setShowScriptExplanation] = useState(false);
@@ -1070,6 +1076,23 @@ export default function MobileRecorder({
     [allAISuggestions, dismissedAISuggestionIds]
   );
 
+  const aiSuggestionsByActionId = useMemo(() => {
+    const map = new Map<string, RecorderAISuggestion[]>();
+    for (const suggestion of aiSuggestions) {
+      if (typeof suggestion.stepIndex !== "number") continue;
+      const action = actions[suggestion.stepIndex];
+      if (!action) continue;
+      map.set(action.id, [...(map.get(action.id) || []), suggestion]);
+    }
+    return map;
+  }, [aiSuggestions, actions]);
+
+  useEffect(() => {
+    setOpenAISuggestionActionIds((prev) =>
+      prev.filter((id) => aiSuggestionsByActionId.has(id))
+    );
+  }, [aiSuggestionsByActionId]);
+
   const lowScoreLocatorInsights = useMemo(
     () => buildLowScoreLocatorInsights(actions),
     [actions]
@@ -1221,10 +1244,18 @@ export default function MobileRecorder({
       const refAction = typeof idx === "number" ? actions[idx] : null;
       const snapshot = actions.map((a) => ({ ...a }));
       const insertIndex = typeof idx === "number" ? idx + 1 : actions.length;
-      const locator = (suggestion as any).suggestedLocator || refAction?.locator || refAction?.smartXPath || refAction?.xpath || "";
+      const fallbackLocator = refAction ? deriveStableLocatorFromAction(refAction) : null;
+      const locator =
+        suggestion.suggestedLocator ||
+        refAction?.locator ||
+        refAction?.smartXPath ||
+        refAction?.xpath ||
+        fallbackLocator?.value ||
+        "";
       const locatorStrategy =
         (suggestion.suggestedLocatorStrategy as any) ||
         refAction?.locatorStrategy ||
+        fallbackLocator?.strategy ||
         (locator?.startsWith("//") ? "xpath" : refAction?.elementContentDesc ? "accessibilityId" : refAction?.elementId ? "id" : undefined);
       const desc = suggestion.suggestedValue || "Add outcome assertion";
       const newAssert: RecordedAction = ensureActionLocatorBundle({
@@ -1244,6 +1275,7 @@ export default function MobileRecorder({
         xpath: refAction?.xpath,
         locatorBundle: refAction?.locatorBundle,
         reliabilityScore: refAction?.reliabilityScore,
+        assertionType: suggestion.assertionType || refAction?.assertionType || "visible",
       });
       setActions((prev) => {
         const next = [...prev];
@@ -1345,6 +1377,31 @@ export default function MobileRecorder({
       setLastAIChange({ title: `Add fallback locators for step ${targetIndex + 1}`, previousActions: snapshot });
       dismissAISuggestion(suggestion.id);
       toast.success(`Added self-healing fallbacks for step ${targetIndex + 1}`);
+      return;
+    }
+
+    if (suggestion.type === "timing_guard") {
+      const waitMs = Number(suggestion.suggestedValue || "800");
+      const duration = Number.isFinite(waitMs) && waitMs > 0 ? Math.round(waitMs) : 800;
+      const insertIndex = Math.max(0, targetIndex);
+      const waitStep: RecordedAction = {
+        id: crypto.randomUUID(),
+        type: "wait",
+        description: `Wait for ${duration}ms before step ${targetIndex + 1}`,
+        locator: "system",
+        value: String(duration),
+        enabled: true,
+        timestamp: Date.now(),
+      };
+      setActions((prev) => {
+        const next = [...prev];
+        next.splice(insertIndex, 0, waitStep);
+        return next;
+      });
+      setSavedManualScript(null);
+      setLastAIChange({ title: `Add wait before step ${targetIndex + 1}`, previousActions: snapshot });
+      dismissAISuggestion(suggestion.id);
+      toast.success(`Added ${duration}ms wait before step ${targetIndex + 1}`);
       return;
     }
 
@@ -2082,11 +2139,13 @@ export default function MobileRecorder({
 
 
   useEffect(() => {
+    // Reset mirror only when the user-selected device changes.
+    // Do not reset when we later enrich the same selection with resolved ADB id.
     setMirrorActive(false);
     setMirrorImage(null);
     setCaptureMode(false);
     setMirrorError(null);
-  }, [selectedDevice?.id, selectedDevice?.device]);
+  }, [selectedDevice?.device]);
 
   /* =====================================================
    * 📱 STOP EMULATOR
@@ -2430,6 +2489,16 @@ export default function MobileRecorder({
       console.debug("[MobileRecorder] Stop recording failed - likely agent offline");
       toast.error("Failed to stop recording");
       setRecording(false);
+    }
+  };
+
+  const handleTogglePause = async () => {
+    try {
+      const endpoint = isPaused ? "/recording/resume" : "/recording/pause";
+      const res = await fetch(`${AGENT_URL}${endpoint}`, { method: "POST" });
+      if (res.ok) setIsPaused(!isPaused);
+    } catch (err) {
+      toast.error("Pause/Resume failed");
     }
   };
 
@@ -3523,6 +3592,26 @@ ${enabledActions
     toast.success(`Removed: ${lastAction.description} `);
   };
 
+  const handleAddWaitStep = () => {
+    if (!recording || isPaused) {
+      toast.warning("Start recording first");
+      return;
+    }
+
+    const waitStep: RecordedAction = {
+      id: crypto.randomUUID(),
+      type: "wait",
+      description: "Wait (2s)",
+      value: "2000",
+      locator: "system",
+      timestamp: Date.now(),
+      enabled: true
+    };
+
+    setActions(prev => [...prev, waitStep]);
+    toast.info("Added Wait");
+  };
+
   const handleClearCache = async () => {
     if (!appPackage) {
       toast.error("Select an app first");
@@ -4477,44 +4566,44 @@ ${enabledActions
             )}
           </div>
         </div>
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-3">
           {mirrorActive && (
             <Collapsible open={showQuickStart} onOpenChange={setShowQuickStart} className="w-full">
-              <Card className="bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border-border animate-in fade-in slide-in-from-right-4">
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="py-2.5 px-4 border-b border-secondary/20 flex flex-row items-center justify-between cursor-pointer hover:bg-primary/[0.03] transition-colors">
-                    <div className="flex flex-row items-baseline gap-2 flex-1 min-w-0">
-                      <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+                <Card className="overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all duration-200 ease-in-out animate-in fade-in slide-in-from-right-4">
+                  <CollapsibleTrigger asChild>
+                  <CardHeader className="h-13 px-3 py-0 border-b border-border flex flex-row items-center justify-between cursor-pointer bg-card hover:bg-accent/40 transition-all duration-200 ease-in-out">
+                    <div className="flex flex-row items-center gap-2 flex-1 min-w-0">
+                      <CardTitle className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
                         <Terminal className="h-4 w-4 text-primary" />
                         Device Control
                       </CardTitle>
-                      <span className="text-[12px] font-mono text-muted-foreground truncate opacity-70" title={selectedDevice?.name || selectedDevice?.device || "No Device Selected"}>
+                      <span className="text-[11px] font-normal text-muted-foreground truncate" title={selectedDevice?.name || selectedDevice?.device || "No Device Selected"}>
                         {selectedDevice?.name || selectedDevice?.device || "No Device Selected"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1 text-[12px] font-bold uppercase tracking-wider text-primary">
-                        <Wand2 className="h-3 w-3" />
-                        {showQuickStart ? "Hide" : "Guide"}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <div className="hidden sm:flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+                        <Wand2 className="h-3.5 w-3.5" />
+                        {showQuickStart ? "Hide Guide" : "Guide"}
                       </div>
-                      <ChevronDown className={`h-3.5 w-3.5 text-primary transition-transform ${showQuickStart ? "rotate-180" : ""}`} />
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ease-in-out ${showQuickStart ? "rotate-180" : ""}`} />
                     </div>
                   </CardHeader>
                 </CollapsibleTrigger>
 
                 {showQuickStart && (
                   <CollapsibleContent>
-                    <div className="mx-4 mt-3 mb-6 space-y-6 animate-in fade-in slide-in-from-top-2 duration-500">
-                      <div className="relative space-y-5">
+                    <div className="mx-4 mt-2 mb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                      <div className="relative space-y-4">
                         {/* Vertical line connecting steps */}
                         <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-primary/30 via-primary/10 to-transparent" />
 
                         {/* Step 1: Ready Your App */}
-                        <div className="relative flex items-start gap-4 group">
+                        <div className="relative flex items-start gap-3 group">
                           <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
                             1
                           </div>
-                          <div className="flex-1 space-y-1.5 pb-2">
+                          <div className="flex-1 space-y-1.5 pb-1">
                             <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Ready Your App</h4>
                             <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
                               <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -4525,11 +4614,11 @@ ${enabledActions
                         </div>
 
                         {/* Step 2: Start Capturing */}
-                        <div className="relative flex items-start gap-4 group">
+                        <div className="relative flex items-start gap-3 group">
                           <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
                             2
                           </div>
-                          <div className="flex-1 space-y-1.5 pb-2">
+                          <div className="flex-1 space-y-1.5 pb-1">
                             <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Start Capturing</h4>
                             <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
                               <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -4540,7 +4629,7 @@ ${enabledActions
                         </div>
 
                         {/* Step 3: Validate & Finish */}
-                        <div className="relative flex items-start gap-4 group">
+                        <div className="relative flex items-start gap-3 group">
                           <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
                             3
                           </div>
@@ -4556,7 +4645,7 @@ ${enabledActions
                       </div>
 
                       {/* Pro Tips Section */}
-                      <div className="grid grid-cols-2 gap-3 pt-2">
+                      <div className="grid grid-cols-2 gap-2 pt-1">
                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 shadow-sm">
                           <div className="flex items-center gap-2 mb-2">
                             <Wand2 className="h-3.5 w-3.5 text-amber-600" />
@@ -4580,437 +4669,182 @@ ${enabledActions
                   </CollapsibleContent>
                 )}
 
-                <CardContent className="p-0">
-                  {/* --- TOP ROW: PACKAGE SELECTION & STATUS --- */}
-                  <div className="p-3 border-b border-border/40 bg-muted/30">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 min-w-0">
+                <CardContent className="p-0 bg-card">
+                  <div className="h-11 px-3 border-b border-border bg-card flex items-center gap-3">
+                    <div className="flex items-center gap-2 flex-1 min-w-0 md:max-w-[720px]">
+                      <div className="relative flex-1 min-w-0 md:max-w-[520px]">
+                        <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         {installedPackages.length === 0 ? (
-                          <div className="h-9 flex items-center justify-between px-3 border border-dashed border-muted-foreground/30 rounded-lg bg-background/50 text-[10px] text-muted-foreground">
+                        <div className="h-9 flex items-center justify-between rounded-md border border-dashed border-border bg-muted/40 px-3 text-[11px] text-muted-foreground">
                             <span>No apps detected</span>
                             <Button
                               variant="link"
-                              className="h-auto p-0 text-[10px] text-primary font-bold hover:no-underline"
+                              className="h-auto p-0 text-[11px] font-medium text-primary hover:no-underline"
                               onClick={() => fileInputRef.current?.click()}
                             >
-                              <Upload className="h-3 w-3 mr-1" />
-                              Upload APK
+                              <Upload className="mr-1 h-3 w-3" />
+                              Upload
                             </Button>
                           </div>
                         ) : (
-                          <div className="relative group flex items-center gap-2">
-                            <div className="relative flex-1">
-                              <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary" />
-                              <Select
-                                value={appPackage}
-                                onValueChange={(val) => {
-                                  setAppPackage(val);
-                                  // Update Recently Used
-                                  const recentStr = localStorage.getItem("mobile_recorder_recent_apps") || "[]";
-                                  const recent = JSON.parse(recentStr);
-                                  const updated = [val, ...recent.filter((id: string) => id !== val)].slice(0, 5);
-                                  localStorage.setItem("mobile_recorder_recent_apps", JSON.stringify(updated));
-                                }}
-                              >
-                                <SelectTrigger className="h-11 text-[12px] font-bold bg-background pl-9 border-border/80 shadow-md focus:ring-1 focus:ring-primary/30 rounded-lg group transition-all hover:bg-muted/30">
-                                  <div className="flex flex-col items-start leading-tight truncate">
-                                    <SelectValue placeholder="Choose App to Record" />
-                                  </div>
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[400px]">
-                                  {/* RENDER SORTED LIST */}
-                                  {(() => {
-                                    const recentStr = localStorage.getItem("mobile_recorder_recent_apps") || "[]";
-                                    const recentIds = JSON.parse(recentStr);
+                          <Select
+                            value={appPackage}
+                            onValueChange={(val) => {
+                              setAppPackage(val);
+                              const recentStr = localStorage.getItem("mobile_recorder_recent_apps") || "[]";
+                              const recent = JSON.parse(recentStr);
+                              const updated = [val, ...recent.filter((id: string) => id !== val)].slice(0, 5);
+                              localStorage.setItem("mobile_recorder_recent_apps", JSON.stringify(updated));
+                            }}
+                          >
+                            <SelectTrigger className="h-9 rounded-md border border-border bg-background pl-9 text-[13px] font-medium text-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent/30 focus:ring-1 focus:ring-primary/30">
+                              {appPackage ? (
+                                <span className="truncate">{getAppFriendlyName(appPackage)}</span>
+                              ) : (
+                                <SelectValue placeholder="Choose app to record" />
+                              )}
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[400px]">
+                              {(() => {
+                                const recentStr = localStorage.getItem("mobile_recorder_recent_apps") || "[]";
+                                const recentIds = JSON.parse(recentStr);
+                                const sorted = [...installedPackages].sort((a, b) => {
+                                  const nameA = getAppFriendlyName(a).toLowerCase();
+                                  const nameB = getAppFriendlyName(b).toLowerCase();
+                                  return nameA < nameB ? -1 : 1;
+                                });
+                                const final = [
+                                  ...sorted.filter(pkg => recentIds.includes(pkg)),
+                                  ...sorted.filter(pkg => !recentIds.includes(pkg))
+                                ];
 
-                                    // Sort Alphabetical by Friendly Name
-                                    const sorted = [...installedPackages].sort((a, b) => {
-                                      const nameA = getAppFriendlyName(a).toLowerCase();
-                                      const nameB = getAppFriendlyName(b).toLowerCase();
-                                      return nameA < nameB ? -1 : 1;
-                                    });
-
-                                    // Move recent apps to top
-                                    const final = [
-                                      ...sorted.filter(pkg => recentIds.includes(pkg)),
-                                      ...sorted.filter(pkg => !recentIds.includes(pkg))
-                                    ];
-
-                                    return final.map((pkg) => (
-                                      <SelectItem key={pkg} value={pkg} className="py-2.5 px-3 focus:bg-primary/10 transition-colors">
-                                        <div className="flex flex-col gap-0.5">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-foreground">{getAppFriendlyName(pkg)}</span>
-                                            {recentIds.includes(pkg) && (
-                                              <Badge variant="outline" className="h-3.5 px-1 text-[8px] font-black uppercase text-primary border-primary/20 bg-primary/5">Recent</Badge>
-                                            )}
-                                          </div>
-                                          <span className="text-[10px] font-mono text-muted-foreground font-medium opacity-90">{pkg}</span>
-                                        </div>
-                                      </SelectItem>
-                                    ));
-                                  })()}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-9 w-9 border border-dashed border-border/60 hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all rounded-lg"
-                              onClick={() => fileInputRef.current?.click()}
-                              title="Upload New APK (Update/Reinstall)"
-                            >
-                              <Upload className="h-4 w-4" />
-                            </Button>
-                          </div>
+                                return final.map((pkg) => (
+                                  <SelectItem key={pkg} value={pkg} className="py-2 px-3 focus:bg-primary/10 transition-all duration-150 ease-in-out">
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[13px] font-medium text-foreground">{getAppFriendlyName(pkg)}</span>
+                                        {recentIds.includes(pkg) && (
+                                          <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-[0.08em] text-primary border-primary/30 bg-primary/10">Recent</Badge>
+                                        )}
+                                      </div>
+                                      <span className="text-[11px] text-muted-foreground">{pkg}</span>
+                                    </div>
+                                  </SelectItem>
+                                ));
+                              })()}
+                            </SelectContent>
+                          </Select>
                         )}
                       </div>
+                      <div className="hidden md:block text-[11px] text-muted-foreground truncate max-w-[200px]">
+                        {appPackage ? getAppFriendlyName(appPackage) : "No package selected"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-9 w-9 shrink-0 border-border/60 hover:bg-background hover:text-primary shadow-sm transition-colors"
-                        onClick={refreshAppPackages}
-                        disabled={loadingPackages}
-                        title="Refresh App List"
+                        className="h-8 w-8 rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        title="Upload APK"
                       >
-                        <RefreshCw className={`h-4 w-4 text-muted-foreground ${loadingPackages ? "animate-spin" : ""}`} />
+                        <Upload className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowQuickStart((prev) => !prev);
+                        }}
+                        title="Guide"
+                      >
+                        <BookOpen className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyText(appPackage || selectedDevice?.device || "", "Copied");
+                        }}
+                        title="Share"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          refreshAppPackages();
+                        }}
+                        disabled={loadingPackages}
+                        title="Refresh"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${loadingPackages ? "animate-spin" : ""}`} />
                       </Button>
                     </div>
                   </div>
 
-                  {/* --- MIDDLE: UNIFIED CONTROL CENTER (No Tabs) --- */}
-                  <div className="p-4 space-y-5 rounded-xl bg-gradient-to-br from-card/90 via-card/75 to-card/90 border border-border/70 shadow-card">
-                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      <Smartphone className="h-3.5 w-3.5 text-primary" />
-                      Device Controls
+                  {/* --- MIDDLE: UNIFIED CONTROL CENTER --- */}
+                  <div className="p-2.5 space-y-2.5 bg-card">
+                    <div className="flex flex-wrap items-start gap-2.5">
+                      <RecordingCommandBar
+                        recording={recording}
+                        replaying={replaying}
+                        mirrorActive={mirrorActive}
+                        isPaused={isPaused}
+                        actionsCount={actions.length}
+                        onStartRecording={startRecording}
+                        onStopRecording={stopRecording}
+                        onReplay={() => replayActions(0)}
+                        onTogglePause={handleTogglePause}
+                      />
                     </div>
 
-                    {/* 1. SYSTEM NAVIGATION (Top Row) */}
-                    <div className="space-y-3 px-1" id="system-navigation-tools">
-                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-1">
-                        <Smartphone className="h-3.5 w-3.5 text-primary" /> System Navigation
-                      </div>
-                      <div className="grid grid-cols-4 gap-2.5">
-                        <Button
-                          variant="outline"
-                          className="h-9 text-[10px] font-semibold gap-2 bg-card/85 hover:bg-primary/10 hover:text-primary border-border/60 group transition-all duration-200 rounded-lg shadow-sm hover:shadow-md"
-                          onClick={() => handleKeyPress(4, "Back")}
-                          title="Back Button"
-                        >
-                          <RotateCcw className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:-translate-x-0.5 transition-all" />
-                          Back
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-9 text-[10px] font-semibold gap-2 bg-card/85 hover:bg-primary/10 hover:text-primary border-border/60 group transition-all duration-200 rounded-lg shadow-sm hover:shadow-md"
-                          onClick={() => handleKeyPress(3, "Home")}
-                          title="Home Button"
-                        >
-                          <Circle className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-                          Home
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-9 text-[10px] font-semibold gap-2 bg-card/85 hover:bg-primary/10 hover:text-primary border-border/60 group transition-all duration-200 rounded-lg shadow-sm hover:shadow-md"
-                          onClick={() => handleKeyPress(187, "Recents")}
-                          title="Recent Apps"
-                        >
-                          <ListChecks className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                          Tasks
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-9 text-[10px] font-semibold gap-2 bg-card/85 hover:bg-amber-500/10 hover:text-amber-600 border-border/60 group transition-all duration-200 rounded-lg shadow-sm hover:shadow-md"
-                          onClick={hideKeyboard}
-                          title="Hide Soft Keyboard"
-                        >
-                          <Keyboard className="h-4 w-4 text-muted-foreground group-hover:text-amber-600 transition-colors" />
-                          Hide KB
-                        </Button>
-                      </div>
-                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <InteractionTools
+                        captureMode={captureMode}
+                        onToggleCapture={() => setCaptureMode(!captureMode)}
+                        onUndo={handleUndo}
+                        onToggleInput={() => setShowInputPanel(!showInputPanel)}
+                        onAddWait={handleAddWaitStep}
+                        onSwipe={handleDirectionalSwipe}
+                        onBack={() => handleKeyPress(4, "Back")}
+                        onHome={() => handleKeyPress(3, "Home")}
+                        onRecents={() => handleKeyPress(187, "Recents")}
+                        onHideKeyboard={hideKeyboard}
+                      />
 
-                    <div className="h-px bg-border/40 w-full" />
-
-                    {/* 2. CAPTURE & INTERACTION (Prominent) */}
-                    <div id="interaction-tools" className="space-y-3 px-1">
-                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-2">
-                        <MousePointer2 className="h-3.5 w-3.5 text-primary" /> Interaction Tools
-                      </div>
-                      <div className="flex gap-3">
-                        <Button
-                          variant={captureMode ? "default" : "secondary"}
-                          className={`h-10 flex-1 text-[11px] font-bold tracking-wider gap-2 transition-all shadow-md rounded-lg ${captureMode ? 'bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-primary/25' : 'bg-card/85 text-foreground border border-border/70 hover:bg-primary/10 hover:text-primary'}`}
-                          onClick={() => setCaptureMode(!captureMode)}
-                        >
-                          <MousePointer2 className={`h-4 w-4 ${captureMode ? 'animate-bounce' : ''}`} />
-                          {captureMode ? "CAPTURE ACTIVE" : "START CAPTURE"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-10 flex-1 text-[11px] font-semibold tracking-wide gap-2 bg-card/85 border-border/60 text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 rounded-lg shadow-sm hover:shadow-md transition-all"
-                          onClick={handleUndo}
-                          title="Undo Last Action"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          Undo Last
-                        </Button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <Button variant="outline" className="h-9 text-[10px] font-semibold bg-card/85 border-dashed hover:bg-blue-500/5 hover:text-blue-600 hover:border-blue-200 group rounded-lg shadow-sm hover:shadow-md transition-all" onClick={() => setShowInputPanel(!showInputPanel)}>
-                          <Type className="h-4 w-4 mr-2 text-muted-foreground group-hover:text-blue-500 transition-colors" /> Input
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-9 text-[10px] font-semibold bg-card/85 border-dashed hover:bg-amber-500/5 hover:text-amber-600 hover:border-amber-200 group rounded-lg shadow-sm hover:shadow-md transition-all"
-                          onClick={() => {
-                            if (!recording || isPaused) {
-                              toast.warning("Start recording first");
-                              return;
-                            }
-
-                            // FIX: Add step directly to local state (Bypass server)
-                            const waitStep: RecordedAction = {
-                              id: crypto.randomUUID(),
-                              type: "wait",
-                              description: "Wait (2s)",
-                              value: "2000",
-                              locator: "system",
-                              timestamp: Date.now(),
-                              enabled: true
-                            };
-
-                            setActions(prev => [...prev, waitStep]);
-                            toast.info("Added Wait");
-                          }}
-                        >
-                          <Clock className="h-4 w-4 mr-2 text-muted-foreground group-hover:text-amber-500 transition-colors" /> Wait
-                        </Button>
-                      </div>
-                      {/* Find the div with "grid grid-cols-2" around line 1836 and REPLACE it with this: */}
-                      <div className="grid grid-cols-2 gap-2.5 mt-3">
-                        <Button
-                          variant="ghost"
-                          className="h-9 text-[10px] font-semibold bg-card/80 border border-border/40 hover:bg-primary/10 hover:text-primary rounded-lg shadow-sm transition-all"
-                          onClick={() => handleDirectionalSwipe("up")}
-                        >
-                          <ChevronUp className="h-4 w-4 mr-2" /> Swipe Up
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-9 text-[10px] font-semibold bg-card/80 border border-border/40 hover:bg-primary/10 hover:text-primary rounded-lg shadow-sm transition-all"
-                          onClick={() => handleDirectionalSwipe("down")}
-                        >
-                          <ChevronDown className="h-4 w-4 mr-2" /> Swipe Down
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-9 text-[10px] font-semibold bg-card/80 border border-border/40 hover:bg-primary/10 hover:text-primary rounded-lg shadow-sm transition-all"
-                          onClick={() => handleDirectionalSwipe("left")}
-                        >
-                          <ArrowLeft className="h-4 w-4 mr-2" /> Swipe Left
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-9 text-[10px] font-semibold bg-card/80 border border-border/40 hover:bg-primary/10 hover:text-primary rounded-lg shadow-sm transition-all"
-                          onClick={() => handleDirectionalSwipe("right")}
-                        >
-                          <ArrowRight className="h-4 w-4 mr-2" /> Swipe Right
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="h-px bg-border/40 w-full" />
-
-                    {/* 3. APP MANAGEMENT */}
-                    <div id="app-control-section" className="space-y-3">
-                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <Package className="h-3.5 w-3.5 text-primary" /> App Management
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          variant="outline"
-                          className="h-8 text-[10px] font-semibold justify-start px-3 gap-2 border-primary/25 text-primary hover:bg-primary/10 hover:text-primary transition-colors rounded-lg"
-                          onClick={handleOpenApp}
-                          disabled={!appPackage}
-                          title="Launch the selected app"
-                        >
-                          <Play className="h-3.5 w-3.5 fill-current" /> Launch App
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-8 text-[10px] font-semibold justify-start px-3 gap-2 border-destructive/25 text-destructive/80 hover:bg-destructive/10 hover:text-destructive transition-colors rounded-lg"
-                          onClick={handleStopApp}
-                          disabled={!appPackage}
-                          title="Force stop the selected app"
-                        >
-                          <Square className="h-3.5 w-3.5 fill-current" /> Force Stop
-                        </Button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          variant="outline"
-                          className="h-8 text-[10px] font-semibold justify-start px-3 gap-2 hover:bg-amber-500/10 hover:text-amber-700 hover:border-amber-500/30 rounded-lg"
-                          onClick={handleClearApp}
-                          disabled={!appPackage}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 opacity-70" /> Clear Data
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-8 text-[10px] font-semibold justify-start px-3 gap-2 hover:bg-blue-500/10 hover:text-blue-700 hover:border-blue-500/30 rounded-lg"
-                          onClick={handleClearCache}
-                          disabled={!appPackage}
-                        >
-                          <RefreshCw className="h-3.5 w-3.5 opacity-70" /> Clear Cache
-                        </Button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <Button
-                          variant="ghost"
-                          className="h-8 text-[10px] font-semibold justify-start px-2 gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive border border-transparent hover:border-destructive/20 rounded-lg"
-                          onClick={uninstallApp}
-                          disabled={!appPackage}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Uninstall
-                        </Button>
-                        <Button variant="ghost" className="h-8 text-[10px] justify-start text-muted-foreground hover:text-foreground px-2 rounded-lg" onClick={handleOpenAppSettings} disabled={!appPackage}>
-                          <Settings className="h-3.5 w-3.5 mr-2" /> App Info
-                        </Button>
-                      </div>
-
-                      {/* APK Upload (Persistent Workflow) */}
-                      <div className="mt-2 pt-2 border-t border-dashed border-border/50 space-y-2">
-                        <Button
-                          variant="outline"
-                          className="w-full h-8 text-[10px] font-semibold border-dashed border-border/60 hover:bg-primary/5 hover:text-primary hover:border-primary/20 transition-all rounded-lg"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={apkUploading}
-                        >
-                          {apkUploading ? (
-                            <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Upload className="mr-2 h-3.5 w-3.5" />
-                          )}
-                          {installedPackages.length > 0 ? "Upload APK (Update/New)" : "Upload APK"}
-                        </Button>
-
-                        {uploadedApk && (
-                          <div className={`animate-in fade-in slide-in-from-top-1 duration-300 mt-3 rounded-xl border p-2 transition-colors ${
-                            // CHANGE COLOR: Darker Green on Success
-                            (uploadedApk as any).installed
-                              ? "bg-emerald-500/10 border-emerald-500/30"
-                              : "bg-green-500/5 border-green-500/20"
-                            }`}>
-                            <div className="flex items-center justify-between px-2 py-1 mb-2">
-                              <span className={`text-[10px] font-medium truncate max-w-[200px] flex items-center gap-2 ${(uploadedApk as any).installed ? "text-emerald-700 dark:text-emerald-400" : "text-green-700 dark:text-green-400"
-                                }`}>
-                                {/* ICON CHANGE: Package -> Checkmark */}
-                                {(uploadedApk as any).installed ? (
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Package className="h-3.5 w-3.5" />
-                                )}
-
-                                {/* TEXT CHANGE: Ready -> Installed */}
-                                {(uploadedApk as any).installed ? (
-                                  <span className="font-bold">Successfully Installed: {uploadedApk.name}</span>
-                                ) : (
-                                  <span>Ready: {uploadedApk.name}</span>
-                                )}
-                              </span>
-
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5 text-muted-foreground hover:bg-black/5 rounded-full"
-                                onClick={() => setUploadedApk(null)}
-                                title="Dismiss"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </div>
-
-                            <Button
-                              variant="default"
-                              className={`w-full h-9 text-[10px] font-black uppercase tracking-widest shadow-md transition-all rounded-lg gap-2 ${
-                                // BUTTON STYLE CHANGE: Disable and Darken on Success
-                                (uploadedApk as any).installed
-                                  ? "bg-emerald-600 hover:bg-emerald-600 opacity-90 cursor-default"
-                                  : "bg-green-600 hover:bg-green-700"
-                                }`}
-                              onClick={(uploadedApk as any).installed ? undefined : installApk}
-                              disabled={apkInstalling || (uploadedApk as any).installed}
-                            >
-                              {apkInstalling ? (
-                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              ) : (uploadedApk as any).installed ? (
-                                <CheckCircle className="h-3.5 w-3.5 fill-current" />
-                              ) : (
-                                <Play className="h-3.5 w-3.5 fill-current" />
-                              )}
-
-                              {/* BUTTON TEXT CHANGE */}
-                              {(uploadedApk as any).installed
-                                ? "Installation Complete"
-                                : (appPackage ? "Update Existing App" : "Install New APK")}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
+                      <AppManagement
+                        appPackage={appPackage}
+                        installedPackagesCount={installedPackages.length}
+                        apkUploading={apkUploading}
+                        apkInstalling={apkInstalling}
+                        uploadedApk={uploadedApk as any}
+                        setUploadedApk={setUploadedApk}
+                        onLaunch={handleOpenApp}
+                        onForceStop={handleStopApp}
+                        onClearData={handleClearApp}
+                        onClearCache={handleClearCache}
+                        onUninstall={uninstallApp}
+                        onInfo={handleOpenAppSettings}
+                        onUploadClick={() => fileInputRef.current?.click()}
+                        onInstallApk={installApk}
+                        disabled={!appPackage}
+                      />
                     </div>
                   </div>
 
                   {/* --- BOTTOM: COMMAND BAR (Always Visible) --- */}
-                  <div className="p-3 bg-muted/10 border-t border-border/40 backdrop-blur-sm" id="recording-dashboard">
-                    {!recording ? (
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={startRecording}
-                          disabled={!mirrorActive}
-                          className="h-10 flex-1 text-[11px] font-black tracking-widest bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all gap-2"
-                        >
-                          <div className="w-2 h-2 rounded-full bg-white animate-pulse shadow-sm" />
-                          START RECORDING
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => replayActions(0)}
-                          disabled={actions.length === 0 || replaying}
-                          className="h-10 flex-1 text-[11px] font-black tracking-widest border-border/60 hover:bg-background shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all gap-2"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          REPLAY
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <Button
-                          variant={isPaused ? "default" : "outline"}
-                          onClick={async () => {
-                            try {
-                              const endpoint = isPaused ? "/recording/resume" : "/recording/pause";
-                              const res = await fetch(`${AGENT_URL}${endpoint}`, { method: "POST" });
-                              if (res.ok) setIsPaused(!isPaused);
-                            } catch (err) { }
-                          }}
-                          className={`h-10 flex-1 text-[11px] font-black tracking-widest transition-all gap-2 ${isPaused ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md' : 'border-amber-500/50 text-amber-600 hover:bg-amber-50/50'}`}
-                        >
-                          {isPaused ? <><Play className="h-4 w-4 fill-current" /> RESUME</> : <><Pause className="h-4 w-4 fill-current" /> PAUSE</>}
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={stopRecording}
-                          className="h-10 flex-1 text-[11px] font-black tracking-widest shadow-md hover:shadow-lg hover:bg-destructive/90 transition-all gap-2"
-                        >
-                          <Square className="h-4 w-4 fill-current" /> STOP
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+                  
                 </CardContent>
               </Card>
             </Collapsible>
@@ -5185,6 +5019,9 @@ ${enabledActions
                               (["tap", "input", "longPress", "assert"] as string[]).includes(a.type) &&
                               locatorScore != null &&
                               locatorScore <= 10;
+                            const perActionSuggestions = aiSuggestionsByActionId.get(a.id) || [];
+                            const hasAISuggestions = perActionSuggestions.length > 0;
+                            const isAISuggestionOpen = openAISuggestionActionIds.includes(a.id);
                             return (
 	                          <div
 	                            key={a.id}
@@ -5214,6 +5051,22 @@ ${enabledActions
                                   {a.type === "hideKeyboard" && <span title="Hide Keyboard"><Keyboard className="h-3.5 w-3.5 text-gray-500" /></span>}
                                   <span className="font-semibold text-sm leading-none capitalize">{a.type === "hideKeyboard" ? "Hide Keyboard" : a.type}</span>
                                   {a.enabled === false && <Badge variant="secondary" className="h-4 text-[9px] px-1 opacity-70">Disabled</Badge>}
+                                  {hasAISuggestions && (
+                                    <Badge
+                                      variant="outline"
+                                      className={`h-5 text-[10px] cursor-pointer transition-colors ${isAISuggestionOpen ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted/60"}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenAISuggestionActionIds((prev) =>
+                                          prev.includes(a.id)
+                                            ? prev.filter((id) => id !== a.id)
+                                            : [...prev, a.id]
+                                        );
+                                      }}
+                                    >
+                                      💡 AI Suggestion
+                                    </Badge>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <Button
@@ -5276,6 +5129,51 @@ ${enabledActions
                               <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 break-words mb-1.5 line-clamp-2">
                                 {a.description}
                               </p>
+
+                              {hasAISuggestions && isAISuggestionOpen && (
+                                <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-2 space-y-2">
+                                  {perActionSuggestions.map((suggestion) => (
+                                    <div key={suggestion.id} className="rounded-md border border-border/60 bg-background/70 p-2 space-y-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="space-y-1">
+                                          <p className="text-[11px] font-semibold text-foreground">{suggestion.title}</p>
+                                          <p className="text-[11px] text-muted-foreground">{suggestion.detail}</p>
+                                          <p className="text-[10px] text-muted-foreground/80">Why: {suggestion.reason}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Checkbox
+                                            id={`apply-${suggestion.id}`}
+                                            className="h-4 w-4"
+                                            onCheckedChange={(checked) => {
+                                              if (checked === true) {
+                                                applyAISuggestion(suggestion);
+                                              }
+                                            }}
+                                          />
+                                          <label htmlFor={`apply-${suggestion.id}`} className="text-[10px] text-muted-foreground">
+                                            Apply to steps & script
+                                          </label>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[10px]">
+                                        <Badge variant="outline" className="text-[10px]">Optional</Badge>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 text-[10px] px-2"
+                                          onClick={() => dismissAISuggestion(suggestion.id)}
+                                        >
+                                          Ignore
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {perActionSuggestions.length === 0 && (
+                                    <p className="text-[10px] text-muted-foreground">No AI tips for this step right now.</p>
+                                  )}
+                                </div>
+                              )}
+
                               {!a.elementId && !a.elementText && !a.elementContentDesc && !a.xpath && a.type === "tap" && (
                                 <div className="mb-2 flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded w-fit">
                                   <AlertCircle className="h-3 w-3" />
@@ -6467,3 +6365,4 @@ function FileIcon(props: any) {
     </svg>
   )
 }
+

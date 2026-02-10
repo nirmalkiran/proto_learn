@@ -1,0 +1,23 @@
+{
+  "name": "burp-agent",
+  "version": "1.0.0",
+  "description": "Self-hosted Burp Suite agent for orchestrated security testing",
+  "main": "agent.js",
+  "type": "module",
+  "scripts": {
+    "start": "node agent.js",
+    "dev": "node --watch agent.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "burp-suite",
+    "security",
+    "dast",
+    "penetration-testing"
+  ]
+}

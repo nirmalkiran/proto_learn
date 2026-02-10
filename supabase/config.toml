@@ -1,9 +1,15 @@
 project_id = "vqoxcgbilzqxmxuxwicr"
 
+[functions.generate-performance-report]
+verify_jwt = true
+
 [functions.repository-download]
 verify_jwt = false
 
 [functions.jira-integration]
+verify_jwt = false
+
+[functions.jira-submit-defect]
 verify_jwt = false
 
 [functions.azure-ad-auth]
@@ -16,6 +22,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.azure-devops-defects]
+verify_jwt = false
+
+[functions.azure-devops-submit-defect]
 verify_jwt = false
 
 [functions.automation-generator]
@@ -46,4 +55,40 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.secure-credentials]
+verify_jwt = true
+
+[functions.ai-qa-orchestrator]
+verify_jwt = true
+
+[functions.semantic-search]
+verify_jwt = true
+
+[functions.agent-api]
+verify_jwt = false
+
+[functions.agent-derive-steps]
+verify_jwt = false
+
+[functions.generate-api-flow]
+verify_jwt = true
+
+[functions.trigger-webhook]
+verify_jwt = false
+
+[functions.execute-scheduled-triggers]
+verify_jwt = false
+
+[functions.security-scan]
+verify_jwt = false
+
+[functions.burp-agent-api]
+verify_jwt = false
+
+[functions.analyze-performance-executions]
+verify_jwt = true
+
+[functions.zap-agent-api]
+verify_jwt = false
+
+[functions.instruction-parser]
 verify_jwt = true

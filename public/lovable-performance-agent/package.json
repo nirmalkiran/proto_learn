@@ -1,0 +1,23 @@
+{
+  "name": "wispr-performance-agent",
+  "version": "1.0.0",
+  "description": "WISPR Self-Hosted Performance Testing Agent for JMeter execution",
+  "main": "run-agent.js",
+  "type": "module",
+  "scripts": {
+    "start": "node run-agent.js"
+  },
+  "keywords": [
+    "wispr",
+    "performance",
+    "testing",
+    "jmeter",
+    "agent"
+  ],
+  "author": "WISPR",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {}
+}

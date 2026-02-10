@@ -4,7 +4,7 @@
  * Handles checking local service health (Appium, Agent), starting emulators,
  * and managing connections to physical devices.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 // Shared Types
 import { CheckResult, DeviceInfo, SelectedDevice } from "./types";
@@ -150,6 +150,12 @@ export default function MobileSetupWizard({
   const [prerequisitesOpen, setPrerequisitesOpen] = useState(false);
   const [installationGuideOpen, setInstallationGuideOpen] = useState(false);
 
+  const selectedDeviceRef = useRef<SelectedDevice | null>(selectedDevice);
+  const selectedDeviceMissingPollsRef = useRef(0);
+
+  useEffect(() => {
+    selectedDeviceRef.current = selectedDevice;
+  }, [selectedDevice]);
 
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));
@@ -413,6 +419,10 @@ export default function MobileSetupWizard({
         fetch(`${AGENT_URL}/emulator/available`).catch(() => null),
       ]);
 
+      const connectedKnown = !!connectedRes?.ok;
+      const availableKnown = !!availableRes?.ok;
+      const anyKnown = connectedKnown || availableKnown;
+
       const connectedData = connectedRes ? await connectedRes.json().catch(() => ({})) : {};
       const availableData = availableRes ? await availableRes.json().catch(() => ({})) : {};
 
@@ -449,29 +459,34 @@ export default function MobileSetupWizard({
       setAvailableDevices(allDevices);
 
       // Validation: If selected device is no longer in the list, clear it
-      if (selectedDevice && allDevices.length > 0) {
-        const stillPresent = allDevices.some(d => d.id === selectedDevice.device);
-        if (!stillPresent) {
-          console.log("[MobileSetupWizard] Selected device disconnected, clearing selection");
-          setSelectedDevice(null);
-          setSetupState((p: any) => ({ ...p, device: false, emulator: false }));
-          setChecks(prev => ({
-            ...prev,
-            device: { status: "pending", message: "Disconnected" },
-            emulator: { status: "pending", message: "Disconnected" }
-          }));
+      const currentSelected = selectedDeviceRef.current;
+      if (currentSelected && anyKnown) {
+        const stillPresent =
+          allDevices.length > 0 && allDevices.some((d) => d.id === currentSelected.device);
 
+        if (stillPresent) {
+          selectedDeviceMissingPollsRef.current = 0;
+        } else {
+          selectedDeviceMissingPollsRef.current += 1;
+          if (selectedDeviceMissingPollsRef.current >= 2) {
+            console.log("[MobileSetupWizard] Selected device disconnected, clearing selection");
+            selectedDeviceMissingPollsRef.current = 0;
+            setSelectedDevice(null);
+            setSetupState((p: any) => ({ ...p, device: false, emulator: false }));
+            setChecks((prev) => ({
+              ...prev,
+              device: { status: "pending", message: "Disconnected" },
+              emulator: { status: "pending", message: "Disconnected" },
+            }));
+          }
         }
-      } else if (selectedDevice && allDevices.length === 0) {
-        setSelectedDevice(null);
-        setSetupState((p: any) => ({ ...p, device: false, emulator: false }));
       }
 
       if (allDevices.length > 0) {
         // Auto-select logic: Only if NO device is currently selected
         const physical = allDevices.find((d) => d.type === "real");
 
-        if (!selectedDevice) {
+        if (!selectedDeviceRef.current) {
           if (physical) {
             handleDeviceChange(physical, true);
           } else if (allDevices.length === 1) {
@@ -721,14 +736,8 @@ export default function MobileSetupWizard({
         status: data.device ? "success" : "error",
         message: data.device ? "Device connected" : "No device connected",
       });
-      if (data.physicalDevice && !devicesLoading) {
-        const hasRealDeviceInState = availableDevices.some(d => d.type === "real");
-        // Only trigger fetch if the state doesn't match the reality to prevent loops
-        if (!hasRealDeviceInState) {
-          console.log("[MobileSetupWizard] New physical device detected, fetching details...");
-          fetchAvailableDevices();
-        }
-      }
+      // Device list refresh is already handled by the 5s polling loop.
+      // Triggering fetch here creates redundant requests and stale-closure loops.
 
       return "online";
     } catch (error: any) {

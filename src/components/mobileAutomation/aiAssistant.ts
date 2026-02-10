@@ -295,7 +295,8 @@ export type RecorderSuggestionType =
   | "ensure_fallbacks"
   | "add_assertion"
   | "context_assertion"
-  | "action_hint";
+  | "action_hint"
+  | "timing_guard";
 
 export interface RecorderAISuggestion {
   id: string;
@@ -310,6 +311,8 @@ export interface RecorderAISuggestion {
   relatedStepIndex?: number;
   suggestedValue?: string;
   suggestedLocatorStrategy?: RecordedAction["locatorStrategy"];
+  suggestedLocator?: string;
+  assertionType?: RecordedAction["assertionType"];
 }
 
 export interface LowScoreLocatorInsight {
@@ -424,6 +427,64 @@ const getFriendlyStepName = (action: RecordedAction, index: number): string => {
     default:
       return action.description || `Step ${index + 1}`;
   }
+};
+
+const isNavigationIntent = (action: RecordedAction): string | null => {
+  const text = normalizeText(
+    `${action.description || ""} ${action.elementText || ""} ${action.elementContentDesc || ""}`
+  );
+  const keywords = [
+    "login",
+    "sign in",
+    "submit",
+    "continue",
+    "next",
+    "proceed",
+    "checkout",
+    "pay",
+    "place order",
+    "add to cart",
+    "add item",
+    "save",
+    "confirm",
+    "finish",
+    "complete",
+    "search",
+    "apply filter",
+  ];
+
+  const hit = keywords.find((k) => text.includes(k));
+  return hit || null;
+};
+
+const hasNearbyAssertion = (actions: RecordedAction[], index: number, window: number = 2): boolean => {
+  const upper = Math.min(actions.length, index + 1 + window);
+  return actions.slice(index + 1, upper).some((a) => a.type === "assert");
+};
+
+const nextExecutableAction = (actions: RecordedAction[], index: number): { action: RecordedAction; index: number } | null => {
+  for (let i = index + 1; i < actions.length; i++) {
+    const candidate = actions[i];
+    if (candidate.enabled === false) continue;
+    if (candidate.type === "wait" || candidate.type === "hideKeyboard") continue;
+    return { action: candidate, index: i };
+  }
+  return null;
+};
+
+const getLocatorForAssertion = (
+  action: RecordedAction
+): { value: string; strategy?: RecordedAction["locatorStrategy"] } | null => {
+  const derived = deriveLocatorSuggestion(action);
+  if (derived?.value) return derived;
+
+  const contextual = buildContextualXPath(action);
+  if (contextual) return { value: contextual, strategy: "xpath" };
+
+  if (action.locator) {
+    return { value: action.locator, strategy: action.locatorStrategy };
+  }
+  return null;
 };
 
 const deriveLocatorSuggestion = (
@@ -569,6 +630,10 @@ export const buildRecorderAISuggestions = (actions: RecordedAction[]): RecorderA
   const seenSignatures = new Map<string, number[]>();
   const hasAssertion = actions.some((a) => a.type === "assert");
   let bestAssertionCandidate: { index: number; label: string; locator?: string; strategy?: RecordedAction["locatorStrategy"] } | null = null;
+  let contextualAssertionCount = 0;
+  let timingGuardCount = 0;
+  const maxContextualAssertions = 3;
+  const maxTimingGuards = 3;
 
   actions.forEach((action, index) => {
     const keyBase = `${action.id || "step"}-${index}`;
@@ -678,6 +743,70 @@ export const buildRecorderAISuggestions = (actions: RecordedAction[]): RecorderA
       seenSignatures.set(signature, [...previousIndices, index]);
     }
 
+    // Contextual assertion hints after navigation-like actions (optional, human-in-control)
+    if (
+      contextualAssertionCount < maxContextualAssertions &&
+      action.enabled !== false &&
+      action.type !== "assert" &&
+      !hasNearbyAssertion(actions, index, 2)
+    ) {
+      const navIntent = isNavigationIntent(action);
+      const nextAction = nextExecutableAction(actions, index);
+      if (navIntent && nextAction) {
+        const targetLocator = getLocatorForAssertion(nextAction.action);
+        if (targetLocator?.value) {
+          contextualAssertionCount += 1;
+          const nextLabel = getFriendlyStepName(nextAction.action, nextAction.index);
+          suggestions.push({
+            id: `nav_assert_${keyBase}`,
+            type: "context_assertion",
+            severity: "medium",
+            title: `Add assertion after "${navIntent}" action`,
+            detail: `Check that "${nextLabel}" is visible after this step before continuing.`,
+            reason: "Confirms the expected screen loaded and prevents silent navigation failures.",
+            confidence: 0.8,
+            impact: "Adds a guard without changing flow or backend calls.",
+            stepIndex: index,
+            relatedStepIndex: nextAction.index,
+            suggestedValue: `Verify "${nextLabel}" is visible`,
+            suggestedLocatorStrategy: targetLocator.strategy,
+            suggestedLocator: targetLocator.value,
+            assertionType: "visible",
+          });
+        }
+      }
+    }
+
+    // Timing guard suggestions (self-healing: short wait before flaky step)
+    if (
+      timingGuardCount < maxTimingGuards &&
+      LOCATOR_REQUIRED_TYPES.includes(action.type) &&
+      action.enabled !== false
+    ) {
+      const score = getLocatorScore(action);
+      const prevAction = actions[index - 1];
+      const hasExistingWait =
+        prevAction && prevAction.type === "wait" && Number(prevAction.value || "0") >= 500;
+      const hasAssertionBefore = prevAction && prevAction.type === "assert";
+
+      if (!hasExistingWait && !hasAssertionBefore && score < 50) {
+        timingGuardCount += 1;
+        const waitMs = score <= 20 ? 1200 : 800;
+        suggestions.push({
+          id: `wait_guard_${keyBase}`,
+          type: "timing_guard",
+          severity: score <= 20 ? "high" : "medium",
+          title: `Add short wait before step ${index + 1}`,
+          detail: `Insert a ${waitMs}ms wait to let the screen settle before interacting with "${suggestedStepName}".`,
+          reason: "Low locator confidence hints the element may load slowly on some devices.",
+          confidence: score <= 20 ? 0.84 : 0.72,
+          impact: "Reduces flakiness without changing recorded behavior.",
+          stepIndex: index,
+          suggestedValue: String(waitMs),
+        });
+      }
+    }
+
     if (!hasAssertion && !bestAssertionCandidate) {
       const label = targetLabel || suggestedStepName;
       if (label && label.length <= 80 && action.type !== "wait") {
@@ -714,8 +843,6 @@ export const buildRecorderAISuggestions = (actions: RecordedAction[]): RecorderA
       stepIndex: index,
       suggestedValue: `Assert "${label}" is visible`,
       suggestedLocatorStrategy: strategy,
-      // optional extension for locator carry-over
-      // @ts-ignore
       suggestedLocator: locator,
     });
   }

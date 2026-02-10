@@ -1,0 +1,27 @@
+{
+  "name": "wispr-mobile-agent",
+  "version": "1.0.0",
+  "description": "WISPR self-hosted mobile agent (Appium/ADB focused).",
+  "main": "mobile-agent.js",
+  "type": "module",
+  "scripts": {
+    "start": "node mobile-agent.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "lodash": "^4.17.21",
+    "moment": "^2.29.4",
+    "sharp": "^0.33.3",
+    "pngjs": "^7.0.0",
+    "jpeg-js": "^0.4.4",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "express": "^5.2.1",
+    "cors": "^2.8.5",
+    "webdriverio": "^9.22.0",
+    "xml2js": "^0.6.2"
+  }
+}

@@ -19,6 +19,7 @@ import { EnhancedPerformanceTestGenerator } from "@/components/EnhancedPerforman
 import { NoCodeAutomation } from "@/components/NoCodeAutomation";
 import { AgentManagement } from "@/components/AgentManagement";
 import { AIGovernance } from "@/components/AIGovernance";
+import { SecurityTesting } from "@/components/security-testing";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -128,6 +129,8 @@ const Project = () => {
         return <MobileAutomation projectId={selectedProject.id} />;
       case "performance-testing":
         return <EnhancedPerformanceTestGenerator />;
+      case "security-testing":
+        return <SecurityTesting projectId={selectedProject.id} />;
       case "agents":
         return <AgentManagement projectId={selectedProject.id} />;
       case "ai-governance":
