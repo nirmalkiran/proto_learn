@@ -40,7 +40,7 @@ export default function AppManagement({
 }: Props) {
   const hasApk = !!uploadedApk;
   return (
-    <div id="app-control-section" className="w-1/2 space-y-2 rounded-xl border border-border bg-card p-2.5 shadow-sm">
+    <div id="app-control-section" className="w-full min-w-0 space-y-2 rounded-xl border border-border bg-card p-2.5 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           App Management

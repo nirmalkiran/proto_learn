@@ -1,4 +1,4 @@
-import { MousePointer2, RotateCcw, Type, Clock, ChevronUp, ChevronDown, ArrowLeft, ArrowRight, Circle, ListChecks, Keyboard } from "lucide-react";
+import { MousePointer2, RotateCcw, Type, Clock, SquareStack, ChevronUp, ChevronDown, ArrowLeft, ArrowRight, Circle, Keyboard, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -28,7 +28,7 @@ export default function InteractionTools({
 }: Props) {
   return (
     <div
-      id="interaction-tools" className="w-1/2 rounded-xl border border-border bg-card shadow-sm p-2"
+      id="interaction-tools" className="w-full min-w-0 rounded-xl border border-border bg-card shadow-sm p-2"
     >
 
       <div className="flex flex-col items-center justify-between gap-2 pb-1">
@@ -36,7 +36,7 @@ export default function InteractionTools({
           Interaction Tools
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-col flex-wrap items-center gap-4">
           <div className="grid grid-cols-3 grid-rows-3 gap-1 shrink-0">
             <span />
             <button onClick={() => onSwipe("up")} className="h-8 w-8 rounded-md bg-background border border-border hover:border-primary/40 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 shadow-sm transition-all duration-200" aria-label="Swipe up" title="Swipe up">
@@ -100,8 +100,7 @@ export default function InteractionTools({
             className="h-8 px-2.5 flex items-center gap-1 border-r border-border text-[11px] font-medium text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-accent-foreground"
             onClick={onBack}
           >
-            <RotateCcw className="h-4 w-4" />
-            Back
+         <Play className="h-4 w-4 rotate-180"/>Back
           </button>
           <button
             type="button"
@@ -118,8 +117,8 @@ export default function InteractionTools({
             className="h-8 px-2.5 flex items-center gap-1 border-r border-border text-[11px] font-medium text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-accent-foreground"
             onClick={onRecents}
           >
-            <ListChecks className="h-4 w-4" />
-            Recents
+            <SquareStack className="h-4 w-4" />
+            Recent Apps
           </button>
           <button
             type="button"

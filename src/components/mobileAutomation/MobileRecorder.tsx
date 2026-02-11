@@ -25,7 +25,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import DeviceSelector from "./DeviceSelector";
@@ -481,7 +480,7 @@ export default function MobileRecorder({
     } catch {
       return true;
     }
-	  }, []);
+  }, []);
   const [hoverInspect, setHoverInspect] = useState<any>(null);
   const [tapInspect, setTapInspect] = useState<any>(null);
   const [pinnedInspect, setPinnedInspect] = useState<any>(null);
@@ -519,7 +518,7 @@ export default function MobileRecorder({
   const [showInputPanel, setShowInputPanel] = useState(false);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [activeTab, setActiveTab] = useState<"actions" | "script" | "history">("actions");
-  const [showAISuggestions, setShowAISuggestions] = useState(true);
+  const [showAISuggestions, setShowAISuggestions] = useState(false);
   const [openAISuggestionActionIds, setOpenAISuggestionActionIds] = useState<string[]>([]);
   const [dismissedAISuggestionIds, setDismissedAISuggestionIds] = useState<string[]>([]);
   const [lastAIChange, setLastAIChange] = useState<{ title: string; previousActions: RecordedAction[] } | null>(null);
@@ -529,18 +528,53 @@ export default function MobileRecorder({
   const [askAIQuestion, setAskAIQuestion] = useState("");
   const [askAIAnswer, setAskAIAnswer] = useState("");
   const [askAIFeedbackSubmitted, setAskAIFeedbackSubmitted] = useState(false);
+  const previewShellRef = useRef<HTMLDivElement | null>(null);
+  const previewRafRef = useRef<number | null>(null);
+  const [previewShellSize, setPreviewShellSize] = useState({ width: 0, height: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const previewDimensions = useMemo(() => {
-    const fixedHeight = 700;
-    if (deviceSize && deviceSize.width > 0 && deviceSize.height > 0) {
-      const aspectRatio = deviceSize.width / deviceSize.height;
-      return {
-        width: Math.round(fixedHeight * aspectRatio),
-        height: fixedHeight
-      };
-    }
+    const deviceW = deviceSize?.width || DEVICE_WIDTH;
+    const deviceH = deviceSize?.height || DEVICE_HEIGHT;
+    const aspectRatio = deviceW / deviceH;
+    const safeViewportH = viewportSize.height || 900;
+    const availableWidth = previewShellSize.width || 360;
+    const maxWidth = Math.max(240, Math.floor(availableWidth));
+    const maxHeight = clamp(Math.floor(safeViewportH - 260), 420, 760);
 
-    return { width: 350, height: fixedHeight };
-  }, [deviceSize]);
+    const { displayW, displayH } = getContainMetrics(maxWidth, maxHeight, deviceW, deviceH);
+    return { width: Math.round(displayW), height: Math.round(displayH) };
+  }, [deviceSize, previewShellSize.width, viewportSize.height]);
+
+  useEffect(() => {
+    const updateViewport = () => {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    const el = previewShellRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const width = Math.round(entry.contentRect.width);
+      const height = Math.round(entry.contentRect.height);
+      if (previewRafRef.current != null) cancelAnimationFrame(previewRafRef.current);
+      previewRafRef.current = requestAnimationFrame(() => {
+        setPreviewShellSize((prev) =>
+          prev.width === width && prev.height === height ? prev : { width, height }
+        );
+      });
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (previewRafRef.current != null) cancelAnimationFrame(previewRafRef.current);
+    };
+  }, []);
 
   const replayAbortRef = useRef<AbortController | null>(null);
   const replayStopRequestedRef = useRef(false);
@@ -691,7 +725,7 @@ export default function MobileRecorder({
           >
             <div className={`h-2 w-2 rounded-full ${d.band}`} />
             <span className="text-xs font-semibold">Inspector</span>
-            <span className="text-[11px] font-mono text-muted-foreground">
+            <span className="text-xs font-mono text-muted-foreground">
               {locatorRows.length} locators
             </span>
           </button>
@@ -702,153 +736,153 @@ export default function MobileRecorder({
 
     return createPortal(
       <div className="fixed right-4 top-4 z-[10000] pointer-events-auto w-[430px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-1rem)] rounded-2xl border border-border/70 bg-background shadow-2xl overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`h-2.5 w-2.5 rounded-full ${d.band}`} />
-              <div className="text-sm font-semibold truncate">Inspector</div>
-              {pinnedInspect && (
-                <Badge variant="outline" className="text-[10px] px-1.5 h-5">Pinned</Badge>
-              )}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`h-2.5 w-2.5 rounded-full ${d.band}`} />
+            <div className="text-sm font-semibold truncate">Inspector</div>
+            {pinnedInspect && (
+              <Badge variant="outline" className="text-xs px-1.5 h-5">Pinned</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={`text-xs rounded-md px-2 py-1 border ${pinnedInspect ? "border-primary/40 text-primary bg-primary/10" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
+              onClick={() => {
+                if (pinnedInspect) {
+                  setPinnedInspect(null);
+                  toast.info("Inspector unpinned");
+                  return;
+                }
+                const b = String(activeInspect?.element?.bounds || "");
+                if (!b || !b.includes("[")) {
+                  toast.info("No element to pin yet");
+                  return;
+                }
+                if (activeInspect) {
+                  setPinnedInspect(activeInspect);
+                  toast.success("Inspector pinned");
+                }
+              }}
+            >
+              {pinnedInspect ? "Unpin" : "Pin"}
+            </button>
+            <button
+              type="button"
+              className={`text-xs rounded-md px-2 py-1 border ${inspectorSpotlight ? "border-foreground/20 text-foreground/80 bg-foreground/5" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setInspectorSpotlight((v) => !v)}
+            >
+              {inspectorSpotlight ? "Spotlight On" : "Spotlight"}
+            </button>
+            <button
+              type="button"
+              className="text-xs rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground"
+              onClick={() => setInspectorPanelOpen(false)}
+            >
+              Collapse
+            </button>
+          </div>
+        </div>
+
+        <div className="px-4 py-3 space-y-3 overflow-auto">
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold truncate">{d.targetName}</div>
+              <Badge variant="outline" className="text-xs h-5 px-1.5 font-mono">
+                {typeof d.score === "number" ? `${d.score}%` : "--"}
+              </Badge>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className={`text-xs rounded-md px-2 py-1 border ${pinnedInspect ? "border-primary/40 text-primary bg-primary/10" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
-                onClick={() => {
-                  if (pinnedInspect) {
-                    setPinnedInspect(null);
-                    toast.info("Inspector unpinned");
-                    return;
-                  }
-                  const b = String(activeInspect?.element?.bounds || "");
-                  if (!b || !b.includes("[")) {
-                    toast.info("No element to pin yet");
-                    return;
-                  }
-                  if (activeInspect) {
-                    setPinnedInspect(activeInspect);
-                    toast.success("Inspector pinned");
-                  }
-                }}
-              >
-                {pinnedInspect ? "Unpin" : "Pin"}
-              </button>
-              <button
-                type="button"
-                className={`text-xs rounded-md px-2 py-1 border ${inspectorSpotlight ? "border-foreground/20 text-foreground/80 bg-foreground/5" : "border-border/50 text-muted-foreground hover:text-foreground"}`}
-                onClick={() => setInspectorSpotlight((v) => !v)}
-              >
-                {inspectorSpotlight ? "Spotlight On" : "Spotlight"}
-              </button>
-              <button
-                type="button"
-                className="text-xs rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground"
-                onClick={() => setInspectorPanelOpen(false)}
-              >
-                Collapse
-              </button>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {d.best?.strategy && d.best?.value
+                ? `Preferred locator: ${d.best.strategy}`
+                : "Hover or tap an element to load locator details."}
             </div>
           </div>
 
-          <div className="px-4 py-3 space-y-3 overflow-auto">
-            <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold truncate">{d.targetName}</div>
-                <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-mono">
-                  {typeof d.score === "number" ? `${d.score}%` : "--"}
-                </Badge>
-              </div>
-              <div className="mt-1 text-[11px] text-muted-foreground">
-                {d.best?.strategy && d.best?.value
-                  ? `Preferred locator: ${d.best.strategy}`
-                  : "Hover or tap an element to load locator details."}
-              </div>
+          <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold">Locator Explorer</p>
+              <Badge variant="outline" className="text-xs h-5 px-1.5">
+                {locatorRows.length}
+              </Badge>
             </div>
-
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold">Locator Explorer</p>
-                <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                  {locatorRows.length}
-                </Badge>
-              </div>
-              <div className="mt-2 space-y-1.5">
-                {locatorRows.length === 0 ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    No locator candidates yet. Move cursor over a screen element.
-                  </p>
-                ) : (
-                  locatorRows.map((row, idx) => (
-                    <div
-                      key={`${row.strategy}-${idx}`}
-                      className={`rounded-md border px-2 py-1.5 ${row.primary ? "border-primary/40 bg-primary/10" : "border-border/50 bg-muted/10"}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {row.strategy}
-                          {row.primary ? " - primary" : ""}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="text-[10px] rounded px-1.5 py-0.5 border border-border/50 hover:bg-muted/40"
-                            onClick={() =>
-                              highlightElementByLocator(
-                                row.value,
-                                row.strategy,
-                                boundsCenterFromString(d.el?.bounds || "")
-                              )
-                            }
-                          >
-                            Highlight
-                          </button>
-                          <button
-                            type="button"
-                            className="text-[10px] rounded px-1.5 py-0.5 border border-border/50 hover:bg-muted/40"
-                            onClick={() => copyText(row.value, `${row.strategy} copied`)}
-                          >
-                            Copy
-                          </button>
-                        </div>
+            <div className="mt-2 space-y-1.5">
+              {locatorRows.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No locator candidates yet. Move cursor over a screen element.
+                </p>
+              ) : (
+                locatorRows.map((row, idx) => (
+                  <div
+                    key={`${row.strategy}-${idx}`}
+                    className={`rounded-md border px-2 py-1.5 ${row.primary ? "border-primary/40 bg-primary/10" : "border-border/50 bg-muted/10"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                        {row.strategy}
+                        {row.primary ? " - primary" : ""}
                       </div>
-                      <div className="mt-1 text-[11px] font-mono break-all text-foreground/90">
-                        {row.value}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="text-xs rounded px-1.5 py-0.5 border border-border/50 hover:bg-muted/40"
+                          onClick={() =>
+                            highlightElementByLocator(
+                              row.value,
+                              row.strategy,
+                              boundsCenterFromString(d.el?.bounds || "")
+                            )
+                          }
+                        >
+                          Highlight
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs rounded px-1.5 py-0.5 border border-border/50 hover:bg-muted/40"
+                          onClick={() => copyText(row.value, `${row.strategy} copied`)}
+                        >
+                          Copy
+                        </button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs font-semibold">Element Snapshot</p>
-              <div className="mt-2 grid grid-cols-[88px_1fr] gap-x-2 gap-y-1 text-[11px]">
-                <div className="text-muted-foreground">Text</div>
-                <div className="font-mono break-all">{d.textValue || "-"}</div>
-                <div className="text-muted-foreground">Class</div>
-                <div className="font-mono break-all">{d.classValue || "-"}</div>
-                <div className="text-muted-foreground">Bounds</div>
-                <div className="font-mono break-all">{d.boundsValue || "-"}</div>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  className="text-[11px] rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-                  onClick={() =>
-                    copyText(
-                      JSON.stringify(d.lb || { best: d.best, locators: d.locators, element: d.el }, null, 2),
-                      "Locator bundle copied"
-                    )
-                  }
-                >
-                  Copy Bundle JSON
-                </button>
-                <span className="text-[10px] text-muted-foreground/80">
-                  Copying locators never records steps.
-                </span>
-              </div>
+                    <div className="mt-1 text-xs font-mono break-all text-foreground/90">
+                      {row.value}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
+
+          <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+            <p className="text-xs font-semibold">Element Snapshot</p>
+            <div className="mt-2 grid grid-cols-[88px_1fr] gap-x-2 gap-y-1 text-xs">
+              <div className="text-muted-foreground">Text</div>
+              <div className="font-mono break-all">{d.textValue || "-"}</div>
+              <div className="text-muted-foreground">Class</div>
+              <div className="font-mono break-all">{d.classValue || "-"}</div>
+              <div className="text-muted-foreground">Bounds</div>
+              <div className="font-mono break-all">{d.boundsValue || "-"}</div>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                className="text-xs rounded-md px-2 py-1 border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                onClick={() =>
+                  copyText(
+                    JSON.stringify(d.lb || { best: d.best, locators: d.locators, element: d.el }, null, 2),
+                    "Locator bundle copied"
+                  )
+                }
+              >
+                Copy Bundle JSON
+              </button>
+              <span className="text-xs text-muted-foreground/80">
+                Copying locators never records steps.
+              </span>
+            </div>
+          </div>
+        </div>
       </div>,
       document.body
     );
@@ -1086,6 +1120,7 @@ export default function MobileRecorder({
     }
     return map;
   }, [aiSuggestions, actions]);
+  const isAIScanning = actions.length > 0 && aiSuggestions.length === 0;
 
   useEffect(() => {
     setOpenAISuggestionActionIds((prev) =>
@@ -2030,7 +2065,7 @@ export default function MobileRecorder({
 
     let failCount = 0;
     const maxFails = advancedConfig.screenshotMaxFails; // Configurable max failures
-    const intervalMs = 200; // desired interval between captures
+    const intervalMs = 600; // desired interval between captures (reduced for smoother UI)
     const timeoutMs = advancedConfig.screenshotTimeoutMs; // Configurable timeout
 
     // Prevent overlapping requests
@@ -2119,7 +2154,7 @@ export default function MobileRecorder({
     stopScreenshotStream();
     setMjpegFailed(false);
     const deviceId = selectedDevice?.id || selectedDevice?.device || "";
-    const url = `${AGENT_URL}/device/stream/mjpeg?deviceId=${encodeURIComponent(deviceId)}&fps=8&quality=70&ts=${Date.now()}`;
+    const url = `${AGENT_URL}/device/stream/mjpeg?deviceId=${encodeURIComponent(deviceId)}&fps=6&quality=60&ts=${Date.now()}`;
     setMirrorImage((prev) => {
       if (prev && prev.startsWith("blob:")) {
         URL.revokeObjectURL(prev);
@@ -2552,63 +2587,63 @@ export default function MobileRecorder({
     }
   };
 
-	  const replaySingleAction = async (action: RecordedAction) => {
+  const replaySingleAction = async (action: RecordedAction) => {
     if (!selectedDevice) {
       toast.error("Select a device first");
       return;
     }
 
-	    setReplaying(true);
-	    toast.info(`Running step: ${action.type}`);
-	    replayStopRequestedRef.current = false;
-	    showReplayPulse(action);
+    setReplaying(true);
+    toast.info(`Running step: ${action.type}`);
+    replayStopRequestedRef.current = false;
+    showReplayPulse(action);
 
-	    try {
+    try {
 
-	      setExecutionLogs(prev => prev.map(log =>
-	        log.id === action.id ? { ...log, status: "running", error: undefined } : log
-	      ));
+      setExecutionLogs(prev => prev.map(log =>
+        log.id === action.id ? { ...log, status: "running", error: undefined } : log
+      ));
 
-	      replayAbortRef.current?.abort();
-	      const ac = new AbortController();
-	      replayAbortRef.current = ac;
-	        const res = await fetch(`${AGENT_URL}/recording/replay`, {
-	          method: "POST",
-	          headers: { "Content-Type": "application/json" },
-	          body: JSON.stringify({
-	            deviceId: selectedDevice.id || selectedDevice.device,
-	            steps: [action],
-	            startIndex: 0,
-	            strict: true,
-	            screenSettleDelayMs: advancedConfig.screenSettleDelayMs,
-	            verifyUiChange: true,
-	            failOnNoChange: true
-	          }),
-	          signal: ac.signal
-	        });
+      replayAbortRef.current?.abort();
+      const ac = new AbortController();
+      replayAbortRef.current = ac;
+      const res = await fetch(`${AGENT_URL}/recording/replay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: selectedDevice.id || selectedDevice.device,
+          steps: [action],
+          startIndex: 0,
+          strict: true,
+          screenSettleDelayMs: advancedConfig.screenSettleDelayMs,
+          verifyUiChange: true,
+          failOnNoChange: true
+        }),
+        signal: ac.signal
+      });
 
-	      const data = await res.json();
-	      if (!res.ok || !data.success) {
-	        throw new Error(data.error || "Step failed");
-	      }
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Step failed");
+      }
 
       setReplaying(false);
       setReplayIndex(null);
 
-	    } catch (err: any) {
-	      console.error("Single step replay error", err);
-	      setReplaying(false);
+    } catch (err: any) {
+      console.error("Single step replay error", err);
+      setReplaying(false);
 
-	      const msg = err?.name === "AbortError" || replayStopRequestedRef.current ? "Stopped by user" : (err.message || "Step failed");
-	      toast.error(`Step failed: ${msg}`);
-	      setExecutionLogs(prev => prev.map(log =>
-	        log.id === action.id ? { ...log, status: "error", error: msg } : log
-	      ));
-	    }
-	  };
+      const msg = err?.name === "AbortError" || replayStopRequestedRef.current ? "Stopped by user" : (err.message || "Step failed");
+      toast.error(`Step failed: ${msg}`);
+      setExecutionLogs(prev => prev.map(log =>
+        log.id === action.id ? { ...log, status: "error", error: msg } : log
+      ));
+    }
+  };
 
-	  const replayActions = async (startIndex: number = 0) => {
-	    const enabledActions = actions.filter(a => a.enabled !== false);
+  const replayActions = async (startIndex: number = 0) => {
+    const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) {
       toast.error("No enabled actions to replay");
       return;
@@ -2618,12 +2653,12 @@ export default function MobileRecorder({
       toast.error("Select a device first");
       return;
     }
-	    setReplaying(true);
-	    setLastReplayStatus(null);
-	    setActiveTab("history");
-	    replayStopRequestedRef.current = false;
-	    let lastFailedStep = -1;
-	    let failureReason = "";
+    setReplaying(true);
+    setLastReplayStatus(null);
+    setActiveTab("history");
+    replayStopRequestedRef.current = false;
+    let lastFailedStep = -1;
+    let failureReason = "";
 
     if (startIndex === 0) {
       setReplayStartTime(Date.now());
@@ -2645,50 +2680,50 @@ export default function MobileRecorder({
     }
     setExecutionLogs(prev => prev.map(log => ({ ...log, error: undefined })));
 
-	    try {
-	      for (let i = startIndex; i < enabledActions.length; i++) {
-	        if (replayStopRequestedRef.current) {
-	          throw new Error("Stopped by user");
-	        }
-	        const action = enabledActions[i];
-	        setReplayIndex(i);
-	        showReplayPulse(action);
+    try {
+      for (let i = startIndex; i < enabledActions.length; i++) {
+        if (replayStopRequestedRef.current) {
+          throw new Error("Stopped by user");
+        }
+        const action = enabledActions[i];
+        setReplayIndex(i);
+        showReplayPulse(action);
 
         // Update step status to running
         setExecutionLogs(prev => prev.map((log, idx) =>
           idx === i ? { ...log, status: "running" } : log
         ));
 
-	        const startStepTime = Date.now();
-	        replayAbortRef.current?.abort();
-	        const ac = new AbortController();
-	        replayAbortRef.current = ac;
-	        const res = await fetch(`${AGENT_URL}/recording/replay`, {
-	          method: "POST",
-	          headers: { "Content-Type": "application/json" },
-	          body: JSON.stringify({
-	            deviceId: selectedDevice.id || selectedDevice.device,
-	            steps: [action],
-	            startIndex: 0,
-	            screenSettleDelayMs: advancedConfig.screenSettleDelayMs,
-	            strict: true,
-	            verifyUiChange: true,
-	            failOnNoChange: true
-	          }),
-	          signal: ac.signal
-	        });
+        const startStepTime = Date.now();
+        replayAbortRef.current?.abort();
+        const ac = new AbortController();
+        replayAbortRef.current = ac;
+        const res = await fetch(`${AGENT_URL}/recording/replay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId: selectedDevice.id || selectedDevice.device,
+            steps: [action],
+            startIndex: 0,
+            screenSettleDelayMs: advancedConfig.screenSettleDelayMs,
+            strict: true,
+            verifyUiChange: true,
+            failOnNoChange: true
+          }),
+          signal: ac.signal
+        });
 
         const data = await res.json();
         const duration = Date.now() - startStepTime;
 
-	        if (!res.ok || !data.success) {
-	          const errorMsg = data.error || "Action failed";
+        if (!res.ok || !data.success) {
+          const errorMsg = data.error || "Action failed";
           // Update step status to error
           setExecutionLogs(prev => prev.map((log, idx) =>
             idx === i ? { ...log, status: "error", error: errorMsg } : log
           ));
-	          throw new Error(errorMsg);
-	        }
+          throw new Error(errorMsg);
+        }
 
         // Update step status to success
         setExecutionLogs(prev => prev.map((log, idx) =>
@@ -2699,22 +2734,22 @@ export default function MobileRecorder({
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-	      setLastReplayStatus("PASS");
+      setLastReplayStatus("PASS");
       setReplaying(false);
       setReplayIndex(null);
       await saveExecutionToHistory("SUCCESS");
       toast.success("Replay completed successfully!");
 
-	    } catch (err: any) {
-	      console.error("[MobileRecorder] Replay error:", err);
-	      setLastReplayStatus("FAIL");
-	      setReplaying(false);
-	      setReplayIndex(null);
-	      const msg = err?.name === "AbortError" || replayStopRequestedRef.current ? "Stopped by user" : (err.message || "Replay failed");
-	      toast.error(`Replay failed: ${msg}`);
-	      await saveExecutionToHistory("FAILED", undefined, msg);
-	    }
-	  };
+    } catch (err: any) {
+      console.error("[MobileRecorder] Replay error:", err);
+      setLastReplayStatus("FAIL");
+      setReplaying(false);
+      setReplayIndex(null);
+      const msg = err?.name === "AbortError" || replayStopRequestedRef.current ? "Stopped by user" : (err.message || "Replay failed");
+      toast.error(`Replay failed: ${msg}`);
+      await saveExecutionToHistory("FAILED", undefined, msg);
+    }
+  };
 
 
   const saveExecutionToHistory = async (status: "SUCCESS" | "FAILED", failedIndex?: number, reason?: string) => {
@@ -2753,7 +2788,7 @@ export default function MobileRecorder({
     const enabledActions = actions.filter(a => a.enabled !== false);
     if (!enabledActions.length) return null;
 
-	    return `import io.appium.java_client.AppiumBy;
+    return `import io.appium.java_client.AppiumBy;
 import io.appium.java_client.android.AndroidDriver;
 import io.appium.java_client.android.options.UiAutomator2Options;
 import org.openqa.selenium.WebElement;
@@ -2815,105 +2850,105 @@ ${enabledActions
               .replace(/\\/g, "\\\\")
               .replace(/"/g, '\\"')
               .replace(/\r?\n/g, "\\n");
-	          const xpathFor = (action: RecordedAction) => {
-	            if (action.smartXPath) return action.smartXPath;
-	            if (action.xpath) return action.xpath;
+          const xpathFor = (action: RecordedAction) => {
+            if (action.smartXPath) return action.smartXPath;
+            if (action.xpath) return action.xpath;
 
-	            if (action.locatorStrategy === "xpath" && action.locator && (action.locator.startsWith("//") || action.locator.startsWith("//*"))) {
-	              return action.locator;
-	            }
+            if (action.locatorStrategy === "xpath" && action.locator && (action.locator.startsWith("//") || action.locator.startsWith("//*"))) {
+              return action.locator;
+            }
 
-	            if (action.elementId) return `//*[@resource-id='${action.elementId}']`;
-	            if (action.elementContentDesc) return `//*[@content-desc='${action.elementContentDesc}']`;
-	            if (action.elementText) return `//*[@text='${action.elementText}']`;
+            if (action.elementId) return `//*[@resource-id='${action.elementId}']`;
+            if (action.elementContentDesc) return `//*[@content-desc='${action.elementContentDesc}']`;
+            if (action.elementText) return `//*[@text='${action.elementText}']`;
 
-	            // If the backend didn't provide an XPath, avoid guessing from `locator` because it may be "x,y".
-	            return "";
-	          };
+            // If the backend didn't provide an XPath, avoid guessing from `locator` because it may be "x,y".
+            return "";
+          };
 
-	          const locatorSuppliersFor = (action: RecordedAction) => {
-	            const out: Array<{ strategy: string; value: string }> = [];
-	            const push = (strategy: string, value: string) => {
-	              const v = String(value || "");
-	              if (!v) return;
-	              const key = `${strategy}:${v}`;
-	              if ((push as any)._seen?.has(key)) return;
-	              (push as any)._seen = (push as any)._seen || new Set<string>();
-	              (push as any)._seen.add(key);
-	              out.push({ strategy, value: v });
-	            };
+          const locatorSuppliersFor = (action: RecordedAction) => {
+            const out: Array<{ strategy: string; value: string }> = [];
+            const push = (strategy: string, value: string) => {
+              const v = String(value || "");
+              if (!v) return;
+              const key = `${strategy}:${v}`;
+              if ((push as any)._seen?.has(key)) return;
+              (push as any)._seen = (push as any)._seen || new Set<string>();
+              (push as any)._seen.add(key);
+              out.push({ strategy, value: v });
+            };
 
-	            const lb = action.locatorBundle as any;
-	            if (lb?.primary?.strategy && lb?.primary?.value) push(lb.primary.strategy, lb.primary.value);
-	            if (Array.isArray(lb?.fallbacks)) {
-	              for (const f of lb.fallbacks) {
-	                if (f?.strategy && f?.value) push(f.strategy, f.value);
-	              }
-	            }
+            const lb = action.locatorBundle as any;
+            if (lb?.primary?.strategy && lb?.primary?.value) push(lb.primary.strategy, lb.primary.value);
+            if (Array.isArray(lb?.fallbacks)) {
+              for (const f of lb.fallbacks) {
+                if (f?.strategy && f?.value) push(f.strategy, f.value);
+              }
+            }
 
-	            // Backward-compatible fallbacks if bundle missing
-	            const xp = xpathFor(action);
-	            if (xp) push("xpath", xp);
-	            if (action.elementId) push("id", action.elementId);
-	            if (action.elementContentDesc) push("accessibilityId", action.elementContentDesc);
-	            if (action.elementText) push("text", action.elementText);
+            // Backward-compatible fallbacks if bundle missing
+            const xp = xpathFor(action);
+            if (xp) push("xpath", xp);
+            if (action.elementId) push("id", action.elementId);
+            if (action.elementContentDesc) push("accessibilityId", action.elementContentDesc);
+            if (action.elementText) push("text", action.elementText);
 
-	            return out;
-	          };
+            return out;
+          };
 
-	          const javaSupplierExpr = (c: { strategy: string; value: string }) => {
-	            const v = javaStr(c.value);
-	            if (c.strategy === "accessibilityId") return `() -> driver.findElement(AppiumBy.accessibilityId("${v}"))`;
-	            if (c.strategy === "id") return `() -> driver.findElement(AppiumBy.id("${v}"))`;
-	            if (c.strategy === "text") {
-	              // Prefer contains for text to reduce brittleness; fallback chain still includes other strategies.
-	              return `() -> driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().textContains(\\\"${v}\\\")"))`;
-	            }
-	            // xpath and default
-	            return `() -> driver.findElement(AppiumBy.xpath("${v}"))`;
-	          };
+          const javaSupplierExpr = (c: { strategy: string; value: string }) => {
+            const v = javaStr(c.value);
+            if (c.strategy === "accessibilityId") return `() -> driver.findElement(AppiumBy.accessibilityId("${v}"))`;
+            if (c.strategy === "id") return `() -> driver.findElement(AppiumBy.id("${v}"))`;
+            if (c.strategy === "text") {
+              // Prefer contains for text to reduce brittleness; fallback chain still includes other strategies.
+              return `() -> driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().textContains(\\\"${v}\\\")"))`;
+            }
+            // xpath and default
+            return `() -> driver.findElement(AppiumBy.xpath("${v}"))`;
+          };
 
-	          switch (a.type) {
-	            case "tap": {
-	              const suppliers = locatorSuppliersFor(a);
-	              if (suppliers.length) {
-	                const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
-	                javaCode = `WebElement el${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            el${stepNum}.click();`;
-	              } else {
-	                javaCode = `throw new RuntimeException("Tap step missing stable locator (no xpath/id/a11y/text available)");`;
-	              }
-	              break;
-	            }
+          switch (a.type) {
+            case "tap": {
+              const suppliers = locatorSuppliersFor(a);
+              if (suppliers.length) {
+                const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
+                javaCode = `WebElement el${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            el${stepNum}.click();`;
+              } else {
+                javaCode = `throw new RuntimeException("Tap step missing stable locator (no xpath/id/a11y/text available)");`;
+              }
+              break;
+            }
 
-	            case "input": {
+            case "input": {
               const valueEnv = `System.getenv("INPUT_${stepNum}")`;
               const escapedValue = (typeof a.value === "string")
                 ? a.value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")
                 : "";
               const valueStr = a.value ? `"${escapedValue}"` : valueEnv;
 
-	              const suppliers = locatorSuppliersFor(a);
-	              if (suppliers.length) {
-	                const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
-	                javaCode = `WebElement input${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            input${stepNum}.sendKeys(${valueStr});`;
-	              } else {
-	                javaCode = `throw new RuntimeException("Input step missing stable locator (no xpath/id/a11y/text available)");`;
-	              }
-	              break;
-	            }
+              const suppliers = locatorSuppliersFor(a);
+              if (suppliers.length) {
+                const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
+                javaCode = `WebElement input${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            input${stepNum}.sendKeys(${valueStr});`;
+              } else {
+                javaCode = `throw new RuntimeException("Input step missing stable locator (no xpath/id/a11y/text available)");`;
+              }
+              break;
+            }
 
-	            case "longPress":
-	              {
-	                const suppliers = locatorSuppliersFor(a);
-	                if (suppliers.length) {
-	                  const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
-	                  javaCode = `WebElement lp${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            driver.executeScript(\"mobile: longClickGesture\", java.util.Map.of(\n                \"elementId\", ((RemoteWebElement) lp${stepNum}).getId(),\n                \"duration\", 1000\n            ));`;
-	                } else {
-	                  javaCode = `throw new RuntimeException(\"LongPress step missing stable locator (no xpath/id/a11y/text available)\");`;
-	                }
-	                break;
-	              }
-	              break;
+            case "longPress":
+              {
+                const suppliers = locatorSuppliersFor(a);
+                if (suppliers.length) {
+                  const supplierList = suppliers.map(javaSupplierExpr).join(",\n                ");
+                  javaCode = `WebElement lp${stepNum} = findWithFallback(driver, Duration.ofSeconds(7), Arrays.asList(\n                ${supplierList}\n            ));\n            driver.executeScript(\"mobile: longClickGesture\", java.util.Map.of(\n                \"elementId\", ((RemoteWebElement) lp${stepNum}).getId(),\n                \"duration\", 1000\n            ));`;
+                } else {
+                  javaCode = `throw new RuntimeException(\"LongPress step missing stable locator (no xpath/id/a11y/text available)\");`;
+                }
+                break;
+              }
+              break;
 
             case "scroll":
               if (a.coordinates) {
@@ -3924,15 +3959,461 @@ ${enabledActions
     }
     setSelectedDevice(device);
   };
+  const deviceMirror = useMemo(() => (
+    <div ref={previewShellRef} className="lg:col-span-1 flex justify-center lg:justify-start">
+      <div
+        className="h-fit lg:sticky lg:top-24 flex flex-col rounded-xl overflow-hidden border border-zinc-800 shadow-card bg-zinc-950/50 backdrop-blur-sm transition-all duration-300 hover:shadow-elegant w-full"
+        style={{ width: `${previewDimensions.width}px`, maxWidth: "100%" }}
+        id="device-preview-card"
+      >
+        <div className="relative z-20 flex items-center justify-between px-4 py-3 bg-[#18181b] border-b border-zinc-800 select-none h-[52px]">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <Smartphone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="text-xs font-bold text-zinc-200 tracking-wide font-mono truncate max-w-[120px]" title={selectedDevice?.name || selectedDevice?.device}>
+                {selectedDevice?.name || selectedDevice?.device || "No Device"}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md"
+              onClick={connectDevice}
+              title="Refresh Connection"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${mirrorLoading ? "animate-spin" : ""}`} />
+            </Button>
+            {mirrorActive && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md"
+                onClick={disconnectDevice}
+                title="Disconnect Device"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="relative bg-[#09090b] flex flex-col items-center justify-center overflow-hidden group transition-all duration-500 w-full"
+          style={{ height: `${previewDimensions.height}px` }}
+        >
+          {(mirrorLoading || isPreparingDevice) && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-300">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative">
+                  <div className="h-12 w-12 border-[3px] border-zinc-800/60 border-t-primary rounded-full animate-spin" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-bold text-zinc-200">{isPreparingDevice ? 'Booting Agent...' : 'Connecting...'}</p>
+                  <p className="text-xs text-zinc-500 font-mono uppercase tracking-widest">Please Wait</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!mirrorActive ? (
+            <div className="flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 opacity-60 hover:opacity-100 transition-opacity p-6">
+              <div className="w-24 h-40 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center bg-zinc-900/20">
+                <Smartphone className="h-8 w-8 text-zinc-700" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium text-zinc-400">No Active Session</p>
+                <p className="text-xs text-zinc-600 max-w-[200px] mx-auto leading-relaxed">Select a device from the toolbar to initialize the system view.</p>
+              </div>
+              <Button
+                onClick={connectDevice}
+                className="h-9 px-6 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg shadow-card hover:shadow-elegant transition-all duration-300 gap-2 group"
+              >
+                <Zap className="h-3.5 w-3.5 fill-current group-hover:animate-pulse" />
+                Connect Device
+              </Button>
+            </div>
+          ) : mirrorError ? (
+            <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
+              <div className="p-3 bg-red-500/10 rounded-lg">
+                <WifiOff className="h-8 w-8 text-red-500/50" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-red-500">Signal Lost</h3>
+                <p className="text-xs text-zinc-500 font-mono max-w-[220px] mx-auto">{mirrorError}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={connectDevice} className="border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white mt-2">
+                Retry Connection
+              </Button>
+            </div>
+          ) : (
+            <div className="relative w-full h-full flex items-center justify-center bg-[#000]">
+              {enableMjpeg && mirrorActive && !mjpegActive && (
+                <div className="absolute left-3 top-3 z-30">
+                  <Badge variant="outline" className="text-xs h-6 px-2 border-amber-500/50 text-amber-400 bg-amber-500/10">
+                    Snapshot mode
+                  </Badge>
+                </div>
+              )}
+
+              {captureMode && showInputPanel && (inputTargetBounds || inputCoords) && (
+                <div
+                  className="absolute pointer-events-none z-30 rounded-md border-2 border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
+                  style={(() => {
+                    const devW = deviceSize?.width || 1080;
+                    const devH = deviceSize?.height || 1920;
+                    const containerW = previewDimensions.width;
+                    const containerH = previewDimensions.height;
+                    const { displayW, displayH, offsetX, offsetY } = getContainMetrics(containerW, containerH, devW, devH);
+
+                    if (inputTargetBounds) {
+                      const left = offsetX + (inputTargetBounds.x1 / devW) * displayW;
+                      const top = offsetY + (inputTargetBounds.y1 / devH) * displayH;
+                      const width = ((inputTargetBounds.x2 - inputTargetBounds.x1) / devW) * displayW;
+                      const height = ((inputTargetBounds.y2 - inputTargetBounds.y1) / devH) * displayH;
+                      return { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` };
+                    }
+
+                    if (inputCoords) {
+                      const left = offsetX + (inputCoords.x / devW) * displayW;
+                      const top = offsetY + (inputCoords.y / devH) * displayH;
+                      return { left: `${left}px`, top: `${top}px`, width: `14px`, height: `14px`, transform: "translate(-50%, -50%)" };
+                    }
+
+                    return {};
+                  })()}
+                />
+              )}
+
+              {(() => {
+                if (!inspectorModeEnabled || !captureMode || !mirrorImage) return null;
+
+                const active =
+                  (pinnedInspect && hasBounds(pinnedInspect)) ? pinnedInspect :
+                    (tapInspect && hasBounds(tapInspect)) ? tapInspect :
+                      (hoverInspect && hasBounds(hoverInspect)) ? hoverInspect :
+                        null;
+
+                const devW = deviceSize?.width || 1080;
+                const devH = deviceSize?.height || 1920;
+                const containerW = previewDimensions.width;
+                const containerH = previewDimensions.height;
+                const { displayW, displayH, offsetX, offsetY } = getContainMetrics(containerW, containerH, devW, devH);
+
+                const boundsStr = String(active?.element?.bounds || "");
+                const m = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+
+                const leftPx = m ? clamp(offsetX + (parseInt(m[1], 10) / devW) * displayW, 0, containerW) : null;
+                const topPx = m ? clamp(offsetY + (parseInt(m[2], 10) / devH) * displayH, 0, containerH) : null;
+                const widthPx = m ? clamp(((parseInt(m[3], 10) - parseInt(m[1], 10)) / devW) * displayW, 0, containerW) : null;
+                const heightPx = m ? clamp(((parseInt(m[4], 10) - parseInt(m[2], 10)) / devH) * displayH, 0, containerH) : null;
+
+                const showFocus = leftPx != null && topPx != null && widthPx != null && heightPx != null;
+                const centerX = showFocus ? leftPx + widthPx / 2 : 0;
+                const centerY = showFocus ? topPx + heightPx / 2 : 0;
+
+                return (
+                  <>
+                    {showFocus && (
+                      <>
+                        <div
+                          className="absolute pointer-events-none z-34 rounded-xl border border-primary/70 bg-primary/12"
+                          style={{
+                            left: `${leftPx}px`,
+                            top: `${topPx}px`,
+                            width: `${widthPx}px`,
+                            height: `${heightPx}px`,
+                            boxShadow: inspectorSpotlight
+                              ? "0 0 24px rgba(59,130,246,0.34)"
+                              : "0 0 14px rgba(59,130,246,0.26)",
+                          }}
+                        />
+                        <div
+                          className="absolute pointer-events-none z-35 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70"
+                          style={{ left: `${centerX}px`, top: `${centerY}px` }}
+                        >
+                          <div className="absolute inset-2 rounded-full bg-white/55" />
+                        </div>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+
+              {replayPulse && mirrorImage && (
+                <div className="absolute inset-0 pointer-events-none z-40">
+                  {(() => {
+                    const devW = deviceSize?.width || 1080;
+                    const devH = deviceSize?.height || 1920;
+                    const containerW = previewDimensions.width;
+                    const containerH = previewDimensions.height;
+                    const { displayW, displayH, offsetX, offsetY } = getContainMetrics(containerW, containerH, devW, devH);
+                    const left = offsetX + (replayPulse.x / devW) * displayW;
+                    const top = offsetY + (replayPulse.y / devH) * displayH;
+                    return (
+                      <div
+                        className="absolute -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: `${left}px`, top: `${top}px` }}
+                      >
+                        <div className="relative">
+                          <div className="h-10 w-10 rounded-full border-2 border-emerald-400/80 shadow-[0_0_18px_rgba(16,185,129,0.45)] animate-ping" />
+                          <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-emerald-300/90 bg-emerald-400/10" />
+                          {replayPulse.label && (
+                            <div className="absolute left-1/2 top-12 -translate-x-1/2 whitespace-nowrap rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-200 shadow">
+                              {replayPulse.label}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {mirrorImage && (
+                <img
+                  ref={mjpegImgRef}
+                  src={mirrorImage}
+                  alt="Device Screen"
+                  decoding="async"
+                  loading="eager"
+                  className={`w-full h-full select-none transition-all duration-200 ${captureMode ? 'cursor-pointer' : 'cursor-default'}`}
+                  onError={() => {
+                    if (mjpegActive) {
+                      setMjpegActive(false);
+                      setMjpegFailed(true);
+                      startScreenshotStream();
+                      toast.info("Snapshot mode");
+                    }
+                  }}
+                  onLoad={() => {
+                    setMirrorError(null);
+                  }}
+                  onContextMenu={(e) => {
+                    if (!captureMode || !inspectorModeEnabled) return;
+                    e.preventDefault();
+                    if (pinnedInspect) {
+                      setPinnedInspect(null);
+                      toast.info("Inspector unpinned");
+                      return;
+                    }
+
+                    const boundsStr = String(hoverInspect?.element?.bounds || "");
+                    if (!hoverInspect || !boundsStr.includes("[")) {
+                      toast.info("No element to pin yet (hover an element first)");
+                      return;
+                    }
+
+                    setPinnedInspect(hoverInspect);
+                    setInspectorPanelOpen(true);
+                    toast.success("Inspector pinned");
+                  }}
+                  onMouseMove={(e) => {
+                    if (!captureMode || !inspectorModeEnabled) return;
+                    const now = Date.now();
+                    if (now - lastHoverInspectTsRef.current < 60) return;
+                    lastHoverInspectTsRef.current = now;
+
+                    const el = e.currentTarget as HTMLImageElement;
+                    const rect = el.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    const finalDev = deviceSize || { width: 1080, height: 1920 };
+
+                    const { displayW, displayH, offsetX, offsetY } = getContainMetrics(rect.width, rect.height, finalDev.width, finalDev.height);
+                    const withinX = clickX - offsetX;
+                    const withinY = clickY - offsetY;
+                    if (withinX < 0 || withinY < 0 || withinX > displayW || withinY > displayH) {
+                      setHoverInspect(null);
+                      return;
+                    }
+                    const deviceX = Math.round((withinX / displayW) * finalDev.width);
+                    const deviceY = Math.round((withinY / displayH) * finalDev.height);
+
+                    hoverInspectAbortRef.current?.abort();
+                    const ac = new AbortController();
+                    hoverInspectAbortRef.current = ac;
+                    const reqId = ++hoverRequestIdRef.current;
+                    const timeout = setTimeout(() => ac.abort(), 700);
+
+                    fetch(`${AGENT_URL}/device/inspect`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ x: deviceX, y: deviceY, mode: "hover", preferCache: true, preferXPath: true }),
+                      signal: ac.signal
+                    })
+                      .then(r => r.json())
+                      .then((data) => {
+                        if (reqId !== hoverRequestIdRef.current) return;
+                        if (!data?.success || !data.inspect) return;
+                        const b = String(data.inspect?.element?.bounds || "");
+                        if (b && b.includes("[")) {
+                          setHoverInspect(data.inspect);
+                        } else {
+                          setHoverInspect(null);
+                        }
+                      })
+                      .catch(() => { })
+                      .finally(() => clearTimeout(timeout));
+                  }}
+                  onMouseDown={(e) => {
+                    if (!captureMode) return;
+                    if (e.button !== 0) return;
+                    const el = e.currentTarget as HTMLImageElement;
+                    const rect = el.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    const finalDev = deviceSize || { width: 1080, height: 1920 };
+
+                    const { displayW, displayH, offsetX, offsetY } = getContainMetrics(rect.width, rect.height, finalDev.width, finalDev.height);
+                    const withinX = clamp(clickX - offsetX, 0, displayW);
+                    const withinY = clamp(clickY - offsetY, 0, displayH);
+
+                    const deviceX = Math.round((withinX / displayW) * finalDev.width);
+                    const deviceY = Math.round((withinY / displayH) * finalDev.height);
+
+                    pressCoordsRef.current = { x: deviceX, y: deviceY };
+                    isDraggingRef.current = true;
+                    longPressHappenedRef.current = false;
+
+                    longPressTimerRef.current = setTimeout(() => {
+                      if (isDraggingRef.current) {
+                        handleLongPress(deviceX, deviceY);
+                        longPressHappenedRef.current = true;
+                        isDraggingRef.current = false;
+                      }
+                    }, 700);
+                  }}
+                  onMouseUp={async (e) => {
+                    if (!captureMode || !pressCoordsRef.current) return;
+                    if (e.button !== 0) {
+                      if (longPressTimerRef.current) {
+                        clearTimeout(longPressTimerRef.current);
+                        longPressTimerRef.current = null;
+                      }
+                      isDraggingRef.current = false;
+                      pressCoordsRef.current = null;
+                      return;
+                    }
+
+                    if (longPressTimerRef.current) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                    if (!isDraggingRef.current) {
+                      pressCoordsRef.current = null;
+                      return;
+                    }
+
+                    const el = e.currentTarget as HTMLImageElement;
+                    const rect = el.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    const finalDev = deviceSize || { width: 1080, height: 1920 };
+
+                    const { displayW, displayH, offsetX, offsetY } = getContainMetrics(rect.width, rect.height, finalDev.width, finalDev.height);
+                    const withinX = clamp(clickX - offsetX, 0, displayW);
+                    const withinY = clamp(clickY - offsetY, 0, displayH);
+
+                    const deviceX = Math.round((withinX / displayW) * finalDev.width);
+                    const deviceY = Math.round((withinY / displayH) * finalDev.height);
+
+                    const startX = pressCoordsRef.current?.x || deviceX;
+                    const startY = pressCoordsRef.current?.y || deviceY;
+                    const dist = Math.sqrt(Math.pow(deviceX - startX, 2) + Math.pow(deviceY - startY, 2));
+
+                    pressCoordsRef.current = null;
+                    isDraggingRef.current = false;
+
+                    if (longPressHappenedRef.current) return;
+                    if (dist > 18) {
+                      const description = Math.abs(deviceX - startX) > Math.abs(deviceY - startY)
+                        ? (deviceX > startX ? "Swipe Right" : "Swipe Left")
+                        : (deviceY > startY ? "Swipe Down" : "Swipe Up");
+                      handleSwipe({ x1: startX, y1: startY, x2: deviceX, y2: deviceY, description });
+                      return;
+                    }
+
+                    if (captureMode) {
+                      try {
+                        const response = await fetch(`${AGENT_URL}/device/tap`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ x: deviceX, y: deviceY }),
+                        });
+
+                        const json = await response.json();
+                        if (!json.success) {
+                          toast.error(json.error || "Tap failed");
+                        } else {
+                          const ir = await fetch(`${AGENT_URL}/device/inspect`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ x: deviceX, y: deviceY, mode: "tap", preferCache: true }),
+                          });
+
+                          const ii = await ir.json();
+                          if (ii?.success && ii?.inspect) {
+                            setTapInspect(ii.inspect);
+                          }
+                        }
+                      } catch (err) {
+                        toast.error("Tap failed");
+                      }
+
+                      setInputCoords({ x: deviceX, y: deviceY });
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                    isDraggingRef.current = false;
+                    pressCoordsRef.current = null;
+                    if (!pinnedInspect) setHoverInspect(null);
+                  }}
+                  draggable={false}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ), [
+    previewDimensions.width,
+    previewDimensions.height,
+    selectedDevice,
+    mirrorLoading,
+    mirrorActive,
+    mirrorError,
+    isPreparingDevice,
+    enableMjpeg,
+    mjpegActive,
+    captureMode,
+    showInputPanel,
+    inputTargetBounds,
+    inputCoords,
+    deviceSize,
+    inspectorModeEnabled,
+    mirrorImage,
+    pinnedInspect,
+    tapInspect,
+    hoverInspect,
+    inspectorSpotlight,
+    replayPulse,
+    connectDevice,
+    disconnectDevice,
+    startScreenshotStream,
+  ]);
   return (
-    <div className="space-y-4" id="recorder-container">
+    <div className="space-y-2" id="recorder-container">
       {inspectorPortal}
       {/* NEW PREMIUM HEADER ROW */}
-      <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 mb-4" id="device-selector-header">
+      <div className="relative flex flex-col md:flex-row md:items-center justify-between border-b border-white/[0.08] mb-4" id="device-selector-header">
         {/* LEFT: Title & Device Selector Grouped Tightly */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center">
           {/* Title Block with subtle gradient and icon */}
-          <div className="flex items-center gap-3">
+          {/* <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 shadow-inner">
               <Smartphone className="h-5 w-5 text-primary" />
             </div>
@@ -3942,20 +4423,20 @@ ${enabledActions
               </h2>
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest opacity-70 leading-none">
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest opacity-70 leading-none">
                   Live interaction & logic recording
                 </p>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Vertical Divider (Visual separation) */}
-          <div className="hidden md:block h-10 w-px bg-white/[0.08] mx-1" />
+          <div className="md:block w-px mx-0" />
           {/* DEVICE SELECTOR CONTROL - MATCHING DASHBOARD PATTERN */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center">
             <div className="flex items-center gap-2 py-1 px-3 rounded-lg border border-border bg-card/40 backdrop-blur-md shadow-card transition-all duration-200 hover:bg-muted/30 group">
-	                  <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden lg:block">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground hidden lg:block">
                   Device
                 </span>
                 <div className="h-3 w-px bg-border/40 hidden lg:block" />
@@ -4001,685 +4482,68 @@ ${enabledActions
         {/* RIGHT: Status Badge & Recording Guide */}
         <div className="flex items-center gap-4">
           {mirrorActive && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={startTour}
-              className="h-9 px-4 text-sm font-bold text-primary hover:bg-primary/10 gap-2 rounded-lg border border-primary/20 shadow-sm transition-all group"
-            >
-              <HelpCircle className="h-4 w-4 group-hover:rotate-12 transition-transform" />
-              Recording Guide
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={startTour}
+                className="h-9 px-4 text-xs font-bold uppercase tracking-widest text-primary gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] hover:bg-primary/10 shadow-[0_6px_18px_rgba(var(--primary),0.15)] transition-all group"
+              >
+                <HelpCircle className="h-4 w-4 group-hover:rotate-12 transition-transform" />
+                Recording Guide
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowQuickStart(true)}
+                className="h-9 px-4 text-xs font-bold uppercase tracking-widest rounded-xl border-border/60 hover:border-primary/40 hover:bg-primary/5 transition-all"
+              >
+                Guide
+              </Button>
+            </div>
           )}
 
           {/* Recording Status Badge */}
           {recording && (
             <Badge
               variant={isPaused ? "secondary" : (connectionStatus === "connected" ? "default" : "destructive")}
-              className={`h-8 px-4 rounded-lg text-[10px] font-black tracking-widest shadow-sm ${!isPaused && "animate-pulse"}`}
+              className={`h-8 px-4 rounded-lg text-xs font-bold tracking-widest shadow-sm ${!isPaused && "animate-pulse"}`}
             >
               {isPaused ? "PAUSED" : (connectionStatus === "connected" ? "REC" : "RECORDING")}
             </Badge>
           )}
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* MAESTRO-STYLE EMULATOR WINDOW */}
-        {/* FIXED SIZE MAESTRO-STYLE EMULATOR WINDOW */}
-        <div
-          className="lg:col-span-1 h-fit lg:sticky lg:top-24 flex flex-col rounded-xl overflow-hidden border border-zinc-800 shadow-card bg-zinc-950/50 backdrop-blur-sm mx-auto transition-all duration-300 hover:shadow-elegant"
-          style={{ width: `${previewDimensions.width}px` }}
-          id="device-preview-card"
-        >
-
-          {/* 1. EMULATOR HEADER BAR */}
-          <div className="relative z-20 flex items-center justify-between px-4 py-3 bg-[#18181b] border-b border-zinc-800 select-none h-[52px]">
-            <div className="flex items-center gap-3">
-              {/* Device Name */}
-              <div className="flex items-center gap-2 overflow-hidden">
-                <Smartphone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                <span className="text-xs font-bold text-zinc-200 tracking-wide font-mono truncate max-w-[120px]" title={selectedDevice?.name || selectedDevice?.device}>
-                  {selectedDevice?.name || selectedDevice?.device || "No Device"}
-                </span>
-              </div>
-            </div>
-
-            {/* Header Actions */}
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-zinc-400 hover:text-white hover:bg-white/5 rounded-md"
-                onClick={connectDevice}
-                title="Refresh Connection"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${mirrorLoading ? "animate-spin" : ""}`} />
-              </Button>
-              {mirrorActive && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md"
-                  onClick={disconnectDevice}
-                  title="Disconnect Device"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* 2. EMULATOR VIEWPORT (FIXED HEIGHT, DYNAMIC WIDTH) */}
-          <div
-            className="relative bg-[#09090b] flex flex-col items-center justify-center overflow-hidden group transition-all duration-500"
-            style={{ width: `${previewDimensions.width}px`, height: `${previewDimensions.height}px` }}
-          >
-
-            {/* --- STATUS OVERLAYS (Loading / Preparing) --- */}
-            {(mirrorLoading || isPreparingDevice) && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-300">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative">
-                    <div className="h-12 w-12 border-[3px] border-zinc-800/60 border-t-primary rounded-full animate-spin" />
-                  </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-sm font-bold text-zinc-200">{isPreparingDevice ? 'Booting Agent...' : 'Connecting...'}</p>
-                    <p className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">Please Wait</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* --- MAIN CONTENT --- */}
-            {!mirrorActive ? (
-              // EMPTY STATE
-              <div className="flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in zoom-in-95 duration-500 opacity-60 hover:opacity-100 transition-opacity p-6">
-                <div className="w-24 h-40 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center bg-zinc-900/20">
-                  <Smartphone className="h-8 w-8 text-zinc-700" />
-                </div>
-                <div className="space-y-1.5">
-                  <p className="text-sm font-medium text-zinc-400">No Active Session</p>
-                  <p className="text-[10px] text-zinc-600 max-w-[200px] mx-auto leading-relaxed">Select a device from the toolbar to initialize the system view.</p>
-                </div>
-                <Button
-                  onClick={connectDevice}
-                  className="h-9 px-6 text-[11px] font-bold bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg shadow-card hover:shadow-elegant transition-all duration-300 gap-2 group"
-                >
-                  <Zap className="h-3.5 w-3.5 fill-current group-hover:animate-pulse" />
-                  Connect Device
-                </Button>
-              </div>
-            ) : mirrorError ? (
-              // ERROR STATE
-              <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <div className="p-3 bg-red-500/10 rounded-lg">
-                  <WifiOff className="h-8 w-8 text-red-500/50" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-red-500">Signal Lost</h3>
-                  <p className="text-[10px] text-zinc-500 font-mono max-w-[220px] mx-auto">{mirrorError}</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={connectDevice} className="border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white mt-2">
-                  Retry Connection
-                </Button>
-              </div>
-            ) : (
-              // ACTIVE SCREEN STREAM
-              <div className="relative w-full h-full flex items-center justify-center bg-[#000]">
-                {enableMjpeg && mirrorActive && !mjpegActive && (
-                  <div className="absolute left-3 top-3 z-30">
-                    <Badge variant="outline" className="text-[10px] h-6 px-2 border-amber-500/50 text-amber-400 bg-amber-500/10">
-                      Live stream off, using snapshots
-                    </Badge>
-                  </div>
-                )}
-
-
-
-	                {/* INPUT TARGET HIGHLIGHT (visual cue for auto text entry) */}
-	                {captureMode && showInputPanel && (inputTargetBounds || inputCoords) && (
-	                  <div
-	                    className="absolute pointer-events-none z-30 rounded-md border-2 border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_18px_rgba(16,185,129,0.25)]"
-                    style={(() => {
-                      const devW = deviceSize?.width || 1080;
-                      const devH = deviceSize?.height || 1920;
-                      const containerW = previewDimensions.width;
-                      const containerH = previewDimensions.height;
-                      const { displayW, displayH, offsetX, offsetY } = getContainMetrics(containerW, containerH, devW, devH);
-
-                      if (inputTargetBounds) {
-                        const left = offsetX + (inputTargetBounds.x1 / devW) * displayW;
-                        const top = offsetY + (inputTargetBounds.y1 / devH) * displayH;
-                        const width = ((inputTargetBounds.x2 - inputTargetBounds.x1) / devW) * displayW;
-                        const height = ((inputTargetBounds.y2 - inputTargetBounds.y1) / devH) * displayH;
-                        return { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` };
-                      }
-
-                      if (inputCoords) {
-                        const left = offsetX + (inputCoords.x / devW) * displayW;
-                        const top = offsetY + (inputCoords.y / devH) * displayH;
-                        return { left: `${left}px`, top: `${top}px`, width: `14px`, height: `14px`, transform: "translate(-50%, -50%)" };
-                      }
-
-                      return {};
-                    })()}
-	                  />
-	                )}
-
-                {/* INSPECTOR HIGHLIGHT OVERLAY (element-specific) */}
-                {(() => {
-                  if (!inspectorModeEnabled || !captureMode || !mirrorImage) return null;
-
-                  const active =
-                    (pinnedInspect && hasBounds(pinnedInspect)) ? pinnedInspect :
-                      (tapInspect && hasBounds(tapInspect)) ? tapInspect :
-                        (hoverInspect && hasBounds(hoverInspect)) ? hoverInspect :
-                          null;
-
-                  const devW = deviceSize?.width || 1080;
-                  const devH = deviceSize?.height || 1920;
-                  const containerW = previewDimensions.width;
-                  const containerH = previewDimensions.height;
-                  const { displayW, displayH, offsetX, offsetY } = getContainMetrics(containerW, containerH, devW, devH);
-
-                  const boundsStr = String(active?.element?.bounds || "");
-                  const m = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-
-                  const leftPx = m ? clamp(offsetX + (parseInt(m[1], 10) / devW) * displayW, 0, containerW) : null;
-                  const topPx = m ? clamp(offsetY + (parseInt(m[2], 10) / devH) * displayH, 0, containerH) : null;
-                  const widthPx = m ? clamp(((parseInt(m[3], 10) - parseInt(m[1], 10)) / devW) * displayW, 0, containerW) : null;
-                  const heightPx = m ? clamp(((parseInt(m[4], 10) - parseInt(m[2], 10)) / devH) * displayH, 0, containerH) : null;
-
-                  const showFocus = leftPx != null && topPx != null && widthPx != null && heightPx != null;
-                  const centerX = showFocus ? leftPx + widthPx / 2 : 0;
-                  const centerY = showFocus ? topPx + heightPx / 2 : 0;
-
-                  return (
-                    <>
-                      {showFocus && (
-                        <>
-                          <div
-                            className="absolute pointer-events-none z-34 rounded-xl border border-primary/70 bg-primary/12"
-                            style={{
-                              left: `${leftPx}px`,
-                              top: `${topPx}px`,
-                              width: `${widthPx}px`,
-                              height: `${heightPx}px`,
-                              boxShadow: inspectorSpotlight
-                                ? "0 0 24px rgba(59,130,246,0.34)"
-                                : "0 0 14px rgba(59,130,246,0.26)",
-                            }}
-                          />
-                          <div
-                            className="absolute pointer-events-none z-35 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70"
-                            style={{ left: `${centerX}px`, top: `${centerY}px` }}
-                          >
-                            <div className="absolute inset-2 rounded-full bg-white/55" />
-                          </div>
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-                {/* REPLAY VISUAL FEEDBACK (step pulse) */}
-                {replayPulse && mirrorImage && (
-                  <div className="absolute inset-0 pointer-events-none z-40">
-                    {(() => {
-                      const devW = deviceSize?.width || 1080;
-                      const devH = deviceSize?.height || 1920;
-                      const containerW = previewDimensions.width;
-                      const containerH = previewDimensions.height;
-                      const { displayW, displayH, offsetX, offsetY } = getContainMetrics(containerW, containerH, devW, devH);
-                      const left = offsetX + (replayPulse.x / devW) * displayW;
-                      const top = offsetY + (replayPulse.y / devH) * displayH;
-                      return (
-                        <div
-                          className="absolute -translate-x-1/2 -translate-y-1/2"
-                          style={{ left: `${left}px`, top: `${top}px` }}
-                        >
-                          <div className="relative">
-                            <div className="h-10 w-10 rounded-full border-2 border-emerald-400/80 shadow-[0_0_18px_rgba(16,185,129,0.45)] animate-ping" />
-                            <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-emerald-300/90 bg-emerald-400/10" />
-                            {replayPulse.label && (
-                              <div className="absolute left-1/2 top-12 -translate-x-1/2 whitespace-nowrap rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200 shadow">
-                                {replayPulse.label}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-{mirrorImage && (
-	                  <img
-                      ref={mjpegImgRef}
-	                    src={mirrorImage}
-                    alt="Device Screen"
-                    className={`w-full h-full object-contain select-none transition-all duration-200 ${captureMode ? 'cursor-pointer' : 'cursor-default'}`}
-                    onError={() => {
-                      if (mjpegActive) {
-                        setMjpegActive(false);
-                        setMjpegFailed(true);
-                        startScreenshotStream();
-                        toast.info("Live stream off, using snapshots");
-                      }
-                    }}
-                    onLoad={() => {
-                      setMirrorError(null);
-                    }}
-                    // --- INTERACTION LOGIC ---
-	                    onContextMenu={(e) => {
-	                      if (!captureMode || !inspectorModeEnabled) return;
-	                      e.preventDefault();
-	                      // Toggle pin (video-style "right click to inspect/pin")
-	                      if (pinnedInspect) {
-	                        setPinnedInspect(null);
-	                        toast.info("Inspector unpinned");
-	                        return;
-	                      }
-
-	                      const boundsStr = String(hoverInspect?.element?.bounds || "");
-	                      if (!hoverInspect || !boundsStr.includes("[")) {
-	                        toast.info("No element to pin yet (hover an element first)");
-	                        return;
-	                      }
-
-	                      setPinnedInspect(hoverInspect);
-	                      setInspectorPanelOpen(true);
-	                      toast.success("Inspector pinned");
-	                    }}
-                    onMouseMove={(e) => {
-                      if (!captureMode || !inspectorModeEnabled) return;
-                      const now = Date.now();
-                      if (now - lastHoverInspectTsRef.current < 60) return;
-                      lastHoverInspectTsRef.current = now;
-
-                      const el = e.currentTarget as HTMLImageElement;
-                      const rect = el.getBoundingClientRect();
-                      const clickX = e.clientX - rect.left;
-	                      const clickY = e.clientY - rect.top;
-	                      const finalDev = deviceSize || { width: 1080, height: 1920 };
-
-                        const { displayW, displayH, offsetX, offsetY } = getContainMetrics(rect.width, rect.height, finalDev.width, finalDev.height);
-                        const withinX = clickX - offsetX;
-                        const withinY = clickY - offsetY;
-                        // If pointer is outside the actual rendered image content, don’t “guess” a target.
-                        if (withinX < 0 || withinY < 0 || withinX > displayW || withinY > displayH) {
-                          setHoverInspect(null);
-                          return;
-                        }
-                        const deviceX = Math.round((withinX / displayW) * finalDev.width);
-                        const deviceY = Math.round((withinY / displayH) * finalDev.height);
-
-                      hoverInspectAbortRef.current?.abort();
-                      const ac = new AbortController();
-                      hoverInspectAbortRef.current = ac;
-                      const reqId = ++hoverRequestIdRef.current;
-                      const timeout = setTimeout(() => ac.abort(), 700);
-
-                    fetch(`${AGENT_URL}/device/inspect`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ x: deviceX, y: deviceY, mode: "hover", preferCache: true, preferXPath: true }),
-                        signal: ac.signal
-                      })
-                        .then(r => r.json())
-                        .then((data) => {
-                          if (reqId !== hoverRequestIdRef.current) return;
-                          if (!data?.success || !data.inspect) return;
-                          const b = String(data.inspect?.element?.bounds || "");
-                          if (b && b.includes("[")) {
-                            setHoverInspect(data.inspect);
-                          } else {
-                            setHoverInspect(null);
-                          }
-                        })
-                        .catch(() => { })
-                        .finally(() => clearTimeout(timeout));
-                    }}
-	                    onMouseDown={(e) => {
-	                      if (!captureMode) return;
-	                      // Right click is reserved for "inspect/pin" (handled in onContextMenu).
-	                      if (e.button !== 0) return;
-                      const el = e.currentTarget as HTMLImageElement;
-                      const rect = el.getBoundingClientRect();
-                      const clickX = e.clientX - rect.left;
-                      const clickY = e.clientY - rect.top;
-                      const finalDev = deviceSize || { width: 1080, height: 1920 };
-
-                      const { displayW, displayH, offsetX, offsetY } = getContainMetrics(rect.width, rect.height, finalDev.width, finalDev.height);
-                      const withinX = clamp(clickX - offsetX, 0, displayW);
-                      const withinY = clamp(clickY - offsetY, 0, displayH);
-
-                      const deviceX = Math.round((withinX / displayW) * finalDev.width);
-                      const deviceY = Math.round((withinY / displayH) * finalDev.height);
-
-                      pressCoordsRef.current = { x: deviceX, y: deviceY };
-                      isDraggingRef.current = true;
-                      longPressHappenedRef.current = false;
-
-                      longPressTimerRef.current = setTimeout(() => {
-                        if (isDraggingRef.current) {
-                          handleLongPress(deviceX, deviceY);
-                          longPressHappenedRef.current = true;
-                          isDraggingRef.current = false;
-                        }
-                      }, 700);
-                    }}
-                    onMouseUp={async (e) => {
-                      if (!captureMode || !pressCoordsRef.current) return;
-                      // Avoid recording actions on right/middle click.
-                      if (e.button !== 0) {
-                        if (longPressTimerRef.current) {
-                          clearTimeout(longPressTimerRef.current);
-                          longPressTimerRef.current = null;
-                        }
-                        isDraggingRef.current = false;
-                        pressCoordsRef.current = null;
-                        return;
-                      }
-
-                      if (longPressTimerRef.current) {
-                        clearTimeout(longPressTimerRef.current);
-                        longPressTimerRef.current = null;
-                      }
-
-                      const el = e.currentTarget as HTMLImageElement;
-                      const rect = el.getBoundingClientRect();
-                      const clickX = e.clientX - rect.left;
-                      const clickY = e.clientY - rect.top;
-                      const finalDev = deviceSize || { width: 1080, height: 1920 };
-
-                      const { displayW, displayH, offsetX, offsetY } = getContainMetrics(rect.width, rect.height, finalDev.width, finalDev.height);
-                      const withinX = clamp(clickX - offsetX, 0, displayW);
-                      const withinY = clamp(clickY - offsetY, 0, displayH);
-
-                      const deviceX = Math.round((withinX / displayW) * finalDev.width);
-                      const deviceY = Math.round((withinY / displayH) * finalDev.height);
-
-                      const startX = pressCoordsRef.current.x;
-                      const startY = pressCoordsRef.current.y;
-                      const dist = Math.sqrt(Math.pow(deviceX - startX, 2) + Math.pow(deviceY - startY, 2));
-
-                      // 1. Handle Swipe
-                      if (dist > 30) {
-                        isDraggingRef.current = false;
-                        const description = Math.abs(deviceX - startX) > Math.abs(deviceY - startY)
-                          ? (deviceX > startX ? "Swipe Right" : "Swipe Left")
-                          : (deviceY > startY ? "Swipe Down" : "Swipe Up");
-
-                        handleSwipe({ x1: startX, y1: startY, x2: deviceX, y2: deviceY, description });
-                        pressCoordsRef.current = null;
-                        return;
-                      }
-
-                      // 2. Handle Long Press
-                      if (longPressHappenedRef.current) {
-                        isDraggingRef.current = false;
-                        pressCoordsRef.current = null;
-                        return;
-                      }
-
-                      isDraggingRef.current = false;
-
-                      // 3. Execute Tap & Force Check
-                      try {
-                        const { res, json } = await retryDeviceAction(async () => {
-                          const response = await fetch(`${AGENT_URL}/device/tap`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ x: deviceX, y: deviceY }),
-                          });
-                          const data = await response.json().catch(() => ({}));
-                          if (!response.ok) throw new Error(data.error || "Tap failed");
-                          return { res: response, json: data };
-                        }, advancedConfig.maxRetries, advancedConfig.retryDelayMs);
-
-	                        if (res.ok) {
-	                          const step = json.step || {};
-	                          const meta = step.elementMetadata || {};
-                          const resourceId = String(meta.resourceId || step.elementId || "").toLowerCase();
-                          const className = String(meta.class || step.elementClass || "").toLowerCase();
-
-	                          // DEBUG: See exactly what your app is reporting in the Console (F12)
-	                          console.log("Tap Metadata:", meta);
-
-	                          if (inspectorModeEnabled) {
-	                            const lb = step.locatorBundle || null;
-	                            if (tapInspectDismissRef.current) {
-	                              clearTimeout(tapInspectDismissRef.current);
-	                              tapInspectDismissRef.current = null;
-	                            }
-
-	                            // Prefer bounds-bearing element for highlight; if missing, ask inspector endpoint once (best-effort).
-	                            const metaBounds = String(meta?.bounds || "");
-	                            let elementForInspect = meta;
-	                            if (!metaBounds || !metaBounds.includes("[")) {
-	                              try {
-	                                const ir = await fetch(`${AGENT_URL}/device/inspect`, {
-	                                  method: "POST",
-	                                  headers: { "Content-Type": "application/json" },
-	                                  body: JSON.stringify({ x: deviceX, y: deviceY, mode: "tap", preferCache: true }),
-	                                });
-	                                const ij = await ir.json().catch(() => ({}));
-	                                if (ij?.success && ij?.inspect?.element?.bounds) {
-	                                  elementForInspect = ij.inspect.element;
-	                                }
-	                              } catch { /* ignore */ }
-	                            }
-	                            const boundsStr = String(elementForInspect?.bounds || "");
-	                            if (boundsStr && boundsStr.includes("[")) {
-	                              setTapInspect({
-	                                element: elementForInspect || meta,
-	                                locatorBundle: lb,
-	                                locators: lb ? [lb.primary, ...(lb.fallbacks || [])] : [],
-	                                best: lb?.primary || null,
-	                                reliabilityScore: (typeof step.reliabilityScore === "number") ? step.reliabilityScore : undefined,
-	                                smartXPath: step.smartXPath || step.xpath || "",
-	                                xpath: step.xpath || ""
-	                              });
-	                              tapInspectDismissRef.current = setTimeout(() => {
-	                                setTapInspect(null);
-	                                tapInspectDismissRef.current = null;
-	                              }, 4000);
-	                            } else {
-	                              setTapInspect(null);
-	                            }
-	                          }
-
-                          const isInput =
-                            // Standard Checks
-                            step.isInputCandidate ||
-                            className.includes("edittext") ||
-                            className.includes("textfield") ||
-                            className.includes("textinput") ||
-                            className.includes("input") ||
-                            resourceId.includes("search") ||
-                            resourceId.includes("input") ||
-
-                            // NEW: Aggressive Checks for Custom/Hybrid Apps
-                            className.includes("webkit") || // WebViews
-                            className === "android.view.view" || // Generic Views (React Native/Flutter)
-
-                            // Fallback: If it has an ID but is NOT a layout or simple text label
-                            (resourceId.length > 0 &&
-                              !className.includes("layout") &&
-                              !className.includes("textview") &&
-                              !className.includes("button") &&
-                              !className.includes("image"));
-
-                          if (recording && !isPaused && isInput) {
-                            // Capture element hint + bounds for UX cue (highlight + label)
-                            const boundsStr = String(meta.bounds || "");
-                            const boundsMatch = boundsStr.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-                            if (boundsMatch) {
-                              setInputTargetBounds({
-                                x1: parseInt(boundsMatch[1], 10),
-                                y1: parseInt(boundsMatch[2], 10),
-                                x2: parseInt(boundsMatch[3], 10),
-                                y2: parseInt(boundsMatch[4], 10),
-                              });
-                            } else {
-                              setInputTargetBounds(null);
-                            }
-
-                            setInputTargetMeta({
-                              resourceId: meta.resourceId || step.elementId,
-                              text: meta.text || step.elementText,
-                              class: meta.class || step.elementClass,
-                              contentDesc: meta.contentDesc || step.elementContentDesc,
-                              bounds: meta.bounds,
-                            });
-
-                            toast.info("Text entry detected", {
-                              description: "Type your text and press Enter (or Send)"
-                            });
-                            setInputText("");
-                            setInputCoords({ x: deviceX, y: deviceY });
-                            setInputPending(false);
-                            setShowInputPanel(true);
-                          } else {
-                            setInputTargetMeta(null);
-                            setInputTargetBounds(null);
-                            // OPTIONAL: Fallback if auto-detect STILL fails
-                            // You can uncomment this to force it open on EVERY tap if needed:
-                            // setInputCoords({ x: deviceX, y: deviceY });
-                            // setShowInputPanel(true);
-                          }
-	                        }
-	                      } catch (err: any) {
-	                        toast.error(err.message || "Interaction failed");
-	                      }
-	                      pressCoordsRef.current = null;
-	                    }}
-	                    onMouseLeave={() => {
-	                      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-	                      isDraggingRef.current = false;
-	                      pressCoordsRef.current = null;
-	                      if (!pinnedInspect) setHoverInspect(null);
-	                    }}
-	                    draggable={false}
-	                  />
-	                )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="lg:col-span-2 space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-[auto,1fr] lg:items-start gap-4 lg:gap-6">
+        {deviceMirror}
+        <div className="lg:col-span-1 lg:col-start-2 space-y-3 w-full lg:max-h-[calc(100vh-140px)] lg:overflow-y-auto min-h-0 pr-1">
           {mirrorActive && (
-            <Collapsible open={showQuickStart} onOpenChange={setShowQuickStart} className="w-full">
-                <Card className="overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all duration-200 ease-in-out animate-in fade-in slide-in-from-right-4">
-                  <CollapsibleTrigger asChild>
-                  <CardHeader className="h-13 px-3 py-0 border-b border-border flex flex-row items-center justify-between cursor-pointer bg-card hover:bg-accent/40 transition-all duration-200 ease-in-out">
-                    <div className="flex flex-row items-center gap-2 flex-1 min-w-0">
-                      <CardTitle className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                        <Terminal className="h-4 w-4 text-primary" />
-                        Device Control
-                      </CardTitle>
-                      <span className="text-[11px] font-normal text-muted-foreground truncate" title={selectedDevice?.name || selectedDevice?.device || "No Device Selected"}>
-                        {selectedDevice?.name || selectedDevice?.device || "No Device Selected"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <div className="hidden sm:flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
-                        <Wand2 className="h-3.5 w-3.5" />
-                        {showQuickStart ? "Hide Guide" : "Guide"}
-                      </div>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ease-in-out ${showQuickStart ? "rotate-180" : ""}`} />
-                    </div>
-                  </CardHeader>
-                </CollapsibleTrigger>
+            <>
+              <Card className="overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all duration-200 ease-in-out animate-in fade-in slide-in-from-right-4">
+                <CardHeader className="h-13 p-3 border-b border-border flex flex-row items-center justify-between bg-card">
+                  <div className="flex flex-row items-center gap-2 flex-1 min-w-0">
+                    <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+                      <Terminal className="h-4 w-4 text-primary" />
+                      Device Control
+                    </CardTitle>
+                    <span className="text-sm font-normal text-muted-foreground truncate" title={selectedDevice?.name || selectedDevice?.device || "No Device Selected"}>
+                      {selectedDevice?.name || selectedDevice?.device || "No Device Selected"}
+                    </span>
+                  </div>
+                </CardHeader>
 
-                {showQuickStart && (
-                  <CollapsibleContent>
-                    <div className="mx-4 mt-2 mb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-500">
-                      <div className="relative space-y-4">
-                        {/* Vertical line connecting steps */}
-                        <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-primary/30 via-primary/10 to-transparent" />
-
-                        {/* Step 1: Ready Your App */}
-                        <div className="relative flex items-start gap-3 group">
-                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
-                            1
-                          </div>
-                          <div className="flex-1 space-y-1.5 pb-1">
-                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Ready Your App</h4>
-                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                Use <b>Package Control</b> to select your app. If it's missing, upload the APK and install it. Use <span className="text-primary/80 font-medium">Wipe Data</span> for a clean test state.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Step 2: Start Capturing */}
-                        <div className="relative flex items-start gap-3 group">
-                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
-                            2
-                          </div>
-                          <div className="flex-1 space-y-1.5 pb-1">
-                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Start Capturing</h4>
-                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                Toggle <span className="text-primary font-bold">Start Capture: ON</span> to enable interaction. Click <span className="text-primary font-bold">Initiate Recording</span>—every tap, scroll, and key press will be captured in real-time.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Step 3: Validate & Finish */}
-                        <div className="relative flex items-start gap-3 group">
-                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-[10px] font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
-                            3
-                          </div>
-                          <div className="flex-1 space-y-1.5">
-                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Validate & Finish</h4>
-                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                Add <b>Assertions</b> to verify screen state. Click <span className="text-destructive font-bold">Stop Test</span> when done to review your sequence, edit the script, or save the scenario to history.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Pro Tips Section */}
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 shadow-sm">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Wand2 className="h-3.5 w-3.5 text-amber-600" />
-                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Pro Tip</span>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground leading-snug">
-                            Use the <b>Undo</b> button to instantly remove accidental actions without stopping the recording.
-                          </p>
-                        </div>
-                        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 shadow-sm">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Terminal className="h-3.5 w-3.5 text-indigo-600" />
-                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700">Shortcuts</span>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground leading-snug">
-                            The <b>Input Panel</b> is the best way to send verified text—avoid using the device keyboard when recording.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </CollapsibleContent>
-                )}
 
                 <CardContent className="p-0 bg-card">
-                  <div className="h-11 px-3 border-b border-border bg-card flex items-center gap-3">
+                  <div className="p-3 border-b border-border bg-card flex items-center gap-3">
                     <div className="flex items-center gap-2 flex-1 min-w-0 md:max-w-[720px]">
-                      <div className="relative flex-1 min-w-0 md:max-w-[520px]">
+                      <div className="relative min-w-0 md:max-w-[520px]">
                         <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         {installedPackages.length === 0 ? (
-                        <div className="h-9 flex items-center justify-between rounded-md border border-dashed border-border bg-muted/40 px-3 text-[11px] text-muted-foreground">
+                          <div className="h-9 flex items-center justify-between rounded-md border border-dashed border-border bg-muted/40 px-3 text-xs text-muted-foreground">
                             <span>No apps detected</span>
                             <Button
                               variant="link"
-                              className="h-auto p-0 text-[11px] font-medium text-primary hover:no-underline"
+                              className="h-auto p-0 text-xs font-medium text-primary hover:no-underline"
                               onClick={() => fileInputRef.current?.click()}
                             >
                               <Upload className="mr-1 h-3 w-3" />
@@ -4697,11 +4561,11 @@ ${enabledActions
                               localStorage.setItem("mobile_recorder_recent_apps", JSON.stringify(updated));
                             }}
                           >
-                            <SelectTrigger className="h-9 rounded-md border border-border bg-background pl-9 text-[13px] font-medium text-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent/30 focus:ring-1 focus:ring-primary/30">
+                            <SelectTrigger className="h-9 rounded-md border border-border bg-background pl-9 text-sm font-medium text-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent/30 focus:ring-1 focus:ring-primary/30">
                               {appPackage ? (
                                 <span className="truncate">{getAppFriendlyName(appPackage)}</span>
                               ) : (
-                                <SelectValue placeholder="Choose app to record" />
+                                <SelectValue placeholder="Choose App to Record" />
                               )}
                             </SelectTrigger>
                             <SelectContent className="max-h-[400px]">
@@ -4722,12 +4586,12 @@ ${enabledActions
                                   <SelectItem key={pkg} value={pkg} className="py-2 px-3 focus:bg-primary/10 transition-all duration-150 ease-in-out">
                                     <div className="flex flex-col gap-0.5">
                                       <div className="flex items-center gap-2">
-                                        <span className="text-[13px] font-medium text-foreground">{getAppFriendlyName(pkg)}</span>
+                                        <span className="text-sm font-medium text-foreground">{getAppFriendlyName(pkg)}</span>
                                         {recentIds.includes(pkg) && (
-                                          <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-[0.08em] text-primary border-primary/30 bg-primary/10">Recent</Badge>
+                                          <Badge variant="outline" className="h-4 px-1 text-xs font-bold uppercase tracking-[0.08em] text-primary border-primary/30 bg-primary/10">Recent</Badge>
                                         )}
                                       </div>
-                                      <span className="text-[11px] text-muted-foreground">{pkg}</span>
+                                      <span className="text-xs text-muted-foreground">{pkg}</span>
                                     </div>
                                   </SelectItem>
                                 ));
@@ -4736,11 +4600,11 @@ ${enabledActions
                           </Select>
                         )}
                       </div>
-                      <div className="hidden md:block text-[11px] text-muted-foreground truncate max-w-[200px]">
-                        {appPackage ? getAppFriendlyName(appPackage) : "No package selected"}
+                      <div className="hidden md:block text-xs text-muted-foreground truncate max-w-[200px]">
+                        {appPackage || "No package selected"}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center ml-auto gap-2">
                       <Button
                         variant="outline"
                         size="icon"
@@ -4753,7 +4617,7 @@ ${enabledActions
                       >
                         <Upload className="h-4 w-4" />
                       </Button>
-                      <Button
+                      {/* <Button
                         variant="outline"
                         size="icon"
                         className="h-8 w-8 rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 ease-in-out hover:border-primary/40 hover:bg-accent hover:text-primary"
@@ -4764,7 +4628,7 @@ ${enabledActions
                         title="Guide"
                       >
                         <BookOpen className="h-4 w-4" />
-                      </Button>
+                      </Button> */}
                       <Button
                         variant="outline"
                         size="icon"
@@ -4794,60 +4658,146 @@ ${enabledActions
                   </div>
 
                   {/* --- MIDDLE: UNIFIED CONTROL CENTER --- */}
-                  <div className="p-2.5 space-y-2.5 bg-card">
-                    <div className="flex flex-wrap items-start gap-2.5">
-                      <RecordingCommandBar
-                        recording={recording}
-                        replaying={replaying}
-                        mirrorActive={mirrorActive}
-                        isPaused={isPaused}
-                        actionsCount={actions.length}
-                        onStartRecording={startRecording}
-                        onStopRecording={stopRecording}
-                        onReplay={() => replayActions(0)}
-                        onTogglePause={handleTogglePause}
-                      />
+                  <div className="p-2.5 space-y-2.5 bg-card relative">
+                    <div className="sticky top-0 z-20 bg-card pb-2">
+                      <div className="flex flex-wrap items-start gap-2.5">
+                        <RecordingCommandBar
+                          recording={recording}
+                          replaying={replaying}
+                          mirrorActive={mirrorActive}
+                          isPaused={isPaused}
+                          actionsCount={actions.length}
+                          onStartRecording={startRecording}
+                          onStopRecording={stopRecording}
+                          onReplay={() => replayActions(0)}
+                          onTogglePause={handleTogglePause}
+                        />
+                      </div>
                     </div>
 
-                    <div className="flex items-start gap-2.5">
-                      <InteractionTools
-                        captureMode={captureMode}
-                        onToggleCapture={() => setCaptureMode(!captureMode)}
-                        onUndo={handleUndo}
-                        onToggleInput={() => setShowInputPanel(!showInputPanel)}
-                        onAddWait={handleAddWaitStep}
-                        onSwipe={handleDirectionalSwipe}
-                        onBack={() => handleKeyPress(4, "Back")}
-                        onHome={() => handleKeyPress(3, "Home")}
-                        onRecents={() => handleKeyPress(187, "Recents")}
-                        onHideKeyboard={hideKeyboard}
-                      />
+                    <div className="flex flex-col gap-2.5">
+                      <div id="system-navigation-tools" className="min-w-0">
+                        <InteractionTools
+                          captureMode={captureMode}
+                          onToggleCapture={() => setCaptureMode(!captureMode)}
+                          onUndo={handleUndo}
+                          onToggleInput={() => setShowInputPanel(!showInputPanel)}
+                          onAddWait={handleAddWaitStep}
+                          onSwipe={handleDirectionalSwipe}
+                          onBack={() => handleKeyPress(4, "Back")}
+                          onHome={() => handleKeyPress(3, "Home")}
+                          onRecents={() => handleKeyPress(187, "Recents")}
+                          onHideKeyboard={hideKeyboard}
+                        />
+                      </div>
 
-                      <AppManagement
-                        appPackage={appPackage}
-                        installedPackagesCount={installedPackages.length}
-                        apkUploading={apkUploading}
-                        apkInstalling={apkInstalling}
-                        uploadedApk={uploadedApk as any}
-                        setUploadedApk={setUploadedApk}
-                        onLaunch={handleOpenApp}
-                        onForceStop={handleStopApp}
-                        onClearData={handleClearApp}
-                        onClearCache={handleClearCache}
-                        onUninstall={uninstallApp}
-                        onInfo={handleOpenAppSettings}
-                        onUploadClick={() => fileInputRef.current?.click()}
-                        onInstallApk={installApk}
-                        disabled={!appPackage}
-                      />
+                      <div className="min-w-0">
+                        <AppManagement
+                          appPackage={appPackage}
+                          installedPackagesCount={installedPackages.length}
+                          apkUploading={apkUploading}
+                          apkInstalling={apkInstalling}
+                          uploadedApk={uploadedApk as any}
+                          setUploadedApk={setUploadedApk}
+                          onLaunch={handleOpenApp}
+                          onForceStop={handleStopApp}
+                          onClearData={handleClearApp}
+                          onClearCache={handleClearCache}
+                          onUninstall={uninstallApp}
+                          onInfo={handleOpenAppSettings}
+                          onUploadClick={() => fileInputRef.current?.click()}
+                          onInstallApk={installApk}
+                          disabled={!appPackage}
+                        />
+                      </div>
                     </div>
                   </div>
 
                   {/* --- BOTTOM: COMMAND BAR (Always Visible) --- */}
-                  
+
                 </CardContent>
               </Card>
-            </Collapsible>
+
+              <Dialog open={showQuickStart} onOpenChange={setShowQuickStart}>
+                <DialogContent className="sm:max-w-[760px] max-h-[85vh] p-0 overflow-hidden">
+                  <div className="p-6 border-b border-border/60">
+                    <DialogHeader>
+                      <DialogTitle>Recording Guide</DialogTitle>
+                    </DialogHeader>
+                  </div>
+                  <div className="p-6 overflow-auto max-h-[calc(85vh-88px)]">
+                    <div className="space-y-4">
+                      <div className="relative space-y-4">
+                        <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-primary/30 via-primary/10 to-transparent" />
+
+                        <div className="relative flex items-start gap-3 group">
+                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-xs font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
+                            1
+                          </div>
+                          <div className="flex-1 space-y-1.5 pb-1">
+                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Ready Your App</h4>
+                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                Use <b>Package Control</b> to select your app. If it's missing, upload the APK and install it. Use <span className="text-primary/80 font-medium">Wipe Data</span> for a clean test state.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="relative flex items-start gap-3 group">
+                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-xs font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
+                            2
+                          </div>
+                          <div className="flex-1 space-y-1.5 pb-1">
+                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Start Capturing</h4>
+                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                Toggle <span className="text-primary font-bold">Start Capture: ON</span> to enable interaction. Click <span className="text-primary font-bold">Initiate Recording</span>—every tap, scroll, and key press will be captured in real-time.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="relative flex items-start gap-3 group">
+                          <div className="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-background text-xs font-bold text-primary shadow-sm transition-transform group-hover:scale-110">
+                            3
+                          </div>
+                          <div className="flex-1 space-y-1.5">
+                            <h4 className="text-sm font-bold leading-none tracking-tight text-foreground/90">Validate & Finish</h4>
+                            <div className="rounded-lg border border-primary/10 bg-primary/5 p-3">
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                Add <b>Assertions</b> to verify screen state. Click <span className="text-destructive font-bold">Stop Test</span> when done to review your sequence, edit the script, or save the scenario to history.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Wand2 className="h-3.5 w-3.5 text-amber-600" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Pro Tip</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-snug">
+                            Use the <b>Undo</b> button to instantly remove accidental actions without stopping the recording.
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Terminal className="h-3.5 w-3.5 text-indigo-600" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">Shortcuts</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-snug">
+                            The <b>Input Panel</b> is the best way to send verified text—avoid using the device keyboard when recording.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </>
           )}
           {showInputPanel && (
             <Card className="bg-card/95 backdrop-blur-md shadow-xl border-primary/20 border-2 rounded-xl overflow-hidden animate-in slide-in-from-top-4 mb-4 z-50">
@@ -4859,12 +4809,12 @@ ${enabledActions
                   <div className="flex flex-col">
                     <CardTitle className="text-xs font-bold text-foreground">Text Input</CardTitle>
                     {inputCoords && (
-                      <span className="text-[10px] text-muted-foreground font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         Target: ({inputCoords.x}, {inputCoords.y})
                       </span>
                     )}
                     {inputTargetMeta && (
-                      <span className="text-[10px] text-muted-foreground font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         Field: {inputTargetMeta.resourceId || inputTargetMeta.contentDesc || inputTargetMeta.text || "input"}
                       </span>
                     )}
@@ -4902,8 +4852,8 @@ ${enabledActions
                     }}
                   />
                   <div className="flex items-center justify-between px-1">
-                    <p className="text-[10px] text-muted-foreground">Press <kbd className="font-mono bg-muted px-1 rounded border">Enter</kbd> to send</p>
-                    {!inputCoords && <span className="text-[10px] text-amber-500 animate-pulse font-bold">Tap screen to set target</span>}
+                    <p className="text-xs text-muted-foreground">Press <kbd className="font-mono bg-muted px-1 rounded border">Enter</kbd> to send</p>
+                    {!inputCoords && <span className="text-xs text-amber-500 animate-pulse font-bold">Tap screen to set target</span>}
                   </div>
                 </div>
 
@@ -4933,87 +4883,100 @@ ${enabledActions
               </TabsTrigger>
               <TabsTrigger value="history" className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                History
+                Execution History
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="actions" className="mt-0 outline-none">
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="grid gap-4">
                 <Card className="bg-gradient-to-br from-card/85 via-card/70 to-card/85 backdrop-blur-md shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border-border/70">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <MousePointer2 className="h-5 w-5 text-primary" />
-                        Captured Actions
-                      </CardTitle>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                      {currentScenarioName ? (
-                        <Badge variant="outline" className="text-primary border-primary/20 h-5 px-1.5 gap-1">
-                          <FileIcon className="h-3 w-3" /> {currentScenarioName}
-                        </Badge>
-                      ) : (
-                        <span>{actions.length} steps captured</span>
-                      )}
-                      
-                    </div>
-                  </div>
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <MousePointer2 className="h-5 w-5 text-primary" />
+                          Captured Actions
+                        </CardTitle>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1.5 border-primary/20 text-primary hover:bg-primary/10"
+                          onClick={() => setShowAISuggestions(true)}
+                        >
+                          <Wand2 className="h-3.5 w-3.5" />
+                          AI Assist
+                          <span className="relative flex h-2 w-2">
+                            {isAIScanning && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/60 opacity-75" />}
+                            <span className={`relative inline-flex rounded-full h-2 w-2 ${isAIScanning ? "bg-primary" : "bg-primary/40"}`} />
+                          </span>
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                        {currentScenarioName ? (
+                          <Badge variant="outline" className="text-primary border-primary/20 h-5 px-1.5 gap-1">
+                            <FileIcon className="h-3 w-3" /> {currentScenarioName}
+                          </Badge>
+                        ) : (
+                          <span>{actions.length} steps captured</span>
+                        )}
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() => {
-                        fetchScenarios();
-                        setIsLoadDialogOpen(true);
-                      }}
-                    >
-                      <FolderOpen className="h-3.5 w-3.5" />
-                      Load
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      disabled={actions.length === 0}
-                      onClick={() => {
-                        setSaveScenarioName(currentScenarioName || "");
-                        setIsSaveDialogOpen(true);
-                      }}
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      Save
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={actions.length === 0}
-                      onClick={() => {
-                        if (confirm("Clear all recorded actions?")) {
-                          setActions([]);
-                          setCurrentScenarioId(null);
-                          setCurrentScenarioName("");
-                        }
-                      }}
-                      className="h-8 text-xs bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground border-none"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                      Clear
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {actions.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl border-muted/20 bg-gradient-to-b from-muted/10 to-transparent">
-                      <p>No actions recorded yet</p>
-                      <p className="text-xs mt-1">Start recording and interact with your device</p>
+                      </div>
                     </div>
-                  ) : (
-                    <ScrollArea className="h-[450px] pr-4">
-                      <div className="space-y-3">
-	                        {actions.map((a, i) => {
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() => {
+                          fetchScenarios();
+                          setIsLoadDialogOpen(true);
+                        }}
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        Load
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        disabled={actions.length === 0}
+                        onClick={() => {
+                          setSaveScenarioName(currentScenarioName || "");
+                          setIsSaveDialogOpen(true);
+                        }}
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        Save
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={actions.length === 0}
+                        onClick={() => {
+                          if (confirm("Clear all recorded actions?")) {
+                            setActions([]);
+                            setCurrentScenarioId(null);
+                            setCurrentScenarioName("");
+                          }
+                        }}
+                        className="h-8 text-xs bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground border-none"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        Clear
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {actions.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-xl border-muted/20 bg-gradient-to-b from-muted/10 to-transparent">
+                        <p>No actions recorded yet</p>
+                        <p className="text-xs mt-1">Start recording and interact with your device</p>
+                      </div>
+                    ) : (
+                      <ScrollArea className="h-[450px] pr-4">
+                        <div className="space-y-3">
+                          {actions.map((a, i) => {
                             const locatorScore = typeof (a as any).reliabilityScore === "number" ? Number((a as any).reliabilityScore) : null;
                             const isCriticalLocator =
                               (["tap", "input", "longPress", "assert"] as string[]).includes(a.type) &&
@@ -5023,463 +4986,490 @@ ${enabledActions
                             const hasAISuggestions = perActionSuggestions.length > 0;
                             const isAISuggestionOpen = openAISuggestionActionIds.includes(a.id);
                             return (
-	                          <div
-	                            key={a.id}
-	                            data-action-index={i}
-	                            data-action-id={a.id}
-	                            className={`group flex items-start gap-3 p-3 border rounded-lg transition-all duration-200 hover:shadow-sm backdrop-blur-[1px] ${isCriticalLocator
+                              <div
+                                key={a.id}
+                                data-action-index={i}
+                                data-action-id={a.id}
+                                className={`group flex items-start gap-3 p-3 border rounded-lg transition-all duration-200 hover:shadow-sm backdrop-blur-[1px] ${isCriticalLocator
                                   ? "bg-gradient-to-br from-red-500/10 to-rose-500/5 border-red-500/30 ring-1 ring-red-500/20 shadow-[0_8px_24px_rgba(239,68,68,0.14)]"
                                   : replayIndex === i
                                     ? 'bg-primary/5 border-primary ring-1 ring-primary/20'
                                     : 'bg-gradient-to-r from-muted/35 to-muted/20 border-transparent hover:border-border/70 hover:bg-muted/50'
-                                }`}
-	                          >
-                            <div className="flex flex-col items-center gap-1 mt-0.5">
-                              <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${replayIndex === i ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors'}`}>
-                                {i + 1}
-                              </div>
-                              <div className="w-[1px] flex-1 bg-muted group-last:hidden" />
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <div className="flex items-center gap-2">
-                                  {a.type === "tap" && <span title="Tap action - Click on screen element"><MousePointer2 className="h-3.5 w-3.5 text-blue-500" /></span>}
-                                  {a.type === "input" && <span title="Text input - Enter text into field"><Type className="h-3.5 w-3.5 text-green-500" /></span>}
-                                  {(a.type === "scroll" || a.type === "swipe") && <span title="Swipe/Scroll action - Navigate screen"><Move className="h-3.5 w-3.5 text-purple-500" /></span>}
-                                  {a.type === "wait" && <span title="Wait/Delay - Pause execution"><Clock className="h-3.5 w-3.5 text-amber-500" /></span>}
-                                  {a.type === "hideKeyboard" && <span title="Hide Keyboard"><Keyboard className="h-3.5 w-3.5 text-gray-500" /></span>}
-                                  <span className="font-semibold text-sm leading-none capitalize">{a.type === "hideKeyboard" ? "Hide Keyboard" : a.type}</span>
-                                  {a.enabled === false && <Badge variant="secondary" className="h-4 text-[9px] px-1 opacity-70">Disabled</Badge>}
-                                  {hasAISuggestions && (
-                                    <Badge
-                                      variant="outline"
-                                      className={`h-5 text-[10px] cursor-pointer transition-colors ${isAISuggestionOpen ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted/60"}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenAISuggestionActionIds((prev) =>
-                                          prev.includes(a.id)
-                                            ? prev.filter((id) => id !== a.id)
-                                            : [...prev, a.id]
-                                        );
-                                      }}
-                                    >
-                                      💡 AI Suggestion
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 text-green-500 hover:text-green-600 hover:bg-green-500/10"
-                                    title="Run this step only"
-                                    disabled={replaying}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      replaySingleAction(a);
-                                    }}
-                                  >
-                                    <Play className="h-3 w-3" />
-                                  </Button>
-                                  <div className="flex bg-muted/50 rounded-md mr-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-30"
-                                      disabled={i === 0}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        moveAction(i, "up");
-                                      }}
-                                      title="Move step up"
-                                    >
-                                      <ChevronUp className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-30"
-                                      disabled={i === actions.length - 1}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        moveAction(i, "down");
-                                      }}
-                                      title="Move step down"
-                                    >
-                                      <ChevronDown className="h-3 w-3" />
-                                    </Button>
+                                  }`}
+                              >
+                                <div className="flex flex-col items-center gap-1 mt-0.5">
+                                  <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold ${replayIndex === i ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors'}`}>
+                                    {i + 1}
                                   </div>
-
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                    onClick={() =>
-                                      setActions((prev) =>
-                                        prev.filter((x) => x.id !== a.id)
-                                      )
-                                    }
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
+                                  <div className="w-[1px] flex-1 bg-muted group-last:hidden" />
                                 </div>
-                              </div>
 
-                              <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 break-words mb-1.5 line-clamp-2">
-                                {a.description}
-                              </p>
-
-                              {hasAISuggestions && isAISuggestionOpen && (
-                                <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-2 space-y-2">
-                                  {perActionSuggestions.map((suggestion) => (
-                                    <div key={suggestion.id} className="rounded-md border border-border/60 bg-background/70 p-2 space-y-1">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="space-y-1">
-                                          <p className="text-[11px] font-semibold text-foreground">{suggestion.title}</p>
-                                          <p className="text-[11px] text-muted-foreground">{suggestion.detail}</p>
-                                          <p className="text-[10px] text-muted-foreground/80">Why: {suggestion.reason}</p>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Checkbox
-                                            id={`apply-${suggestion.id}`}
-                                            className="h-4 w-4"
-                                            onCheckedChange={(checked) => {
-                                              if (checked === true) {
-                                                applyAISuggestion(suggestion);
-                                              }
-                                            }}
-                                          />
-                                          <label htmlFor={`apply-${suggestion.id}`} className="text-[10px] text-muted-foreground">
-                                            Apply to steps & script
-                                          </label>
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-2 text-[10px]">
-                                        <Badge variant="outline" className="text-[10px]">Optional</Badge>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-6 text-[10px] px-2"
-                                          onClick={() => dismissAISuggestion(suggestion.id)}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <div className="flex items-center gap-2">
+                                      {a.type === "tap" && <span title="Tap action - Click on screen element"><MousePointer2 className="h-3.5 w-3.5 text-blue-500" /></span>}
+                                      {a.type === "input" && <span title="Text input - Enter text into field"><Type className="h-3.5 w-3.5 text-green-500" /></span>}
+                                      {(a.type === "scroll" || a.type === "swipe") && <span title="Swipe/Scroll action - Navigate screen"><Move className="h-3.5 w-3.5 text-purple-500" /></span>}
+                                      {a.type === "wait" && <span title="Wait/Delay - Pause execution"><Clock className="h-3.5 w-3.5 text-amber-500" /></span>}
+                                      {a.type === "hideKeyboard" && <span title="Hide Keyboard"><Keyboard className="h-3.5 w-3.5 text-gray-500" /></span>}
+                                      <span className="font-semibold text-sm leading-none capitalize">{a.type === "hideKeyboard" ? "Hide Keyboard" : a.type}</span>
+                                      {a.enabled === false && <Badge variant="secondary" className="h-4 text-xs px-1 opacity-70">Disabled</Badge>}
+                                      {hasAISuggestions && (
+                                        <Badge
+                                          variant="outline"
+                                          className={`h-5 text-xs cursor-pointer transition-colors ${isAISuggestionOpen ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted/60"}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenAISuggestionActionIds((prev) =>
+                                              prev.includes(a.id)
+                                                ? prev.filter((id) => id !== a.id)
+                                                : [...prev, a.id]
+                                            );
+                                          }}
                                         >
-                                          Ignore
+                                          💡 AI Suggestion
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-green-500 hover:text-green-600 hover:bg-green-500/10"
+                                        title="Run this step only"
+                                        disabled={replaying}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          replaySingleAction(a);
+                                        }}
+                                      >
+                                        <Play className="h-3 w-3" />
+                                      </Button>
+                                      <div className="flex bg-muted/50 rounded-md mr-1">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-30"
+                                          disabled={i === 0}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            moveAction(i, "up");
+                                          }}
+                                          title="Move step up"
+                                        >
+                                          <ChevronUp className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6 text-muted-foreground hover:text-primary disabled:opacity-30"
+                                          disabled={i === actions.length - 1}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            moveAction(i, "down");
+                                          }}
+                                          title="Move step down"
+                                        >
+                                          <ChevronDown className="h-3 w-3" />
                                         </Button>
                                       </div>
+
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                        onClick={() =>
+                                          setActions((prev) =>
+                                            prev.filter((x) => x.id !== a.id)
+                                          )
+                                        }
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
                                     </div>
-                                  ))}
-                                  {perActionSuggestions.length === 0 && (
-                                    <p className="text-[10px] text-muted-foreground">No AI tips for this step right now.</p>
-                                  )}
-                                </div>
-                              )}
+                                  </div>
 
-                              {!a.elementId && !a.elementText && !a.elementContentDesc && !a.xpath && a.type === "tap" && (
-                                <div className="mb-2 flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded w-fit">
-                                  <AlertCircle className="h-3 w-3" />
-                                  <span>Coordinate fallback mode</span>
-                                </div>
-                              )}
+                                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 break-words mb-1.5 line-clamp-2">
+                                    {a.description}
+                                  </p>
 
-                              <div className="flex flex-wrap gap-1.5 items-center">
-                                {a.coordinates && (
-                                  <Badge variant="outline" className="bg-muted/30 text-[10px] px-1.5 h-5 font-mono border-none">
-                                    <Settings className="h-2.5 w-2.5 mr-1 opacity-50" />
-                                    {a.coordinates.x}, {a.coordinates.y}
-                                  </Badge>
-                                )}
-                                {a.elementId && (
-                                  <Badge variant="outline" className="bg-blue-500/5 text-blue-600 dark:text-blue-400 text-[10px] px-1.5 h-5 font-mono border-blue-500/20">
-                                    ID: {a.elementId.split('/').pop()}
-                                  </Badge>
-                                )}
-	                                {a.elementText && (
-	                                  <Badge variant="outline" className="bg-green-500/5 text-green-600 dark:text-green-400 text-[10px] px-1.5 h-5 border-green-500/20">
-	                                    TXT: "{a.elementText.length > 20 ? a.elementText.substring(0, 20) + '...' : a.elementText}"
-	                                  </Badge>
-	                                )}
-	                                {typeof (a as any).reliabilityScore === "number" && (
-	                                  <Badge
-	                                    variant="outline"
-	                                    className={`text-[10px] px-1.5 h-5 border font-mono ${((a as any).reliabilityScore >= 80)
-	                                      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/25 dark:text-emerald-300"
-	                                      : ((a as any).reliabilityScore >= 50)
-	                                        ? "bg-amber-500/10 text-amber-700 border-amber-500/25 dark:text-amber-300"
-	                                        : "bg-red-500/10 text-red-700 border-red-500/25 dark:text-red-300"
-	                                      }`}
-	                                  >
-	                                    SCORE: {(a as any).reliabilityScore}
-	                                  </Badge>
-	                                )}
-                                  {isCriticalLocator && (
-                                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 border-red-500/40 text-red-700 dark:text-red-300 bg-red-500/10">
-                                      CRITICAL LOCATOR
-                                    </Badge>
-                                  )}
-	                                {a.value && a.type !== "input" && (
-	                                  <Badge variant="outline" className="bg-amber-500/5 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 h-5 border-amber-500/20 font-mono">
-	                                    VAL: {a.value}
-	                                  </Badge>
-	                                )}
-                                  {locatorSuggestionByActionId.has(a.id) && (
-                                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 border-primary/30 text-primary bg-primary/10">
-                                      AI suggests a more stable locator
-                                    </Badge>
-                                  )}
-	                              </div>
-
-	                              {(["tap", "input", "longPress", "assert"] as string[]).includes(a.type) && (
-	                                <div className="mt-3 p-2 bg-background/40 rounded-lg border border-border/50">
-	                                  {(() => {
-	                                    const lb = (a as any).locatorBundle || null;
-	                                    const best = lb?.primary || null;
-	                                    const bestXpath =
-	                                      (best?.strategy === "xpath" && best?.value) ? String(best.value) :
-	                                        ((a as any).smartXPath && String((a as any).smartXPath).startsWith("//") ? String((a as any).smartXPath) :
-	                                          (a.xpath && String(a.xpath).startsWith("//") ? String(a.xpath) : ""));
-	                                    const locatorLabel =
-	                                      (a.locatorStrategy && a.locatorStrategy !== "") ? `${a.locatorStrategy}: ${a.locator}` :
-	                                        (best ? `${best.strategy}: ${best.value}` : a.locator);
-
-	                                    if (editingLocatorStepId === a.id) {
-	                                      return (
-	                                        <div className="space-y-2">
-	                                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Locator (XPath)</div>
-	                                          <Input
-	                                            value={editingLocatorValue}
-	                                            onChange={(e: any) => setEditingLocatorValue(e.target.value)}
-	                                            className="h-8 text-xs bg-background font-mono"
-	                                            autoFocus
-	                                            placeholder='//*/[@resource-id="..."]'
-	                                            onKeyDown={(e: any) => {
-	                                              if (e.key === "Enter") {
-	                                                const v = editingLocatorValue.trim();
-	                                                if (!v.startsWith("//")) {
-	                                                  toast.error("Please enter a valid XPath starting with //");
-	                                                  return;
-	                                                }
-                                                setActions((prev) => prev.map((p) => p.id === a.id ? ensureActionLocatorBundle({ ...p, locator: v, locatorStrategy: "xpath" }) : p));
-                                                setSavedManualScript(null);
-                                                setEditingLocatorStepId(null);
-                                                toast.success("Locator updated");
-                                                highlightElementByLocator(v, "xpath");
-                                              }
-                                              if (e.key === "Escape") setEditingLocatorStepId(null);
-                                            }}
-                                          />
-	                                          <div className="flex items-center gap-2">
-	                                            <Button
-	                                              size="sm"
-	                                              variant="outline"
-	                                              className="h-8 px-2 text-xs"
-	                                              onClick={() => {
-	                                                const v = editingLocatorValue.trim();
-	                                                if (!v) {
-	                                                  toast.info("Enter a locator first");
-	                                                  return;
-	                                                }
-	                                                highlightElementByLocator(v, "xpath");
-	                                              }}
-	                                            >
-	                                              Highlight
-	                                            </Button>
-	                                            <Button
-	                                              size="sm"
-	                                              className="h-8 px-2 text-xs"
-	                                              onClick={() => {
-	                                                const v = editingLocatorValue.trim();
-	                                                if (!v.startsWith("//")) {
-	                                                  toast.error("Please enter a valid XPath starting with //");
-	                                                  return;
-	                                                }
-                                                setActions((prev) => prev.map((p) => p.id === a.id ? ensureActionLocatorBundle({ ...p, locator: v, locatorStrategy: "xpath" }) : p));
-                                                setSavedManualScript(null);
-                                                setEditingLocatorStepId(null);
-                                                toast.success("Locator updated");
-                                                highlightElementByLocator(v, "xpath");
-                                              }}
+                                  {hasAISuggestions && isAISuggestionOpen && (
+                                    <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-2 space-y-2">
+                                      {perActionSuggestions.map((suggestion) => (
+                                        <div key={suggestion.id} className="rounded-md border border-border/60 bg-background/70 p-2 space-y-1">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="space-y-1">
+                                              <p className="text-xs font-semibold text-foreground">{suggestion.title}</p>
+                                              <p className="text-xs text-muted-foreground">{suggestion.detail}</p>
+                                              <p className="text-xs text-muted-foreground/80">Why: {suggestion.reason}</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <Checkbox
+                                                id={`apply-${suggestion.id}`}
+                                                className="h-4 w-4"
+                                                onCheckedChange={(checked) => {
+                                                  if (checked === true) {
+                                                    applyAISuggestion(suggestion);
+                                                  }
+                                                }}
+                                              />
+                                              <label htmlFor={`apply-${suggestion.id}`} className="text-xs text-muted-foreground">
+                                                Apply to steps & script
+                                              </label>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-2 text-xs">
+                                            <Badge variant="outline" className="text-xs">Optional</Badge>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="h-6 text-xs px-2"
+                                              onClick={() => dismissAISuggestion(suggestion.id)}
                                             >
-                                              Save
+                                              Ignore
                                             </Button>
-	                                            <Button
-	                                              size="sm"
-	                                              variant="ghost"
-	                                              className="h-8 px-2 text-xs"
-	                                              onClick={() => setEditingLocatorStepId(null)}
-	                                            >
-	                                              Cancel
-	                                            </Button>
-	                                          </div>
-	                                        </div>
-	                                      );
-	                                    }
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {perActionSuggestions.length === 0 && (
+                                        <p className="text-xs text-muted-foreground">No AI tips for this step right now.</p>
+                                      )}
+                                    </div>
+                                  )}
 
-	                                    return (
-	                                      <div className="space-y-1.5">
-	                                        <div className="flex items-center justify-between gap-2">
-	                                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Locator</div>
-	                                          <div className="flex items-center gap-1">
-	                                            {!!bestXpath && (
-	                                              <Button
-	                                                size="sm"
-	                                                variant="ghost"
-	                                                className="h-6 text-[10px] px-1.5"
-	                                                onClick={() => copyText(bestXpath, "XPath copied")}
-	                                              >
-	                                                <Copy className="h-3 w-3 mr-1" />
-	                                                Copy XPath
-	                                              </Button>
-	                                            )}
-	                                            <Button
-	                                              size="sm"
-	                                              variant="ghost"
-	                                              className="h-6 text-[10px] px-1.5"
-	                                              onClick={() => {
-	                                                const seed = bestXpath || (a.locatorStrategy === "xpath" ? a.locator : "");
-	                                                setEditingLocatorStepId(a.id);
-	                                                setEditingLocatorValue(seed || "");
-	                                              }}
-	                                            >
-	                                              <Edit className="h-3 w-3 mr-1" />
-	                                              Edit
-	                                            </Button>
-	                                          </div>
-	                                        </div>
-	                                        <div className="text-[11px] font-mono text-muted-foreground break-all">
-	                                          {locatorLabel ? (
-                                              <button
-                                                type="button"
-                                                className="text-left underline-offset-2 hover:underline"
-                                                onClick={() => highlightElementByLocator(a.locator || bestXpath || "", a.locatorStrategy, a.coordinates || null)}
-                                                title="Highlight element for this locator"
-                                              >
-                                                {locatorLabel}
-                                              </button>
-                                            ) : <em>(no locator)</em>}
-	                                        </div>
-	                                        <div className="text-[10px] text-muted-foreground/80">
-	                                          Tip: copy XPath from the Inspector panel and paste here to make replay + script more reliable.
-	                                        </div>
-                                          {locatorSuggestionByActionId.has(a.id) && (
-                                            <div className="mt-2 rounded-md border border-primary/25 bg-primary/5 p-2">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <div className="text-[10px] font-semibold uppercase tracking-wider text-primary">
-                                                  AI Suggested
-                                                </div>
+                                  {!a.elementId && !a.elementText && !a.elementContentDesc && !a.xpath && a.type === "tap" && (
+                                    <div className="mb-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded w-fit">
+                                      <AlertCircle className="h-3 w-3" />
+                                      <span>Coordinate fallback mode</span>
+                                    </div>
+                                  )}
+
+                                  <div className="flex flex-wrap gap-1.5 items-center">
+                                    {a.coordinates && (
+                                      <Badge variant="outline" className="bg-muted/30 text-xs px-1.5 h-5 font-mono border-none">
+                                        <Settings className="h-2.5 w-2.5 mr-1 opacity-50" />
+                                        {a.coordinates.x}, {a.coordinates.y}
+                                      </Badge>
+                                    )}
+                                    {a.elementId && (
+                                      <Badge variant="outline" className="bg-blue-500/5 text-blue-600 dark:text-blue-400 text-xs px-1.5 h-5 font-mono border-blue-500/20">
+                                        ID: {a.elementId.split('/').pop()}
+                                      </Badge>
+                                    )}
+                                    {a.elementText && (
+                                      <Badge variant="outline" className="bg-green-500/5 text-green-600 dark:text-green-400 text-xs px-1.5 h-5 border-green-500/20">
+                                        TXT: "{a.elementText.length > 20 ? a.elementText.substring(0, 20) + '...' : a.elementText}"
+                                      </Badge>
+                                    )}
+                                    {typeof (a as any).reliabilityScore === "number" && (
+                                      <Badge
+                                        variant="outline"
+                                        className={`text-xs px-1.5 h-5 border font-mono ${((a as any).reliabilityScore >= 80)
+                                          ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/25 dark:text-emerald-300"
+                                          : ((a as any).reliabilityScore >= 50)
+                                            ? "bg-amber-500/10 text-amber-700 border-amber-500/25 dark:text-amber-300"
+                                            : "bg-red-500/10 text-red-700 border-red-500/25 dark:text-red-300"
+                                          }`}
+                                      >
+                                        SCORE: {(a as any).reliabilityScore}
+                                      </Badge>
+                                    )}
+                                    {isCriticalLocator && (
+                                      <Badge variant="outline" className="text-xs px-1.5 h-5 border-red-500/40 text-red-700 dark:text-red-300 bg-red-500/10">
+                                        CRITICAL LOCATOR
+                                      </Badge>
+                                    )}
+                                    {a.value && a.type !== "input" && (
+                                      <Badge variant="outline" className="bg-amber-500/5 text-amber-600 dark:text-amber-400 text-xs px-1.5 h-5 border-amber-500/20 font-mono">
+                                        VAL: {a.value}
+                                      </Badge>
+                                    )}
+                                    {locatorSuggestionByActionId.has(a.id) && (
+                                      <Badge variant="outline" className="text-xs px-1.5 h-5 border-primary/30 text-primary bg-primary/10">
+                                        AI suggests a more stable locator
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  {(["tap", "input", "longPress", "assert"] as string[]).includes(a.type) && (
+                                    <div className="mt-3 p-2 bg-background/40 rounded-lg border border-border/50">
+                                      {(() => {
+                                        const lb = (a as any).locatorBundle || null;
+                                        const best = lb?.primary || null;
+                                        const bestXpath =
+                                          (best?.strategy === "xpath" && best?.value) ? String(best.value) :
+                                            ((a as any).smartXPath && String((a as any).smartXPath).startsWith("//") ? String((a as any).smartXPath) :
+                                              (a.xpath && String(a.xpath).startsWith("//") ? String(a.xpath) : ""));
+                                        const locatorLabel =
+                                          (a.locatorStrategy && a.locatorStrategy !== "") ? `${a.locatorStrategy}: ${a.locator}` :
+                                            (best ? `${best.strategy}: ${best.value}` : a.locator);
+
+                                        if (editingLocatorStepId === a.id) {
+                                          return (
+                                            <div className="space-y-2">
+                                              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Locator (XPath)</div>
+                                              <Input
+                                                value={editingLocatorValue}
+                                                onChange={(e: any) => setEditingLocatorValue(e.target.value)}
+                                                className="h-8 text-xs bg-background font-mono"
+                                                autoFocus
+                                                placeholder='//*/[@resource-id="..."]'
+                                                onKeyDown={(e: any) => {
+                                                  if (e.key === "Enter") {
+                                                    const v = editingLocatorValue.trim();
+                                                    if (!v.startsWith("//")) {
+                                                      toast.error("Please enter a valid XPath starting with //");
+                                                      return;
+                                                    }
+                                                    setActions((prev) => prev.map((p) => p.id === a.id ? ensureActionLocatorBundle({ ...p, locator: v, locatorStrategy: "xpath" }) : p));
+                                                    setSavedManualScript(null);
+                                                    setEditingLocatorStepId(null);
+                                                    toast.success("Locator updated");
+                                                    highlightElementByLocator(v, "xpath");
+                                                  }
+                                                  if (e.key === "Escape") setEditingLocatorStepId(null);
+                                                }}
+                                              />
+                                              <div className="flex items-center gap-2">
                                                 <Button
                                                   size="sm"
-                                                  className="h-6 text-[10px] px-2"
+                                                  variant="outline"
+                                                  className="h-8 px-2 text-xs"
                                                   onClick={() => {
-                                                    const suggestion = locatorSuggestionByActionId.get(a.id);
-                                                    if (!suggestion) return;
-                                                    applyAISuggestion(suggestion);
+                                                    const v = editingLocatorValue.trim();
+                                                    if (!v) {
+                                                      toast.info("Enter a locator first");
+                                                      return;
+                                                    }
+                                                    highlightElementByLocator(v, "xpath");
                                                   }}
                                                 >
-                                                  Use Suggestion
+                                                  Highlight
+                                                </Button>
+                                                <Button
+                                                  size="sm"
+                                                  className="h-8 px-2 text-xs"
+                                                  onClick={() => {
+                                                    const v = editingLocatorValue.trim();
+                                                    if (!v.startsWith("//")) {
+                                                      toast.error("Please enter a valid XPath starting with //");
+                                                      return;
+                                                    }
+                                                    setActions((prev) => prev.map((p) => p.id === a.id ? ensureActionLocatorBundle({ ...p, locator: v, locatorStrategy: "xpath" }) : p));
+                                                    setSavedManualScript(null);
+                                                    setEditingLocatorStepId(null);
+                                                    toast.success("Locator updated");
+                                                    highlightElementByLocator(v, "xpath");
+                                                  }}
+                                                >
+                                                  Save
+                                                </Button>
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  className="h-8 px-2 text-xs"
+                                                  onClick={() => setEditingLocatorStepId(null)}
+                                                >
+                                                  Cancel
                                                 </Button>
                                               </div>
-                                              <p className="text-[10px] mt-1 text-muted-foreground">
-                                                {locatorSuggestionByActionId.get(a.id)?.detail}
-                                              </p>
                                             </div>
-                                          )}
-                                          {isCriticalLocator && (
-                                            <div className="mt-2 rounded-md border border-red-500/30 bg-red-500/10 p-2">
-                                              <div className="text-[10px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-300">
-                                                Critical Locator Resolution
-                                              </div>
-                                              <p className="text-[10px] mt-1 text-muted-foreground">
-                                                Score is 10 or below. Replace generic selectors with context-aware locator (id/a11y/text + ancestor/parent), then keep coordinates as last fallback.
-                                              </p>
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="mt-2 h-6 text-[10px] px-2 border-red-500/30 text-red-700 dark:text-red-300 hover:bg-red-500/10"
-                                                onClick={() => applyStableLocatorForAction(a, i)}
-                                              >
-                                                Apply Stable Locator
-                                              </Button>
-                                            </div>
-                                          )}
-	                                      </div>
-	                                    );
-	                                  })()}
-	                                </div>
-	                              )}
+                                          );
+                                        }
 
-	                              {a.type === "input" && (
-	                                <div className="mt-3 p-2 bg-muted/30 rounded-lg border border-dashed border-muted">
-                                  {editingStepId === a.id ? (
-                                    <div className="flex items-center gap-2">
-                                      <Input
-                                        value={editingValue}
-                                        onChange={(e: any) => setEditingValue(e.target.value)}
-                                        className="h-8 text-xs bg-background"
-                                        autoFocus
-                                        onKeyDown={(e: any) => {
-                                          if (e.key === "Enter") {
+                                        return (
+                                          <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Locator</div>
+                                              <div className="flex items-center gap-1">
+                                                {!!bestXpath && (
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-6 text-xs px-1.5"
+                                                    onClick={() => copyText(bestXpath, "XPath copied")}
+                                                  >
+                                                    <Copy className="h-3 w-3 mr-1" />
+                                                    Copy XPath
+                                                  </Button>
+                                                )}
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  className="h-6 text-xs px-1.5"
+                                                  onClick={() => {
+                                                    const seed = bestXpath || (a.locatorStrategy === "xpath" ? a.locator : "");
+                                                    setEditingLocatorStepId(a.id);
+                                                    setEditingLocatorValue(seed || "");
+                                                  }}
+                                                >
+                                                  <Edit className="h-3 w-3 mr-1" />
+                                                  Edit
+                                                </Button>
+                                              </div>
+                                            </div>
+                                            <div className="text-xs font-mono text-muted-foreground break-all">
+                                              {locatorLabel ? (
+                                                <button
+                                                  type="button"
+                                                  className="text-left underline-offset-2 hover:underline"
+                                                  onClick={() => highlightElementByLocator(a.locator || bestXpath || "", a.locatorStrategy, a.coordinates || null)}
+                                                  title="Highlight element for this locator"
+                                                >
+                                                  {locatorLabel}
+                                                </button>
+                                              ) : <em>(no locator)</em>}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground/80">
+                                              Tip: copy XPath from the Inspector panel and paste here to make replay + script more reliable.
+                                            </div>
+                                            {locatorSuggestionByActionId.has(a.id) && (
+                                              <div className="mt-2 rounded-md border border-primary/25 bg-primary/5 p-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <div className="text-xs font-semibold uppercase tracking-wider text-primary">
+                                                    AI Suggested
+                                                  </div>
+                                                  <Button
+                                                    size="sm"
+                                                    className="h-6 text-xs px-2"
+                                                    onClick={() => {
+                                                      const suggestion = locatorSuggestionByActionId.get(a.id);
+                                                      if (!suggestion) return;
+                                                      applyAISuggestion(suggestion);
+                                                    }}
+                                                  >
+                                                    Use Suggestion
+                                                  </Button>
+                                                </div>
+                                                <p className="text-xs mt-1 text-muted-foreground">
+                                                  {locatorSuggestionByActionId.get(a.id)?.detail}
+                                                </p>
+                                              </div>
+                                            )}
+                                            {isCriticalLocator && (
+                                              <div className="mt-2 rounded-md border border-red-500/30 bg-red-500/10 p-2">
+                                                <div className="text-xs font-semibold uppercase tracking-wider text-red-700 dark:text-red-300">
+                                                  Critical Locator Resolution
+                                                </div>
+                                                <p className="text-xs mt-1 text-muted-foreground">
+                                                  Score is 10 or below. Replace generic selectors with context-aware locator (id/a11y/text + ancestor/parent), then keep coordinates as last fallback.
+                                                </p>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="mt-2 h-6 text-xs px-2 border-red-500/30 text-red-700 dark:text-red-300 hover:bg-red-500/10"
+                                                  onClick={() => applyStableLocatorForAction(a, i)}
+                                                >
+                                                  Apply Stable Locator
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  )}
+
+                                  {a.type === "input" && (
+                                    <div className="mt-3 p-2 bg-muted/30 rounded-lg border border-dashed border-muted">
+                                      {editingStepId === a.id ? (
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            value={editingValue}
+                                            onChange={(e: any) => setEditingValue(e.target.value)}
+                                            className="h-8 text-xs bg-background"
+                                            autoFocus
+                                            onKeyDown={(e: any) => {
+                                              if (e.key === "Enter") {
+                                                setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, value: editingValue } : p));
+                                                setEditingStepId(null);
+                                                toast.success("Updated");
+                                              }
+                                              if (e.key === "Escape") setEditingStepId(null);
+                                            }}
+                                          />
+                                          <Button size="sm" className="h-8 px-2 text-xs" onClick={() => {
                                             setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, value: editingValue } : p));
                                             setEditingStepId(null);
                                             toast.success("Updated");
-                                          }
-                                          if (e.key === "Escape") setEditingStepId(null);
-                                        }}
-                                      />
-                                      <Button size="sm" className="h-8 px-2 text-xs" onClick={() => {
-                                        setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, value: editingValue } : p));
-                                        setEditingStepId(null);
-                                        toast.success("Updated");
-                                      }}>Save</Button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="text-xs font-mono text-muted-foreground truncate">
-                                        {a.value ? <span>Value: <span className="text-zinc-900 dark:text-zinc-100 font-bold">"{a.value}"</span></span> : <em>(empty)</em>}
-                                      </div>
-                                      <div className="flex gap-1">
-                                        <Button size="sm" variant="ghost" className="h-6 text-[10px] px-1.5" onClick={() => { setEditingStepId(a.id); setEditingValue(a.value || ""); }}>
-                                          Edit
-                                        </Button>
-                                        <Button size="sm" variant="ghost" className="h-6 text-[10px] px-1.5" disabled={!a.value || previewPendingId === a.id} onClick={() => previewInput(a)}>
-                                          Preview
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className={`h-6 text-[10px] px-1.5 ${a.enabled === false ? 'text-blue-500' : 'text-muted-foreground'}`}
-                                          onClick={() =>
-                                            setActions(prev =>
-                                              prev.map(p =>
-                                                p.id === a.id ? { ...p, enabled: !p.enabled } : p
-                                              )
-                                            )
-                                          }
-                                        >
-                                          {a.enabled === false ? "Enable" : "Disable"}
-                                        </Button>
-                                      </div>
+                                          }}>Save</Button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-xs font-mono text-muted-foreground truncate">
+                                            {a.value ? <span>Value: <span className="text-zinc-900 dark:text-zinc-100 font-bold">"{a.value}"</span></span> : <em>(empty)</em>}
+                                          </div>
+                                          <div className="flex gap-1">
+                                            <Button size="sm" variant="ghost" className="h-6 text-xs px-1.5" onClick={() => { setEditingStepId(a.id); setEditingValue(a.value || ""); }}>
+                                              Edit
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="h-6 text-xs px-1.5" disabled={!a.value || previewPendingId === a.id} onClick={() => previewInput(a)}>
+                                              Preview
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className={`h-6 text-xs px-1.5 ${a.enabled === false ? 'text-blue-500' : 'text-muted-foreground'}`}
+                                              onClick={() =>
+                                                setActions(prev =>
+                                                  prev.map(p =>
+                                                    p.id === a.id ? { ...p, enabled: !p.enabled } : p
+                                                  )
+                                                )
+                                              }
+                                            >
+                                              {a.enabled === false ? "Enable" : "Disable"}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
-                                </div>
-                              )}
-                              {a.type === "wait" && (
-                                <div className="mt-3 p-2 bg-amber-500/5 rounded-lg border border-dashed border-amber-500/20">
-                                  {editingStepId === a.id ? (
-                                    <div className="flex items-center gap-2">
-                                      <Input
-                                        type="number"
-                                        value={editingValue}
-                                        onChange={(e: any) => setEditingValue(e.target.value)}
-                                        className="h-8 text-xs bg-background"
-                                        placeholder="Duration in milliseconds"
-                                        autoFocus
-                                        onKeyDown={(e: any) => {
-                                          if (e.key === "Enter") {
+                                  {a.type === "wait" && (
+                                    <div className="mt-3 p-2 bg-amber-500/5 rounded-lg border border-dashed border-amber-500/20">
+                                      {editingStepId === a.id ? (
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            type="number"
+                                            value={editingValue}
+                                            onChange={(e: any) => setEditingValue(e.target.value)}
+                                            className="h-8 text-xs bg-background"
+                                            placeholder="Duration in milliseconds"
+                                            autoFocus
+                                            onKeyDown={(e: any) => {
+                                              if (e.key === "Enter") {
+                                                const duration = parseInt(editingValue, 10);
+                                                if (isNaN(duration) || duration < 0) {
+                                                  toast.error("Please enter a valid wait duration (ms)");
+                                                  return;
+                                                }
+                                                setActions((prev) => prev.map((p) => p.id === a.id ? {
+                                                  ...p,
+                                                  value: editingValue,
+                                                  description: `Wait for ${duration}ms`
+                                                } : p));
+                                                setEditingStepId(null);
+                                                toast.success("Wait duration updated");
+                                              }
+                                              if (e.key === "Escape") setEditingStepId(null);
+                                            }}
+                                          />
+                                          <Button size="sm" className="h-8 px-2 text-xs" onClick={() => {
                                             const duration = parseInt(editingValue, 10);
                                             if (isNaN(duration) || duration < 0) {
                                               toast.error("Please enter a valid wait duration (ms)");
                                               return;
                                             }
+                                            // FIX: Add step directly to local state instead of relying on fetch
+                                            const waitStep: RecordedAction = {
+                                              id: crypto.randomUUID(),
+                                              type: "wait",
+                                              description: "Wait",
+                                              value: "3000",
+                                              locator: "system",
+                                              timestamp: Date.now(),
+                                              enabled: true
+                                            };
                                             setActions((prev) => prev.map((p) => p.id === a.id ? {
                                               ...p,
                                               value: editingValue,
@@ -5487,237 +5477,199 @@ ${enabledActions
                                             } : p));
                                             setEditingStepId(null);
                                             toast.success("Wait duration updated");
-                                          }
-                                          if (e.key === "Escape") setEditingStepId(null);
-                                        }}
-                                      />
-                                      <Button size="sm" className="h-8 px-2 text-xs" onClick={() => {
-                                        const duration = parseInt(editingValue, 10);
-                                        if (isNaN(duration) || duration < 0) {
-                                          toast.error("Please enter a valid wait duration (ms)");
-                                          return;
-                                        }
-                                        // FIX: Add step directly to local state instead of relying on fetch
-                                        const waitStep: RecordedAction = {
-                                          id: crypto.randomUUID(),
-                                          type: "wait",
-                                          description: "Wait",
-                                          value: "3000",
-                                          locator: "system",
-                                          timestamp: Date.now(),
-                                          enabled: true
-                                        };
-                                        setActions((prev) => prev.map((p) => p.id === a.id ? {
-                                          ...p,
-                                          value: editingValue,
-                                          description: `Wait for ${duration}ms`
-                                        } : p));
-                                        setEditingStepId(null);
-                                        toast.success("Wait duration updated");
-                                      }}>Save</Button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="text-xs font-mono text-muted-foreground truncate">
-                                        {a.value ? (
-                                          <span>
-                                            Duration: <span className="text-amber-700 dark:text-amber-400 font-bold">{a.value}ms</span>
-                                            {' '}(<span className="text-xs opacity-70">{(parseInt(a.value, 10) / 1000).toFixed(1)}s</span>)
-                                          </span>
-                                        ) : (
-                                          <em>(no duration set)</em>
-                                        )}
-                                      </div>
-                                      <div className="flex gap-1">
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-6 text-[10px] px-1.5"
-                                          onClick={() => {
-                                            setEditingStepId(a.id);
-                                            setEditingValue(a.value || "2000");
-                                          }}
-                                        >
-                                          Edit Duration
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className={`h-6 text-[10px] px-1.5 ${a.enabled === false ? 'text-blue-500' : 'text-muted-foreground'}`}
-                                          onClick={() =>
-                                            setActions(prev =>
-                                              prev.map(p =>
-                                                p.id === a.id ? { ...p, enabled: !p.enabled } : p
-                                              )
-                                            )
-                                          }
-                                        >
-                                          {a.enabled === false ? "Enable" : "Disable"}
-                                        </Button>
-                                      </div>
+                                          }}>Save</Button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-xs font-mono text-muted-foreground truncate">
+                                            {a.value ? (
+                                              <span>
+                                                Duration: <span className="text-amber-700 dark:text-amber-400 font-bold">{a.value}ms</span>
+                                                {' '}(<span className="text-xs opacity-70">{(parseInt(a.value, 10) / 1000).toFixed(1)}s</span>)
+                                              </span>
+                                            ) : (
+                                              <em>(no duration set)</em>
+                                            )}
+                                          </div>
+                                          <div className="flex gap-1">
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="h-6 text-xs px-1.5"
+                                              onClick={() => {
+                                                setEditingStepId(a.id);
+                                                setEditingValue(a.value || "2000");
+                                              }}
+                                            >
+                                              Edit Duration
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className={`h-6 text-xs px-1.5 ${a.enabled === false ? 'text-blue-500' : 'text-muted-foreground'}`}
+                                              onClick={() =>
+                                                setActions(prev =>
+                                                  prev.map(p =>
+                                                    p.id === a.id ? { ...p, enabled: !p.enabled } : p
+                                                  )
+                                                )
+                                              }
+                                            >
+                                              {a.enabled === false ? "Enable" : "Disable"}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-                </Card>
-
-                <Card className="bg-card/40 border-border/60 shadow-sm h-fit">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Wand2 className="h-4 w-4 text-primary" />
-                        AI Suggestions
-                      </CardTitle>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setShowAISuggestions((prev) => !prev)}
-                      >
-                        {showAISuggestions ? "Hide" : "Show"}
-                      </Button>
-                    </div>
-                    <CardDescription>
-                      Optional and non-destructive. Suggestions never auto-apply.
-                    </CardDescription>
-                  </CardHeader>
-                  {showAISuggestions && (
-                    <CardContent className="space-y-3">
-                      {lowScoreLocatorInsights.length > 0 && (
-                        <div className="rounded-lg border border-red-500/25 bg-red-500/10 p-2 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                              <p className="text-xs font-semibold text-red-700 dark:text-red-300">
-                                Critical Locator Scores (&lt;=10)
-                              </p>
-                            <Badge variant="outline" className="text-[10px] border-red-500/30 text-red-700 dark:text-red-300">
-                              {lowScoreLocatorInsights.length} step(s)
-                            </Badge>
-                          </div>
-                          {lowScoreLocatorInsights.slice(0, 3).map((insight) => (
-                            <div key={`${insight.stepIndex}-${insight.score}`} className="rounded-md border border-red-500/25 bg-background/70 p-2">
-                              <p className="text-[11px] font-semibold">{insight.title}</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">{insight.issue}</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">Fix: {insight.resolution}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {lastAIChange && (
-                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
-                          <p className="text-xs font-medium">Last AI change: {lastAIChange.title}</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-2 h-7 text-xs"
-                            onClick={undoLastAIChange}
-                          >
-                            Undo
-                          </Button>
-                        </div>
-                      )}
-
-                      {aiSuggestions.length === 0 ? (
-                        <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                          No active suggestions right now. Continue recording or replay to get insights.
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {aiSuggestions.slice(0, 8).map((suggestion) => (
-                            <div key={suggestion.id} className="rounded-lg border p-2 bg-background/50">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <Badge variant="outline" className="text-[10px]">AI Suggested</Badge>
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[10px] capitalize ${suggestion.severity === "high"
-                                    ? "border-red-500/40 text-red-600"
-                                    : suggestion.severity === "medium"
-                                      ? "border-amber-500/40 text-amber-600"
-                                      : "border-slate-400/50 text-slate-600"
-                                    }`}
-                                >
-                                  {suggestion.severity}
-                                </Badge>
                               </div>
-                              <p className="text-xs font-semibold">{suggestion.title}</p>
-                              <p className="text-[11px] text-muted-foreground mt-1">{suggestion.detail}</p>
-                              <p className="text-[10px] mt-1 text-muted-foreground">
-                                Why: {suggestion.reason} | Confidence: {Math.round(suggestion.confidence * 100)}%
-                              </p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => applyAISuggestion(suggestion)}
-                                >
-                                  Apply
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => dismissAISuggestion(suggestion.id)}
-                                >
-                                  Ignore
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
-                      )}
-
-                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold">Test Reuse & Organization</p>
-                          <Badge variant="outline" className="text-[10px]">AI Suggested</Badge>
-                        </div>
-                        <p className="text-[11px]">
-                          Suggested name: <span className="font-semibold">{scenarioOrganizationSuggestion.suggestedName}</span>
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {scenarioOrganizationSuggestion.tags.map((tag) => (
-                            <Badge key={tag} variant="secondary" className="text-[10px]">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {scenarioOrganizationSuggestion.suiteRecommendations.join(" | ")}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => {
-                              setSaveScenarioName(scenarioOrganizationSuggestion.suggestedName);
-                              setIsSaveDialogOpen(true);
-                            }}
-                          >
-                            Use Name
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => copyText(scenarioOrganizationSuggestion.tags.join(", "), "Suggested tags copied")}
-                          >
-                            Copy Tags
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  )}
+                      </ScrollArea>
+                    )}
+                  </CardContent>
                 </Card>
               </div>
+              <Dialog open={showAISuggestions} onOpenChange={setShowAISuggestions}>
+                <DialogContent className="max-w-xl">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Wand2 className="h-4 w-4 text-primary" />
+                      AI Assist
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="text-xs text-muted-foreground">
+                    Optional and non-destructive. Suggestions never auto-apply.
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {lowScoreLocatorInsights.length > 0 && (
+                      <div className="rounded-lg border border-red-500/25 bg-red-500/10 p-2 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+                            Critical Locator Scores (&lt;=10)
+                          </p>
+                          <Badge variant="outline" className="text-xs border-red-500/30 text-red-700 dark:text-red-300">
+                            {lowScoreLocatorInsights.length} step(s)
+                          </Badge>
+                        </div>
+                        {lowScoreLocatorInsights.slice(0, 3).map((insight) => (
+                          <div key={`${insight.stepIndex}-${insight.score}`} className="rounded-md border border-red-500/25 bg-background/70 p-2">
+                            <p className="text-xs font-semibold">{insight.title}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{insight.issue}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Fix: {insight.resolution}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {lastAIChange && (
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
+                        <p className="text-xs font-medium">Last AI change: {lastAIChange.title}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 h-7 text-xs"
+                          onClick={undoLastAIChange}
+                        >
+                          Undo
+                        </Button>
+                      </div>
+                    )}
+
+                    {aiSuggestions.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                        {isAIScanning ? "AI is analyzing your steps…" : "No active suggestions right now. Continue recording or replay to get insights."}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {aiSuggestions.slice(0, 8).map((suggestion) => (
+                          <div key={suggestion.id} className="rounded-lg border p-2 bg-background/50">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Badge variant="outline" className="text-xs">AI Suggested</Badge>
+                              <Badge
+                                variant="outline"
+                                className={`text-xs capitalize ${suggestion.severity === "high"
+                                  ? "border-red-500/40 text-red-600"
+                                  : suggestion.severity === "medium"
+                                    ? "border-amber-500/40 text-amber-600"
+                                    : "border-slate-400/50 text-slate-600"
+                                  }`}
+                              >
+                                {suggestion.severity}
+                              </Badge>
+                            </div>
+                            <p className="text-xs font-semibold">{suggestion.title}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{suggestion.detail}</p>
+                            <p className="text-xs mt-1 text-muted-foreground">
+                              Why: {suggestion.reason} | Confidence: {Math.round(suggestion.confidence * 100)}%
+                            </p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => applyAISuggestion(suggestion)}
+                              >
+                                Apply
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => dismissAISuggestion(suggestion.id)}
+                              >
+                                Ignore
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-2 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold">Test Reuse & Organization</p>
+                        <Badge variant="outline" className="text-xs">AI Suggested</Badge>
+                      </div>
+                      <p className="text-xs">
+                        Suggested name: <span className="font-semibold">{scenarioOrganizationSuggestion.suggestedName}</span>
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {scenarioOrganizationSuggestion.tags.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {scenarioOrganizationSuggestion.suiteRecommendations.join(" | ")}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setSaveScenarioName(scenarioOrganizationSuggestion.suggestedName);
+                            setIsSaveDialogOpen(true);
+                          }}
+                        >
+                          Use Name
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => copyText(scenarioOrganizationSuggestion.tags.join(", "), "Suggested tags copied")}
+                        >
+                          Copy Tags
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             <TabsContent value="script" className="mt-0 outline-none">
@@ -5762,15 +5714,15 @@ ${enabledActions
                   {generatedScript && showScriptExplanation && (
                     <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
                       <div className="flex items-center gap-2 text-xs font-semibold">
-                        <Badge variant="outline" className="text-[10px]">AI Suggested</Badge>
+                        <Badge variant="outline" className="text-xs">AI Suggested</Badge>
                         Script Understanding
                       </div>
                       <p className="text-xs">{scriptExplanation.summary}</p>
                       {scriptExplanation.riskySteps.length > 0 && (
                         <div className="space-y-1">
-                          <p className="text-[11px] font-semibold text-amber-600">Risky Steps</p>
+                          <p className="text-xs font-semibold text-amber-600">Risky Steps</p>
                           {scriptExplanation.riskySteps.slice(0, 4).map((risk) => (
-                            <p key={`${risk.stepIndex}-${risk.reason}`} className="text-[11px] text-muted-foreground">
+                            <p key={`${risk.stepIndex}-${risk.reason}`} className="text-xs text-muted-foreground">
                               Step {risk.stepIndex + 1}: {risk.reason}
                             </p>
                           ))}
@@ -5778,9 +5730,9 @@ ${enabledActions
                       )}
                       {scriptExplanation.waitRecommendations.length > 0 && (
                         <div className="space-y-1">
-                          <p className="text-[11px] font-semibold text-primary">Wait & Flakiness Guidance</p>
+                          <p className="text-xs font-semibold text-primary">Wait & Flakiness Guidance</p>
                           {scriptExplanation.waitRecommendations.map((advice) => (
-                            <p key={advice} className="text-[11px] text-muted-foreground">{advice}</p>
+                            <p key={advice} className="text-xs text-muted-foreground">{advice}</p>
                           ))}
                         </div>
                       )}
@@ -5794,7 +5746,7 @@ ${enabledActions
                           <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
                           <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
                         </div>
-                        <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">Automation IDE</span>
+                        <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">Automation IDE</span>
                       </div>
                       {isEditingScript ? (
                         <textarea
@@ -5823,14 +5775,14 @@ ${enabledActions
 
             <TabsContent value="history" className="mt-0 outline-none">
               <Card className="bg-gradient-to-br from-card/90 via-card/75 to-card/90 backdrop-blur-md shadow-card hover:shadow-elegant rounded-xl overflow-hidden transition-all duration-300 border border-border/70">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-muted/10 pb-4 mb-4">
+                <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-primary/10 rounded-xl border border-primary/20 shadow-inner">
                       <ListChecks className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">Execution Log</CardTitle>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Instant Feedback</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Instant Feedback</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -5846,23 +5798,23 @@ ${enabledActions
                       </Badge>
                     )}
 
-	                    {replaying && (
-	                      <div className="flex items-center gap-2">
-	                        <Badge variant="secondary" className="animate-pulse bg-primary/10 text-primary border-primary/20">
-	                          <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
-	                          Running Replay
-	                        </Badge>
-	                        <Button
-	                          variant="destructive"
-	                          size="sm"
-	                          className="h-8 text-xs font-bold shadow-md hover:shadow-lg transition-all"
-	                          onClick={stopReplay}
-	                        >
-	                          <Square className="h-3.5 w-3.5 mr-1.5" />
-	                          Stop
-	                        </Button>
-	                      </div>
-	                    )}
+                    {replaying && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="animate-pulse bg-primary/10 text-primary border-primary/20">
+                          <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
+                          Running Replay
+                        </Badge>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-8 text-xs font-bold shadow-md hover:shadow-lg transition-all"
+                          onClick={stopReplay}
+                        >
+                          <Square className="h-3.5 w-3.5 mr-1.5" />
+                          Stop
+                        </Button>
+                      </div>
+                    )}
                     {!replaying && executionLogs.length > 0 && (
                       <div className="flex items-center gap-2">
                         {lastReplayStatus === "FAIL" && (
@@ -5949,19 +5901,18 @@ ${enabledActions
 
                       <ScrollArea className="h-[480px] pr-4">
                         <div className="space-y-3">
-	                          {executionLogs.map((log, i) => (
+                          {executionLogs.map((log, i) => (
                             <div
                               key={`${log.id}-${i}`}
                               data-step-index={i}
-                              className={`group relative overflow-hidden p-4 border rounded-xl transition-all duration-300 shadow-sm ${
-                                log.status === "error"
+                              className={`group relative overflow-hidden p-4 border rounded-xl transition-all duration-300 shadow-sm ${log.status === "error"
                                   ? "bg-gradient-to-r from-red-500/12 via-red-500/6 to-card border-red-500/30 shadow-lg"
                                   : log.status === "running"
                                     ? "bg-gradient-to-r from-primary/12 via-primary/6 to-card border-primary/35 ring-1 ring-primary/12 shadow-lg translate-x-[1px]"
-                                  : log.status === "success"
+                                    : log.status === "success"
                                       ? "bg-gradient-to-r from-emerald-500/12 via-emerald-500/6 to-card border-emerald-500/25 shadow-md"
                                       : "bg-card/70 border-border/60 hover:border-border opacity-90 hover:opacity-100"
-                              }`}
+                                }`}
                             >
                               {log.status === "running" && (
                                 <div className="absolute top-0 left-0 w-1 h-full bg-primary animate-pulse" />
@@ -5976,9 +5927,9 @@ ${enabledActions
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-0.5">
-                                      <span className="text-[10px] font-mono font-bold text-muted-foreground/50">STEP {i + 1}</span>
+                                      <span className="text-xs font-mono font-bold text-muted-foreground/50">STEP {i + 1}</span>
                                       {log.duration && (
-                                        <Badge variant="outline" className="text-[9px] h-4 px-1 font-mono border-muted/30">
+                                        <Badge variant="outline" className="text-xs h-4 px-1 font-mono border-muted/30">
                                           {log.duration}ms
                                         </Badge>
                                       )}
@@ -5990,92 +5941,92 @@ ${enabledActions
                                 </div>
                               </div>
 
-	                              {log.status === "error" && log.error && (
-	                                <div className="mt-3 p-3 bg-destructive/10 rounded-lg text-xs text-destructive border border-destructive/20 animate-in fade-in slide-in-from-top-2 duration-300">
+                              {log.status === "error" && log.error && (
+                                <div className="mt-3 p-3 bg-destructive/10 rounded-lg text-xs text-destructive border border-destructive/20 animate-in fade-in slide-in-from-top-2 duration-300">
                                   <div className="flex items-center gap-2 mb-1">
                                     <AlertCircle className="h-3.5 w-3.5" />
-                                    <span className="font-bold uppercase tracking-tight text-[10px]">Failure Reason</span>
+                                    <span className="font-bold uppercase tracking-tight text-xs">Failure Reason</span>
                                   </div>
-	                                  <p className="leading-relaxed font-medium opacity-90">{log.error}</p>
-	                                  <div className="mt-3 flex flex-wrap gap-2">
-	                                    <Button
-	                                      variant="outline"
-	                                      size="sm"
-	                                      className="h-7 text-xs"
-	                                      disabled={replaying}
-	                                      onClick={() => {
-	                                        const enabledActions = actions.filter(a => a.enabled !== false);
-	                                        const a = enabledActions[i];
-	                                        if (!a) return toast.error("Step not found");
-	                                        replaySingleAction(a);
-	                                      }}
-	                                    >
-	                                      <Play className="h-3.5 w-3.5 mr-1.5" />
-	                                      Re-run Step
-	                                    </Button>
-	                                    <Button
-	                                      variant="secondary"
-	                                      size="sm"
-	                                      className="h-7 text-xs"
-	                                      disabled={replaying}
-	                                      onClick={() => replayActions(i)}
-	                                    >
-	                                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-	                                      Continue From Here
-	                                    </Button>
-	                                    <Button
-	                                      variant="outline"
-	                                      size="sm"
-	                                      className="h-7 text-xs"
-	                                      onClick={() => {
-	                                        setActiveTab("actions");
-	                                        setTimeout(() => {
-	                                          const element = document.querySelector(`[data-action-index="${i}"]`);
-	                                          element?.scrollIntoView({ behavior: "smooth", block: "center" });
-	                                        }, 50);
-	                                      }}
-	                                    >
-	                                      <Edit className="h-3.5 w-3.5 mr-1.5" />
-	                                      Edit Step
-	                                    </Button>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 text-xs"
-                                        onClick={() =>
-                                          setExpandedFailureInsightIndex((prev) => (prev === i ? null : i))
-                                        }
-                                      >
-                                        <HelpCircle className="h-3.5 w-3.5 mr-1.5" />
-                                        Why did this fail?
-                                      </Button>
-	                                  </div>
-                                    {expandedFailureInsightIndex === i && (
-                                      <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 p-2 text-foreground">
-                                        {(() => {
-                                          const analysis = explainReplayFailure(
-                                            log.error || "",
-                                            enabledReplayActions[i] || null
-                                          );
-                                          return (
-                                            <div className="space-y-1">
-                                              <div className="flex items-center gap-2">
-                                                <Badge variant="outline" className="text-[10px]">AI Suggested</Badge>
-                                                <span className="text-xs font-semibold">{analysis.title}</span>
-                                              </div>
-                                              <p className="text-xs text-muted-foreground">{analysis.explanation}</p>
-                                              {analysis.suggestedFixes.slice(0, 3).map((fix) => (
-                                                <p key={fix} className="text-[11px] text-muted-foreground">
-                                                  - {fix}
-                                                </p>
-                                              ))}
+                                  <p className="leading-relaxed font-medium opacity-90">{log.error}</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      disabled={replaying}
+                                      onClick={() => {
+                                        const enabledActions = actions.filter(a => a.enabled !== false);
+                                        const a = enabledActions[i];
+                                        if (!a) return toast.error("Step not found");
+                                        replaySingleAction(a);
+                                      }}
+                                    >
+                                      <Play className="h-3.5 w-3.5 mr-1.5" />
+                                      Re-run Step
+                                    </Button>
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      disabled={replaying}
+                                      onClick={() => replayActions(i)}
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                                      Continue From Here
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() => {
+                                        setActiveTab("actions");
+                                        setTimeout(() => {
+                                          const element = document.querySelector(`[data-action-index="${i}"]`);
+                                          element?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                        }, 50);
+                                      }}
+                                    >
+                                      <Edit className="h-3.5 w-3.5 mr-1.5" />
+                                      Edit Step
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() =>
+                                        setExpandedFailureInsightIndex((prev) => (prev === i ? null : i))
+                                      }
+                                    >
+                                      <HelpCircle className="h-3.5 w-3.5 mr-1.5" />
+                                      Why did this fail?
+                                    </Button>
+                                  </div>
+                                  {expandedFailureInsightIndex === i && (
+                                    <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 p-2 text-foreground">
+                                      {(() => {
+                                        const analysis = explainReplayFailure(
+                                          log.error || "",
+                                          enabledReplayActions[i] || null
+                                        );
+                                        return (
+                                          <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                              <Badge variant="outline" className="text-xs">AI Suggested</Badge>
+                                              <span className="text-xs font-semibold">{analysis.title}</span>
                                             </div>
-                                          );
-                                        })()}
-                                      </div>
-                                    )}
-	                                </div>
-	                              )}
+                                            <p className="text-xs text-muted-foreground">{analysis.explanation}</p>
+                                            {analysis.suggestedFixes.slice(0, 3).map((fix) => (
+                                              <p key={fix} className="text-xs text-muted-foreground">
+                                                - {fix}
+                                              </p>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -6087,7 +6038,7 @@ ${enabledActions
             </TabsContent>
           </Tabs>
 
-          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+          {/* <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
             {showAskAI && (
               <Card className="w-[340px] max-w-[92vw] border-primary/20 shadow-xl bg-background/95 backdrop-blur-sm">
                 <CardHeader className="pb-2">
@@ -6111,13 +6062,13 @@ ${enabledActions
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="rounded-md border border-border/60 bg-muted/10 p-2">
-                    <p className="text-[11px] font-semibold mb-1">Phase 3: Context Coach</p>
+                    <p className="text-xs font-semibold mb-1">Phase 3: Context Coach</p>
                     {coachHints.length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground">No blockers detected right now.</p>
+                      <p className="text-xs text-muted-foreground">No blockers detected right now.</p>
                     ) : (
                       <div className="space-y-1">
                         {coachHints.slice(0, 3).map((hint) => (
-                          <p key={hint.id} className="text-[11px] text-muted-foreground">
+                          <p key={hint.id} className="text-xs text-muted-foreground">
                             - {hint.title}: {hint.detail}
                           </p>
                         ))}
@@ -6126,7 +6077,7 @@ ${enabledActions
                     {!hasAssertionStep && actions.length > 0 && (
                       <Button
                         size="sm"
-                        className="mt-2 h-7 text-[10px]"
+                        className="mt-2 h-7 text-xs"
                         onClick={addOutcomeAssertionStep}
                       >
                         Add Outcome Assertion
@@ -6144,7 +6095,7 @@ ${enabledActions
                         key={q}
                         variant="outline"
                         size="sm"
-                        className="h-7 text-[10px]"
+                        className="h-7 text-xs"
                         onClick={() => askAI(q)}
                       >
                         {q}
@@ -6172,14 +6123,14 @@ ${enabledActions
                   {askAIAnswer && (
                     <div className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs whitespace-pre-line space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-xs">
                           AI Guidance
                         </Badge>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 text-[10px] px-2"
+                            className="h-6 text-xs px-2"
                             disabled={askAIFeedbackSubmitted}
                             onClick={() => void submitAIFeedback("helpful")}
                           >
@@ -6188,7 +6139,7 @@ ${enabledActions
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 text-[10px] px-2"
+                            className="h-6 text-xs px-2"
                             disabled={askAIFeedbackSubmitted}
                             onClick={() => void submitAIFeedback("not_helpful")}
                           >
@@ -6210,7 +6161,7 @@ ${enabledActions
               <HelpCircle className="h-4 w-4 mr-1.5" />
               Ask AI
             </Button>
-          </div>
+          </div> */}
         </div>
         <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
           <DialogContent>
@@ -6231,17 +6182,17 @@ ${enabledActions
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold">AI Suggested</span>
-                    <Badge variant="outline" className="text-[10px]">Optional</Badge>
+                    <Badge variant="outline" className="text-xs">Optional</Badge>
                   </div>
                   <div className="text-xs">
                     Name hint: <span className="font-semibold">{scenarioOrganizationSuggestion.suggestedName}</span>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {scenarioOrganizationSuggestion.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-[10px]">{tag}</Badge>
+                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
                     ))}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     Suite hint: {scenarioOrganizationSuggestion.suiteRecommendations.join(" | ")}
                   </div>
                   <div className="flex gap-2">

@@ -32,15 +32,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Icons
 import {
+  Check,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -50,14 +45,9 @@ import {
   Terminal,
   Power,
   AlertCircle,
-  HelpCircle,
-  BookOpen,
   ClipboardCheck,
-  Package,
-  ChevronDown,
-  Download,
   Info,
-  Copy,
+  ChevronDown,
 } from "lucide-react";
 
 // Utils
@@ -126,7 +116,7 @@ export default function MobileSetupWizard({
   // System status items configuration
   const items = [
     { key: "backend", label: "Backend Server", icon: Server },
-    { key: "agent", label: "Local Agent", icon: Server },
+    { key: "agent", label: "Agent", icon: Server },
     { key: "appium", label: "Appium Server", icon: Server },
     { key: "emulator", label: "Android Emulator", icon: Terminal },
     { key: "physicalDevice", label: "Physical Device", icon: Smartphone },
@@ -147,8 +137,7 @@ export default function MobileSetupWizard({
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [devicesFetched, setDevicesFetched] = useState(false);
   const [startingServices, setStartingServices] = useState(false);
-  const [prerequisitesOpen, setPrerequisitesOpen] = useState(false);
-  const [installationGuideOpen, setInstallationGuideOpen] = useState(false);
+  const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1);
 
   const selectedDeviceRef = useRef<SelectedDevice | null>(selectedDevice);
   const selectedDeviceMissingPollsRef = useRef(0);
@@ -156,6 +145,29 @@ export default function MobileSetupWizard({
   useEffect(() => {
     selectedDeviceRef.current = selectedDevice;
   }, [selectedDevice]);
+
+  const step1Ready =
+    checks.backend.status === "success" && checks.agent.status === "success";
+  const step2Enabled =
+    step1Ready ||
+    startingServices ||
+    items.some((i) => checks[i.key].status !== "pending");
+  const systemReadyKeys = ["backend", "agent", "appium"] as const;
+  const step2Ready = systemReadyKeys.every(
+    (key) => checks[key].status === "success"
+  );
+  const step3Enabled = step2Ready || (step1Ready && setupState.appium);
+  const progressPct = activeStep === 1 ? 0 : activeStep === 2 ? 50 : 100;
+
+  useEffect(() => {
+    if (activeStep === 2 && !step2Enabled) {
+      setActiveStep(1);
+      return;
+    }
+    if (activeStep === 3 && !step3Enabled) {
+      setActiveStep(step1Ready ? 2 : 1);
+    }
+  }, [activeStep, step1Ready, step2Ready, step3Enabled]);
 
   const update = (key: string, value: CheckResult) =>
     setChecks((prev) => ({ ...prev, [key]: value }));
@@ -690,6 +702,11 @@ export default function MobileSetupWizard({
       setStartingServices(false);
     }
   };
+
+  const handleStartEngine = () => {
+    startAllServices();
+    setActiveStep(2);
+  };
   /**
    * Purpose:
    * Retrieves an aggregated status report for all mobile automation components
@@ -868,523 +885,398 @@ export default function MobileSetupWizard({
 
   return (
     <div className="w-full space-y-4 pb-10" id="setup-wizard-container">
-      {/* Premium Helper Bar (Consolidated links) */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-secondary/30 backdrop-blur-md rounded-2xl border border-border shadow-sm mb-2 animate-in fade-in slide-in-from-top-4 duration-700">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          <button
-            id="prerequisites-guide"
-            onClick={() => {
-              setPrerequisitesOpen(!prerequisitesOpen);
-              if (!prerequisitesOpen) setInstallationGuideOpen(false);
-            }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-300 group ${prerequisitesOpen ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-primary/5 hover:text-primary'}`}
-          >
-            <BookOpen className={`h-3.5 w-3.5 transition-transform duration-500 ${prerequisitesOpen ? 'scale-110' : 'group-hover:rotate-12'}`} />
-            <span className="hidden sm:inline">Automation Roadmap</span>
-            <span className="sm:hidden">Roadmap</span>
-            <ChevronDown className={`h-3 w-3 transition-transform duration-500 ${prerequisitesOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          <button
-            id="complete-installation-guide"
-            onClick={() => {
-              setInstallationGuideOpen(!installationGuideOpen);
-              if (!installationGuideOpen) setPrerequisitesOpen(false);
-            }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all duration-300 group ${installationGuideOpen ? 'bg-blue-500/10 text-blue-600' : 'text-muted-foreground hover:bg-blue-500/5 hover:text-blue-500'}`}
-          >
-            <Download className={`h-3.5 w-3.5 transition-transform duration-500 ${installationGuideOpen ? 'scale-110' : 'group-hover:bounce'}`} />
-            <span className="hidden sm:inline">Toolkit Installation</span>
-            <span className="sm:hidden">Toolkit</span>
-            <ChevronDown className={`h-3 w-3 transition-transform duration-500 ${installationGuideOpen ? 'rotate-180' : ''}`} />
-          </button>
+      {/* Stepper */}
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card/70 via-card/40 to-card/70 px-4 py-3 shadow-card backdrop-blur-sm">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-16 -right-10 h-32 w-32 rounded-full bg-primary/10 blur-2xl" />
+          <div className="absolute -bottom-16 -left-10 h-32 w-32 rounded-full bg-emerald-500/10 blur-2xl" />
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={startTour}
-          className="text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/10 gap-2 h-9 px-4 rounded-xl border border-primary/10 backdrop-blur-sm transition-all group shrink-0"
-        >
-          <HelpCircle className="h-3.5 w-3.5 group-hover:rotate-12 transition-transform" />
-          Guided Experience
-        </Button>
+        <div className="relative">
+          <div className="absolute left-[calc(16.66%-14px)] right-[calc(16.66%-14px)] top-5 h-[2px] rounded-full bg-border/40" />
+          <div
+            className="absolute left-[calc(16.66%-14px)] top-5 h-[2px] rounded-full bg-gradient-to-r from-primary via-primary/70 to-emerald-400 transition-all duration-500"
+            style={{ width: `calc(${progressPct}% - 2 * (16.66% - 14px))` }}
+          />
+
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { step: 1, label: "Setup", enabled: true },
+              { step: 2, label: "System Status", enabled: step2Enabled },
+              { step: 3, label: "Device Setup", enabled: step3Enabled },
+            ].map((s) => {
+              const isActive = activeStep === s.step;
+              const isComplete =
+                s.step === 1
+                  ? step1Ready && activeStep >= 2
+                  : s.step === 2
+                    ? step2Ready && activeStep >= 3
+                    : !!selectedDevice;
+              const isDisabled = !s.enabled;
+              return (
+                <button
+                  key={s.step}
+                  onClick={() => !isDisabled && setActiveStep(s.step as 1 | 2 | 3)}
+                  className={`group flex flex-col items-center gap-1.5 rounded-2xl px-2 py-1.5 transition-all duration-300 ${
+                    isActive
+                      ? "bg-primary/10 ring-1 ring-primary/20 shadow-[0_8px_18px_rgba(var(--primary),0.12)]"
+                      : isDisabled
+                        ? "opacity-60 cursor-not-allowed"
+                        : "hover:bg-primary/5"
+                  }`}
+                  disabled={isDisabled}
+                  aria-current={isActive ? "step" : undefined}
+                >
+                  <div
+                    className={`relative h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold border transition-all duration-300 ${
+                      isActive
+                        ? "bg-primary text-white border-primary shadow-[0_0_10px_rgba(var(--primary),0.35)]"
+                        : isComplete
+                          ? "bg-primary/90 text-white border-primary shadow-[0_0_8px_rgba(var(--primary),0.25)]"
+                          : "bg-background text-muted-foreground border-border"
+                    }`}
+                  >
+                    {isComplete ? <Check className="h-3.5 w-3.5" /> : s.step}
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/90 text-center">
+                    {s.label}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Expanded Content Areas (Minimalist) */}
-      <div className="space-y-4">
-        <Collapsible open={prerequisitesOpen} onOpenChange={setPrerequisitesOpen}>
-          <CollapsibleContent className="animate-in slide-in-from-top-2 fade-in duration-300">
-            <Card className="bg-card/40 backdrop-blur-sm border-primary/20 shadow-lg mb-4 overflow-hidden">
-              <ScrollArea className="w-full" style={{ maxHeight: '400px' }}>
-                <div className="p-6">
-                  <div className="relative">
-                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-primary/10 hidden sm:block" />
-                    <div className="space-y-8">
-                      {/* Step 1: Environment */}
-                      <div className="relative sm:pl-14">
-                        <div className="absolute left-0 top-0 h-9 w-9 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-primary-foreground font-black text-sm shadow-[0_4px_12px_rgba(var(--primary),0.3)] z-10 hidden sm:flex">1</div>
-                        <div>
-                          <h4 className="text-base font-bold text-primary mb-2">Foundation: System Prerequisites</h4>
-                          <p className="text-xs text-muted-foreground mb-4 leading-relaxed font-medium">Ensure <strong>Node.js (v18+)</strong> and the <strong>Android SDK</strong> are configured correctly.</p>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline" className="text-[10px] font-medium border-primary/10 py-0 h-6"><Terminal className="h-3 w-3 mr-1 text-primary/60" /> npm start (Helper)</Badge>
-                            <Badge variant="outline" className="text-[10px] font-medium border-primary/10 py-0 h-6"><Package className="h-3 w-3 mr-1 text-primary/60" /> Appium Server</Badge>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Step 2: Device */}
-                      <div className="relative sm:pl-14">
-                        <div className="absolute left-0 top-0 h-9 w-9 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-black text-sm border border-primary/20 z-10 hidden sm:flex">2</div>
-                        <div>
-                          <h4 className="text-base font-bold text-primary mb-2">Connection: Bridge the Gap</h4>
-                          <p className="text-xs text-muted-foreground mb-4 leading-relaxed font-medium">Connect via USB for physical testing or initiate a high-performance <strong>Android Emulator</strong>.</p>
-                          <div className="p-3 bg-amber-500/[0.03] border border-amber-500/10 rounded-2xl flex items-start gap-3 shadow-sm">
-                            <Info className="h-4 w-4 text-amber-500 mt-0.5" />
-                            <p className="text-[11px] text-amber-800/80 leading-normal font-medium italic">Pro Tip: If your device is shy, a quick <code>adb devices</code> usually resolves connection issues.</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Step 3: Recording */}
-                      <div className="relative sm:pl-14">
-                        <div className="absolute left-0 top-0 h-9 w-9 rounded-2xl bg-primary/5 text-primary/40 flex items-center justify-center font-black text-sm border border-primary/10 z-10 hidden sm:flex">3</div>
-                        <div>
-                          <h4 className="text-base font-bold text-primary mb-2">Execution: Record & Refine</h4>
-                          <p className="text-xs text-muted-foreground mb-4 leading-relaxed font-medium">Capture interactions and transform manual tasks into a <strong>No-Code Script</strong> for infinite replay.</p>
-                          <div className="flex items-center gap-4 text-[10px] font-bold text-primary/40 uppercase tracking-widest bg-primary/[0.02] p-3 rounded-2xl border border-primary/5 inline-flex">
-                            <div className="flex items-center gap-2"><Smartphone className="h-3.5 w-3.5" /> Record</div>
-                            <div className="h-1 w-1 rounded-full bg-primary/20" />
-                            <div className="flex items-center gap-2"><ClipboardCheck className="h-3.5 w-3.5" /> Save</div>
-                            <div className="h-1 w-1 rounded-full bg-primary/20" />
-                            <div className="flex items-center gap-2"><RefreshCw className="h-3.5 w-3.5" /> Replay</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </ScrollArea>
-            </Card>
-          </CollapsibleContent>
-        </Collapsible>
-
-        <Collapsible open={installationGuideOpen} onOpenChange={setInstallationGuideOpen}>
-          <CollapsibleContent className="animate-in slide-in-from-top-2 fade-in duration-300">
-            <Card className="bg-card/40 backdrop-blur-sm border-blue-500/20 shadow-lg mb-4 overflow-hidden">
-              <ScrollArea className="h-[460px] w-full">
-                <div className="p-6">
-                  <div className="relative">
-                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-blue-500/10 hidden sm:block" />
-                    <div className="space-y-8">
-                      {/* Step 1: Node.js */}
-                      <div className="relative sm:pl-12">
-                        <div className="absolute left-0 top-0 h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-md z-10 hidden sm:flex">1</div>
-                        <div>
-                          <h4 className="text-base font-bold text-blue-600 mb-2">Install Node.js</h4>
-                          <p className="text-xs text-muted-foreground mb-3 leading-relaxed">Download LTS from <a href="https://nodejs.org/" target="_blank" rel="noreferrer" className="text-blue-500 underline">nodejs.org</a>.</p>
-                          <div className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex items-center justify-between max-w-md">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                              <span className="text-[10px] font-mono">node --version</span>
-                            </div>
-                            <span className="text-xs text-green-600 font-bold tracking-tighter uppercase">Verify (v18+)</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Step 2: Appium */}
-                      <div className="relative sm:pl-14">
-                        <div className="absolute left-0 top-0 h-9 w-9 rounded-2xl bg-blue-500/20 text-blue-600 flex items-center justify-center font-black text-sm border border-blue-500/30 z-10 hidden sm:flex">2</div>
-                        <div>
-                          <h4 className="text-base font-bold text-blue-600 mb-2">Core: Appium & ADB</h4>
-                          <div className="space-y-3 max-w-lg">
-                            <div className="p-3 bg-muted/40 rounded-2xl border border-muted-foreground/10 flex items-center justify-between shadow-sm">
-                              <code className="text-[10px] font-mono text-blue-600 font-bold">npm install -g appium</code>
-                              <Button variant="ghost" size="sm" className="h-7 text-[10px]" onClick={() => { navigator.clipboard.writeText('npm install -g appium'); toast.success('Copied'); }}>
-                                <Copy className="h-3.5 w-3.5 mr-1" /> Copy
-                              </Button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="p-3 bg-background/50 rounded-2xl text-center border border-muted-foreground/5 shadow-sm">
-                                <p className="text-[9px] font-black text-muted-foreground/50 uppercase mb-1 tracking-tighter">ADB Version</p>
-                                <code className="text-[10px] font-mono font-bold text-blue-500/70">adb version</code>
-                              </div>
-                              <div className="p-3 bg-background/50 rounded-2xl text-center border border-muted-foreground/5 shadow-sm">
-                                <p className="text-[9px] font-black text-muted-foreground/50 uppercase mb-1 tracking-tighter">Appium Version</p>
-                                <code className="text-[10px] font-mono font-bold text-blue-500/70">appium -v</code>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Step 3: Local Helper */}
-                      <div className="relative sm:pl-14">
-                        <div className="absolute left-0 top-0 h-9 w-9 rounded-2xl bg-blue-500/[0.05] text-blue-600/60 flex items-center justify-center font-black text-sm border border-blue-500/10 z-10 hidden sm:flex">3</div>
-                        <div>
-                          <h4 className="text-base font-bold text-blue-600 mb-2 font-black tracking-tight">Activation: Local Helper</h4>
-                          <div className="space-y-2 max-w-lg">
-                            {[
-                              { label: "1. Open", text: "Extract and open the folder, right-click and Open Terminal" },
-                              { label: "2. Install", cmd: "npm install" },
-                              { label: "3. Start", cmd: "npm start" }
-                            ].map((step, i) => (
-                              <div key={i} className="p-3 bg-muted/30 rounded-xl border border-muted-foreground/5 flex items-center justify-between gap-4 shadow-sm group hover:border-primary/20 transition-all duration-300">
-                                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                                  <span className="text-[9px] font-black text-muted-foreground/40 uppercase tracking-widest">{step.label}</span>
-                                  {step.cmd ? (
-                                    <code className="text-[11px] font-mono text-primary/90 font-bold leading-none">{step.cmd}</code>
-                                  ) : (
-                                    <p className="text-[11px] text-foreground/80 font-medium leading-tight">{step.text}</p>
-                                  )}
-                                </div>
-                                {step.cmd && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(step.cmd!);
-                                      toast.success('Copied to clipboard');
-                                    }}
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Troubleshooting Footer */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 mt-6 border-t border-muted-foreground/10">
-                    <div className="p-4 bg-amber-500/[0.03] border border-amber-500/10 rounded-2xl flex items-start gap-3">
-                      <Info className="h-4 w-4 text-amber-500 mt-1" />
-                      <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">On <strong>Windows</strong>, use PowerShell Admin. On <strong>macOS</strong>, ensure Xcode licenses are agreed.</p>
-                    </div>
-                    <div className="p-4 bg-red-500/[0.03] border border-red-500/10 rounded-2xl flex items-start gap-3">
-                      <AlertCircle className="h-4 w-4 text-red-500 mt-1" />
-                      <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">If <code>adb</code> is missing, check your PATH variables and restart the terminal.</p>
-                    </div>
-                  </div>
-                </div>
-              </ScrollArea>
-            </Card>
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
-
-      {/* REDESIGNED: Steps Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Steps */}
+      <div className="grid grid-cols-1 gap-4">
         {/* Step 1: Local Setup */}
-        <div id="step-local-setup">
-          <Card className={`h-full ${checks.backend.status === "success" && checks.agent.status === "success" ? "border-primary/20" : ""} bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden flex flex-col transition-all duration-300 border-border`}>
-            <CardHeader className="py-5 px-6 pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="text-[10px] h-6 px-2.5 uppercase font-black tracking-widest bg-primary/5 text-primary border-primary/20 flex items-center justify-center">Step 1</Badge>
-                  <CardTitle className="text-lg font-bold tracking-tight">Local Setup</CardTitle>
+        {activeStep === 1 && (
+          <div id="step-local-setup">
+            <Card className={`h-full ${checks.backend.status === "success" && checks.agent.status === "success" ? "border-primary/20" : ""} bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden flex flex-col transition-all duration-300 border-border`}>
+              <CardHeader className="py-5 px-6 pb-2">
+                <div className="flex items-center justify-end">
+                  {checks.backend.status === "success" && checks.agent.status === "success" && (
+                    <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-200 text-xs font-bold px-2 py-0.5 h-6 animate-pulse">
+                      READY
+                    </Badge>
+                  )}
                 </div>
+              </CardHeader>
+              <CardContent className="pb-6 px-6 space-y-6 flex-1 flex flex-col">
+                <div className="space-y-3 pt-2 order-1">
+                  <p className="text-xs font-bold text-muted-foreground/40 uppercase tracking-[0.2em] px-1 pt-3">Infrastructure</p>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {/* Features List */}
+                    {[
+                      { icon: Server, label: "Appium", desc: "Mobile automation engine" },
+                      { icon: Terminal, label: "ADB Interface", desc: "Android bridge & control" },
+                      { icon: Smartphone, label: "Agent", desc: "Real-time interaction" }
+                    ].map((feat, i) => (
+                      <div key={i} className="flex items-center gap-3.5 p-3 bg-muted/30 rounded-lg border border-transparent hover:border-primary/20 transition-all duration-200 group">
+                        <div className="p-2 bg-background rounded-md shadow-sm border border-border group-hover:scale-105 transition-transform">
+                          <feat.icon className="h-4 w-4 text-primary/70" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold leading-tight tracking-tight">{feat.label}</p>
+                          <p className="text-xs text-muted-foreground/60 truncate mt-0.5">{feat.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* <div className="order-2" /> */}
+{/* 
                 {checks.backend.status === "success" && checks.agent.status === "success" && (
-                  <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-200 text-[10px] font-bold px-2 py-0.5 h-6 animate-pulse">
-                    READY
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="pb-6 px-6 pt-2 space-y-6 flex-1 flex flex-col">
-              <Button
-                onClick={() => startAllServices()}
-                className="w-full h-12 text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all hover:-translate-y-0.5 rounded-2xl active:scale-95"
-                disabled={startingServices}
-              >
-                {startingServices ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <Power className="mr-2.5 h-4 w-4" />
-                    Initialize Engine
-                  </>
-                )}
-              </Button>
+                  <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/10 rounded-lg text-xs font-bold text-primary/80 animate-in fade-in slide-in-from-top-1 duration-500">
+                    <Smartphone className="h-4 w-4" />
+                    <span>Services are active!</span>
+                  </div>
+                )} */}
 
-              <div className="space-y-3 pt-4">
-                <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] px-1">Infrastructure</p>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {/* Features List */}
-                  {[
-                    { icon: Server, label: "Appium Orchestrator", desc: "Mobile automation engine" },
-                    { icon: Terminal, label: "ADB Interface", desc: "Android bridge & control" },
-                    { icon: Smartphone, label: "Neural Agent", desc: "Real-time interaction" }
-                  ].map((feat, i) => (
-                    <div key={i} className="flex items-center gap-3.5 p-3 bg-muted/30 rounded-lg border border-transparent hover:border-primary/20 transition-all duration-200 group">
-                      <div className="p-2 bg-background rounded-md shadow-sm border border-border group-hover:scale-105 transition-transform">
-                        <feat.icon className="h-4 w-4 text-primary/70" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold leading-tight tracking-tight">{feat.label}</p>
-                        <p className="text-[10px] text-muted-foreground/60 truncate mt-0.5">{feat.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              {checks.backend.status === "success" && checks.agent.status === "success" && (
-                <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/10 rounded-lg text-xs font-bold text-primary/80 animate-in fade-in slide-in-from-top-1 duration-500">
-                  <Smartphone className="h-4 w-4" />
-                  <span>Services are active!</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+              <div className="flex justify-end gap-3 mb-3 px-6">
+                <Button
+                  onClick={handleStartEngine}
+                  className="h-10 px-5 text-xs font-bold uppercase tracking-widest rounded-xl shadow-md shadow-primary/20 hover:shadow-primary/30 transition-all active:scale-95"
+                  disabled={startingServices}
+                >
+                  {startingServices ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Power className="mr-2.5 h-4 w-4" />
+                      Start Engine
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => setActiveStep(2)}
+                  disabled={!step2Enabled}
+                  className="h-10 px-5 text-xs font-bold uppercase tracking-widest rounded-2xl shadow-md shadow-primary/20 hover:shadow-primary/30 transition-all active:scale-95"
+                >
+                  Next Step
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
 
         {/* Step 2: System Status */}
-        <div id="step-system-status">
-          <Card className="h-full bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden flex flex-col transition-all duration-300 border-border">
-            <CardHeader className="py-5 px-6 pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="text-[10px] h-6 px-2.5 uppercase font-black tracking-widest bg-primary/5 text-primary border-primary/20 flex items-center justify-center">Step 2</Badge>
-                  <CardTitle className="text-lg font-bold tracking-tight">System Status</CardTitle>
+        {activeStep === 2 && (
+          <div id="step-system-status">
+            <Card className="h-full bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden flex flex-col transition-all duration-300 border-border">
+              <CardHeader className="py-5 px-6 pb-2">
+                <div className="flex items-center justify-end">
+                  {/* <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="text-xs h-6 px-2.5 uppercase font-bold tracking-widest bg-primary/5 text-primary border-primary/20 flex items-center justify-center">Step 2</Badge>
+                    <CardTitle className="text-lg font-bold tracking-tight">System Status</CardTitle>
+                  </div> */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => checkAllServicesStatus()}
+                    className="h-9 px-4 text-xs font-bold gap-2.5 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 shadow-sm rounded-xl group"
+                    id="status-refresh-btn"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${items.some(item => checks[item.key].status === 'checking') ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                    Refresh
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => checkAllServicesStatus()}
-                  className="h-9 px-4 text-xs font-bold gap-2.5 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 shadow-sm rounded-xl group"
-                  id="status-refresh-btn"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${items.some(item => checks[item.key].status === 'checking') ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="pb-5 px-4 pt-1 flex-1 flex flex-col">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                {items.map(({ key, label, icon: Icon }) => (
-                  <TooltipProvider key={key}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all duration-200 group cursor-default shadow-sm ${checks[key].status === 'success'
-                          ? 'bg-green-500/5 border-green-500/20 hover:border-green-500/40'
-                          : checks[key].status === 'error'
-                            ? 'bg-red-500/5 border-red-500/20 hover:border-red-500/40'
-                            : 'bg-muted/30 border-border hover:border-primary/20'
-                          }`}>
-                          <div className="flex-shrink-0">
-                            {icon(checks[key].status)}
+              </CardHeader>
+              <CardContent className="pb-5 px-4 pt-1 flex-1 flex flex-col">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {items.map(({ key, label, icon: Icon }) => (
+                    <TooltipProvider key={key}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all duration-200 group cursor-default shadow-sm ${checks[key].status === 'success'
+                            ? 'bg-green-500/5 border-green-500/20 hover:border-green-500/40'
+                            : checks[key].status === 'error'
+                              ? 'bg-red-500/5 border-red-500/20 hover:border-red-500/40'
+                              : 'bg-muted/30 border-border hover:border-primary/20'
+                            }`}>
+                            <div className="flex-shrink-0">
+                              {icon(checks[key].status)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-muted-foreground/70 uppercase tracking-tight leading-none mb-1 group-hover:text-foreground transition-colors">{label}</p>
+                              <p className={`text-xs font-bold truncate ${checks[key].status === 'success' ? 'text-green-600' : checks[key].status === 'error' ? 'text-red-500' : 'text-foreground'}`}>
+                                {checks[key].status === 'success' ? 'Active' : checks[key].status === 'error' ? 'Offline' : checks[key].status === 'checking' ? 'Checking...' : 'Pending'}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-tight leading-none mb-1 group-hover:text-foreground transition-colors">{label}</p>
-                            <p className={`text-xs font-bold truncate ${checks[key].status === 'success' ? 'text-green-600' : checks[key].status === 'error' ? 'text-red-500' : 'text-foreground'}`}>
-                              {checks[key].status === 'success' ? 'Active' : checks[key].status === 'error' ? 'Offline' : checks[key].status === 'checking' ? 'Checking...' : 'Pending'}
-                            </p>
-                          </div>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent className="text-[10px] p-2">
-                        {checks[key].message}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ))}
-              </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="text-xs p-2">
+                          {checks[key].message}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ))}
+                </div>
 
-              <div className="mt-auto pt-4">
-                <div className={`p-3.5 rounded-2xl border transition-all duration-500 overflow-hidden relative group ${items.every(i => checks[i.key].status === 'success')
-                  ? 'bg-green-500/[0.04] border-green-500/20 shadow-[0_0_20px_rgba(34,197,94,0.05)]'
-                  : 'bg-primary/[0.03] border-primary/20 shadow-sm'
-                  }`}>
-                  {/* Subtle background glow */}
-                  <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full blur-2xl transition-opacity duration-1000 ${items.every(i => checks[i.key].status === 'success') ? 'bg-green-500/10 opacity-100' : 'bg-primary/5 opacity-50'
-                    }`} />
+                <div className="mt-3">
+                  <div className={`p-3.5 rounded-2xl border transition-all duration-500 overflow-hidden relative group ${items.every(i => checks[i.key].status === 'success')
+                    ? 'bg-green-500/[0.04] border-green-500/20 shadow-[0_0_20px_rgba(34,197,94,0.05)]'
+                    : 'bg-primary/[0.03] border-primary/20 shadow-sm'
+                    }`}>
+                    {/* Subtle background glow */}
+                    <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full blur-2xl transition-opacity duration-1000 ${items.every(i => checks[i.key].status === 'success') ? 'bg-green-500/10 opacity-100' : 'bg-primary/5 opacity-50'
+                      }`} />
 
-                  <div className="flex items-start gap-4 relative z-10">
-                    <div className={`p-2.5 rounded-xl shadow-sm transition-colors duration-500 ${items.every(i => checks[i.key].status === 'success') ? 'bg-green-500/20 text-green-600' : 'bg-primary/10 text-primary'
-                      }`}>
-                      {items.every(i => checks[i.key].status === 'success')
-                        ? <CheckCircle2 className="h-4 w-4 animate-bounce" style={{ animationDuration: '3s' }} />
-                        : <Info className="h-4 w-4" />
-                      }
-                    </div>
-                    <div className="min-w-0">
-                      <p className={`text-xs font-bold tracking-tight ${items.every(i => checks[i.key].status === 'success') ? 'text-green-700' : 'text-foreground'}`}>
-                        Connection Summary
-                      </p>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed mt-1 font-medium italic">
+                    <div className="flex items-start gap-4 relative z-10">
+                      <div className={`p-2.5 rounded-xl shadow-sm transition-colors duration-500 ${items.every(i => checks[i.key].status === 'success') ? 'bg-green-500/20 text-green-600' : 'bg-primary/10 text-primary'
+                        }`}>
                         {items.every(i => checks[i.key].status === 'success')
-                          ? "Configuration verified. All systems are primed for high-fidelity recording."
-                          : "System verification in progress. Please ensure all local services are active."}
-                      </p>
+                          ? <CheckCircle2 className="h-4 w-4 animate-bounce" style={{ animationDuration: '3s' }} />
+                          : <Info className="h-4 w-4" />
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-xs font-bold tracking-tight ${items.every(i => checks[i.key].status === 'success') ? 'text-green-700' : 'text-foreground'}`}>
+                          Connection Summary
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-1 font-medium italic">
+                          {items.every(i => checks[i.key].status === 'success')
+                            ? "Configuration verified. All systems are primed for high-fidelity recording."
+                            : "System verification in progress. Please ensure all local services are active."}
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                  <div className="pt-4 flex justify-end">
+                    <Button
+                      onClick={() => setActiveStep(3)}
+                      disabled={!step3Enabled}
+                      className="h-10 px-5 text-xs font-bold uppercase tracking-widest rounded-2xl shadow-md shadow-primary/20 hover:shadow-primary/30 transition-all active:scale-95"
+                    >
+                      Next Step
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Step 3: Device Selection */}
-        <div id="step-device-setup">
-          <Card className="h-full bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden flex flex-col transition-all duration-300 border-border">
-            <CardHeader className="py-5 px-6 pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="text-[10px] h-6 px-2.5 uppercase font-black tracking-widest bg-primary/5 text-primary border-primary/20 flex items-center justify-center">Step 3</Badge>
-                  <CardTitle className="text-lg font-bold tracking-tight">Device Selection</CardTitle>
+        {activeStep === 3 && (
+          <div id="step-device-setup">
+            <Card className="h-full bg-card/50 backdrop-blur-sm shadow-card hover:shadow-elegant rounded-xl overflow-hidden flex flex-col transition-all duration-300 border-border">
+              <CardHeader className="py-5 px-6 pb-2">
+                <div className="flex items-center justify-end">
+                  {/* <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="text-xs h-6 px-2.5 uppercase font-bold tracking-widest bg-primary/5 text-primary border-primary/20 flex items-center justify-center">Step 3</Badge>
+                    <CardTitle className="text-lg font-bold tracking-tight">Device Selection</CardTitle>
+                  </div> */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchAvailableDevices}
+                    disabled={devicesLoading}
+                    className="h-9 px-4 text-xs font-bold gap-2.5 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 shadow-sm rounded-xl group"
+                    id="device-scan-btn"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${devicesLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                    Scan
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchAvailableDevices}
-                  disabled={devicesLoading}
-                  className="h-9 px-4 text-xs font-bold gap-2.5 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all active:scale-95 shadow-sm rounded-xl group"
-                  id="device-scan-btn"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${devicesLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-                  Scan
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="pb-5 px-4 pt-1 space-y-4 flex-1">
-              {/* Physical Devices List - Compact */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
-                    Physical Device
-                  </h4>
-                </div>
-                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
-                  {availableDevices.filter(d => d.type === "real").length > 0 ? (
-                    availableDevices.filter(d => d.type === "real").map((device) => {
-                      const isActive = selectedDevice?.device === device.id && selectedDevice.real_mobile;
-                      return (
-                        <button
-                          key={device.id}
-                          onClick={() => handleDeviceChange(device)}
-                          className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-all duration-200 group ${isActive
-                            ? "bg-primary/5 border-primary/20 shadow-sm"
-                            : "bg-muted/30 border-transparent hover:border-border hover:bg-muted/50"
-                            }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className={`p-1.5 rounded-lg transition-colors ${isActive ? "bg-primary/20" : "bg-muted/20"}`}>
-                              <Smartphone className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+              </CardHeader>
+              <CardContent className="pb-5 px-4 pt-1 space-y-4 flex-1">
+                {/* Physical Devices List - Compact */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                      Physical Device(s)
+                    </h4>
+                  </div>
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                    {availableDevices.filter(d => d.type === "real").length > 0 ? (
+                      availableDevices.filter(d => d.type === "real").map((device) => {
+                        const isActive = selectedDevice?.device === device.id && selectedDevice.real_mobile;
+                        return (
+                          <button
+                            key={device.id}
+                            onClick={() => handleDeviceChange(device)}
+                            className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-all duration-200 group ${isActive
+                              ? "bg-primary/5 border-primary/20 shadow-sm"
+                              : "bg-muted/30 border-transparent hover:border-border hover:bg-muted/50"
+                              }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className={`p-1.5 rounded-lg transition-colors ${isActive ? "bg-primary/20" : "bg-muted/20"}`}>
+                                <Smartphone className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                              </div>
+                              <p className={`text-xs font-bold truncate leading-tight tracking-tight ${isActive ? "text-primary" : "text-muted-foreground/80 group-hover:text-foreground"}`}>
+                                {device.name || device.id}
+                              </p>
                             </div>
-                            <p className={`text-xs font-bold truncate leading-tight tracking-tight ${isActive ? "text-primary" : "text-muted-foreground/80 group-hover:text-foreground"}`}>
-                              {device.name || device.id}
-                            </p>
-                          </div>
-                          {isActive && (
-                            <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center border border-primary/20 animate-in zoom-in-50 duration-300">
-                              <CheckCircle2 className="h-3 w-3 text-primary flex-shrink-0" />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="p-4 border border-dashed rounded-lg border-border text-center bg-muted/10">
-                      <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest italic">No hardware detected</p>
-                    </div>
-                  )}
+                            {isActive && (
+                              <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center border border-primary/20 animate-in zoom-in-50 duration-300">
+                                <CheckCircle2 className="h-3 w-3 text-primary flex-shrink-0" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="p-4 border border-dashed rounded-lg border-border text-center bg-muted/10">
+                        <p className="text-xs font-bold text-muted-foreground/40 uppercase tracking-widest italic">No Physical Device Detected</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Emulators List - Compact */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
-                    Virtual Instances
-                  </h4>
-                </div>
-                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
-                  {availableDevices.filter(d => d.type === "emulator").length > 0 ? (
-                    availableDevices.filter(d => d.type === "emulator").map((device) => {
-                      const isActive = selectedDevice?.device === device.id && !selectedDevice.real_mobile;
-                      const isRunning = isActive && checks.emulator.status === "success";
-                      return (
-                        <button
-                          key={device.id}
-                          onClick={() => handleDeviceChange(device)}
-                          className={`w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all duration-300 group ${isActive
-                            ? "bg-primary/[0.04] border-primary/40 shadow-[0_0_15px_rgba(var(--primary),0.05)] ring-1 ring-primary/20"
-                            : "bg-muted/10 border-muted-foreground/5 hover:border-primary/20 hover:bg-muted/20"
-                            }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className={`p-1.5 rounded-lg transition-colors ${isActive ? "bg-primary/20" : "bg-muted/20"}`}>
-                              <Terminal className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                {/* Emulators List - Compact */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                      Virtual Emulator(s)
+                    </h4>
+                  </div>
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                    {availableDevices.filter(d => d.type === "emulator").length > 0 ? (
+                      availableDevices.filter(d => d.type === "emulator").map((device) => {
+                        const isActive = selectedDevice?.device === device.id && !selectedDevice.real_mobile;
+                        const isRunning = isActive && checks.emulator.status === "success";
+                        return (
+                          <button
+                            key={device.id}
+                            onClick={() => handleDeviceChange(device)}
+                            className={`w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all duration-300 group ${isActive
+                              ? "bg-primary/[0.04] border-primary/40 shadow-[0_0_15px_rgba(var(--primary),0.05)] ring-1 ring-primary/20"
+                              : "bg-muted/10 border-muted-foreground/5 hover:border-primary/20 hover:bg-muted/20"
+                              }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className={`p-1.5 rounded-lg transition-colors ${isActive ? "bg-primary/20" : "bg-muted/20"}`}>
+                                <Terminal className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                              </div>
+                              <p className={`text-xs font-bold truncate leading-tight tracking-tight ${isActive ? "text-primary" : "text-muted-foreground/80 group-hover:text-foreground"}`}>
+                                {device.name || device.id}
+                              </p>
                             </div>
-                            <p className={`text-xs font-bold truncate leading-tight tracking-tight ${isActive ? "text-primary" : "text-muted-foreground/80 group-hover:text-foreground"}`}>
-                              {device.name || device.id}
-                            </p>
-                          </div>
-                          {isActive && (
-                            <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center border border-primary/20 animate-in zoom-in-50 duration-300">
-                              <CheckCircle2 className="h-3 w-3 text-primary flex-shrink-0" />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="p-4 border border-dashed rounded-lg border-border text-center bg-muted/10">
-                      <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest italic">No virtual instances</p>
-                    </div>
-                  )}
+                            {isActive && (
+                              <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center border border-primary/20 animate-in zoom-in-50 duration-300">
+                                <CheckCircle2 className="h-3 w-3 text-primary flex-shrink-0" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="p-4 border border-dashed rounded-lg border-border text-center bg-muted/10">
+                        <p className="text-xs font-bold text-muted-foreground/40 uppercase tracking-widest italic">No Emulator Detected</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* Selected Device Status & Next Steps */}
-      {
-        selectedDevice && (
-          <div className="p-6 bg-card/50 backdrop-blur-sm shadow-card rounded-xl border border-border flex flex-col md:flex-row items-center justify-between gap-6 animate-in zoom-in-95 slide-in-from-bottom-4 duration-700 relative overflow-hidden group">
-            {/* Background decorative element */}
-            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-gradient-hero rounded-full blur-3xl opacity-50" />
+      {activeStep === 3 && selectedDevice && (
+        <div className="p-6 bg-card/50 backdrop-blur-sm shadow-card rounded-xl border border-border flex flex-col md:flex-row items-center justify-between gap-6 animate-in zoom-in-95 slide-in-from-bottom-4 duration-700 relative overflow-hidden group">
+          {/* Background decorative element */}
+          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-gradient-hero rounded-full blur-3xl opacity-50" />
 
-            <div className="flex items-center gap-5 min-w-0 relative z-10">
-              <div className="h-14 w-14 bg-primary/10 rounded-2xl flex items-center justify-center flex-shrink-0 border border-primary/20 shadow-inner group-hover:scale-110 transition-transform duration-500">
-                <CheckCircle2 className="h-7 w-7 text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.3)]" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xl font-bold text-primary truncate tracking-tight">
-                  {selectedDevice.name || selectedDevice.device} ready
-                </h3>
-                <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest mt-1.5 opacity-60">
-                  Select package & initiate recorder session
-                </p>
-              </div>
+          <div className="flex items-center gap-5 min-w-0 relative z-10">
+            <div className="h-14 w-14 bg-primary/10 rounded-2xl flex items-center justify-center flex-shrink-0 border border-primary/20 shadow-inner group-hover:scale-110 transition-transform duration-500">
+              <CheckCircle2 className="h-7 w-7 text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.3)]" />
             </div>
-            {setActiveTab && (
-              <Button
-                onClick={() => setActiveTab("recorder")}
-                size="lg"
-                className="w-full md:w-auto h-14 px-10 bg-primary text-white font-black uppercase tracking-widest gap-3 shadow-2xl shadow-primary/30 hover:shadow-primary/50 transition-all hover:-translate-y-1 rounded-2xl active:scale-95 group relative z-10 overflow-hidden"
-              >
-                Launch Recorder
-                <div className="p-1 bg-white/20 rounded-lg group-hover:translate-x-1 transition-transform">
-                  <ChevronDown className="h-4 w-4 -rotate-90" />
-                </div>
-              </Button>
-            )}
+            <div className="min-w-0">
+              <h3 className="text-L font-bold text-primary truncate tracking-tight">
+                {selectedDevice.name || selectedDevice.device} ready
+              </h3>
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest mt-1.5 opacity-60">
+                Select package & initiate recorder session
+              </p>
+            </div>
           </div>
-        )
-      }
+          {setActiveTab && (
+            <Button
+              onClick={() => setActiveTab("recorder")}
+              size="lg"
+              className="w-full md:w-auto h-14 px-10 bg-primary text-white font-bold uppercase tracking-widest gap-3 shadow-2xl shadow-primary/30 hover:shadow-primary/50 transition-all hover:-translate-y-1 rounded-2xl active:scale-95 group relative z-10 overflow-hidden"
+            >
+              Launch Recorder
+              <div className="p-1 bg-white/20 rounded-lg group-hover:translate-x-1 transition-transform">
+                <ChevronDown className="h-4 w-4 -rotate-90" />
+              </div>
+            </Button>
+          )}
+        </div>
+      )}
     </div >
   );
 }

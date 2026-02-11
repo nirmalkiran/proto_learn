@@ -50,10 +50,10 @@ function extractProjectId(url) {
   return "";
 }
 
-const HEARTBEAT_SEC = Number(
-  process.env.AGENT_HEARTBEAT_SEC || MOBILE_CONFIG.HEARTBEAT_INTERVAL / 1000 || 30,
+let HEARTBEAT_SEC = Number(
+  process.env.AGENT_HEARTBEAT_SEC || MOBILE_CONFIG.HEARTBEAT_INTERVAL / 1000 || 10,
 );
-const POLL_SEC = Number(process.env.AGENT_POLL_SEC || MOBILE_CONFIG.POLL_INTERVAL / 1000 || 10);
+let POLL_SEC = Number(process.env.AGENT_POLL_SEC || MOBILE_CONFIG.POLL_INTERVAL / 1000 || 10);
 
 // Simple logger with optional color output.
 const LOG_COLOR_ENABLED = process.env.WISPR_LOG_COLOR !== "false" && process.stdout.isTTY;
@@ -74,6 +74,38 @@ const log = (levelOrMsg, maybeMsg) => {
   console.log(LOG_COLOR_ENABLED && color ? `${color}${line}${reset}` : line);
 };
 const AGENT_BUILD = process.env.WISPR_AGENT_BUILD || "";
+
+async function fetchSettings() {
+  try {
+    log("info", "Fetching agent settings from server...");
+    const pollRes = await fetch(`${API_BASE_URL}/settings/agent_poll_interval_seconds`, {
+      method: "GET",
+      headers: { "x-agent-key": API_TOKEN },
+    });
+    if (pollRes.ok) {
+      const pollData = await pollRes.json();
+      if (pollData.value?.value) {
+        POLL_SEC = Number(pollData.value.value);
+        log("info", `Poll interval set to ${POLL_SEC}s`);
+      }
+    }
+
+    const hbRes = await fetch(`${API_BASE_URL}/settings/agent_heartbeat_interval_seconds`, {
+      method: "GET",
+      headers: { "x-agent-key": API_TOKEN },
+    });
+    if (hbRes.ok) {
+      const hbData = await hbRes.json();
+      if (hbData.value?.value) {
+        HEARTBEAT_SEC = Number(hbData.value.value);
+        log("info", `Heartbeat interval set to ${HEARTBEAT_SEC}s`);
+      }
+    }
+    log("info", "Settings fetched successfully");
+  } catch (e) {
+    log("warn", "Failed to fetch settings, using defaults", { error: e.message });
+  }
+}
 
 /**
  * Lightweight local API used by the React UI (MobileSetupWizard/DeviceSelector)
@@ -1018,9 +1050,6 @@ async function main() {
   log("info", "=".repeat(50));
   log("info", `API Endpoint: ${API_BASE_URL}`);
   log(`Max Capacity: ${MAX_CAPACITY}`);
-  log(`Heartbeat Interval: ${HEARTBEAT_SEC}s`);
-  log(`Poll Interval: ${POLL_SEC}s`);
-  log("info", "=".repeat(50));
   log("info", "MOBILE AUTOMATION AGENT INITIALIZING...");
 
   try {
@@ -1047,6 +1076,12 @@ async function main() {
   // Start the helper API for the UI panels
   await startLocalHelperServer();
   log("success", `Mobile Automation Server running at http://localhost:${LOCAL_PORT}`);
+
+  // Pull latest heartbeat/poll intervals from server (if available)
+  await fetchSettings();
+  log(`Heartbeat Interval: ${HEARTBEAT_SEC}s`);
+  log(`Poll Interval: ${POLL_SEC}s`);
+  log("info", "=".repeat(50));
 
   log("success", `Mobile agent targeting ${API_BASE_URL}`);
   while (true) {

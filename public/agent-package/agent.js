@@ -140,6 +140,10 @@ async function runAgent() {
   log("info", "=".repeat(50));
   log("info", "WISPR Self-Hosted Agent Starting...");
   log("info", `Agent build: ${AGENT_BUILD}`);
+  log("info", `API Endpoint: ${CONFIG.API_BASE_URL}`);
+  log("info", `Max Capacity: ${CONFIG.MAX_CAPACITY}`);
+  log("info", `Heartbeat Interval: ${CONFIG.HEARTBEAT_INTERVAL / 1000}s`);
+  log("info", `Poll Interval: ${CONFIG.POLL_INTERVAL / 1000}s`);
   log("info", "=".repeat(50));
 
   // Start WISPR Job Polling
