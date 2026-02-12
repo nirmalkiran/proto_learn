@@ -10,10 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Smartphone } from "lucide-react";
 import { toast } from "sonner";
-
-const AGENT_URL = "http://localhost:3001";
-
-import { ActionType, RecordedAction, SelectedDevice } from "./types";
+import { SelectedDevice } from "./types";
+import { deviceAgentService } from "./services/deviceAgentService";
 
 interface DeviceInfo {
   id: string;
@@ -58,12 +56,8 @@ export default function DeviceSelector({
     try {
       // Fetch both connected devices and available AVDs (with timeouts for reliability)
       const [connectedRes, availableRes] = await Promise.all([
-        fetch(`${AGENT_URL}/device/check`, {
-          signal: AbortSignal.timeout(5000)
-        }),
-        fetch(`${AGENT_URL}/emulator/available`, {
-          signal: AbortSignal.timeout(5000)
-        })
+        deviceAgentService.checkDevice(AbortSignal.timeout(5000)),
+        deviceAgentService.getAvailableEmulators(AbortSignal.timeout(5000)),
       ]);
 
       const connectedData = await connectedRes.json();
